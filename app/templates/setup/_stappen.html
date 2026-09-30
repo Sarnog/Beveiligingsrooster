@@ -1,0 +1,6 @@
+{# Voortgangsbalk van de setup-wizard #}
+<ol class="stappen">
+  {% for nr, naam in [(1, 'Beheerder'), (2, 'Algemeen'), (3, 'Dienstcodes'), (4, 'Medewerkers'), (5, 'Agenda')] %}
+  <li class="{{ 'actief' if nr == stap else ('klaar' if nr < stap else '') }}">{{ nr }}. {{ naam }}</li>
+  {% endfor %}
+</ol>

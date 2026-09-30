@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Inloggen – {{ teamnaam }}{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>Inloggen</h1>
+  <form method="post">
+    {{ csrf() }}
+    <label class="veld"><span>Gebruikersnaam</span>
+      <input name="gebruikersnaam" autocomplete="username" autocapitalize="none" required autofocus></label>
+    <label class="veld"><span>Wachtwoord</span>
+      <input name="wachtwoord" type="password" autocomplete="current-password" required></label>
+    <button class="knop primair" type="submit">Inloggen</button>
+  </form>
+  <p class="hulp">Wachtwoord vergeten? Vraag de beheerder om een reset.</p>
+</section>
+{% endblock %}

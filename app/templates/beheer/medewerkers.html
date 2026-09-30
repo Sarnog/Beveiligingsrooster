@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop, csrf %}
+{% block titel %}Medewerkers{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Medewerkers</h1>
+  <a class="knop primair" href="{{ url_for('beheer.medewerker_nieuw') }}">+ Nieuwe medewerker</a>
+</div>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Volgorde</th><th>Naam</th><th>Initialen</th><th>Contracturen {{ jaar }}</th><th>Functie / opmerking</th><th>Status</th><th>Diensten</th><th></th></tr></thead>
+  <tbody>
+  {% for m in medewerkers %}
+    <tr class="{{ 'gearchiveerd' if m.gearchiveerd_vanaf and m.gearchiveerd_vanaf <= vandaag }}">
+      <td class="nowrap">
+        {{ post_knop(url_for('beheer.medewerker_verplaats', mid=m.id), '▲', 'knop klein', velden={'richting': 'omhoog'}) }}
+        {{ post_knop(url_for('beheer.medewerker_verplaats', mid=m.id), '▼', 'knop klein', velden={'richting': 'omlaag'}) }}
+      </td>
+      <td><a href="{{ url_for('beheer.medewerker_bewerk', mid=m.id) }}">{{ m.naam }}</a></td>
+      <td>{{ m.initialen }}</td>
+      <td class="getal">{{ m.contracturen_voor(jaar)|uren }}</td>
+      <td>{{ m.functie_opmerking }}</td>
+      <td>{% if m.gearchiveerd_vanaf %}Gearchiveerd vanaf {{ m.gearchiveerd_vanaf|datum_nl }}{% else %}Actief{% endif %}</td>
+      <td class="getal">{{ aantallen.get(m.id, 0) }}</td>
+      <td class="nowrap">
+        {% if m.gearchiveerd_vanaf %}
+          {{ post_knop(url_for('beheer.medewerker_archiveer', mid=m.id), 'Herstellen', 'knop klein', velden={'herstel': '1'}) }}
+        {% else %}
+          <form method="post" action="{{ url_for('beheer.medewerker_archiveer', mid=m.id) }}" class="inline"
+                data-bevestig="{{ m.naam }} archiveren? Historische diensten blijven bewaard.">
+            {{ csrf() }}
+            <input type="date" name="vanaf" value="{{ vandaag.isoformat() }}" class="klein" aria-label="Archiveren vanaf">
+            <button class="knop klein" type="submit">Archiveren</button>
+          </form>
+        {% endif %}
+        <a class="knop klein gevaar" href="{{ url_for('beheer.medewerker_verwijder', mid=m.id) }}">Verwijderen</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">Nog geen medewerkers.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

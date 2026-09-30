@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop %}
+{% block titel %}Gebruikers{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Gebruikers</h1>
+  <a class="knop primair" href="{{ url_for('beheer.gebruiker_nieuw') }}">+ Nieuw account</a>
+</div>
+<p class="hulp"><strong>Beheerder</strong>: mag alles. <strong>Gebruiker</strong>: alleen lezen (kalender, rooster, overzichten, zoeken, printen, exporteren).</p>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Gebruikersnaam</th><th>Weergavenaam</th><th>Rol</th><th>Medewerker</th><th>Status</th><th>Laatst ingelogd</th><th></th></tr></thead>
+  <tbody>
+  {% for g in gebruikers %}
+    <tr class="{{ '' if g.actief else 'gearchiveerd' }}">
+      <td><a href="{{ url_for('beheer.gebruiker_bewerk', gid=g.id) }}">{{ g.gebruikersnaam }}</a></td>
+      <td>{{ g.weergavenaam }}</td><td>{{ g.rol }}</td>
+      <td>{{ g.medewerker.naam if g.medewerker else '–' }}</td>
+      <td>{{ 'actief' if g.actief else 'uitgeschakeld' }}{% if g.moet_wachtwoord_wijzigen %} (nieuw wachtwoord nodig){% endif %}</td>
+      <td>{{ g.laatst_ingelogd.strftime('%d-%m-%Y %H:%M') if g.laatst_ingelogd else '–' }}</td>
+      <td class="nowrap">
+        {{ post_knop(url_for('beheer.gebruiker_reset', gid=g.id), 'Wachtwoord resetten', 'knop klein', bevestig='Wachtwoord van ' ~ g.gebruikersnaam ~ ' resetten?') }}
+        {% if g.id != current_user.id %}{{ post_knop(url_for('beheer.gebruiker_verwijder', gid=g.id), 'Verwijderen', 'knop klein gevaar', bevestig='Account ' ~ g.gebruikersnaam ~ ' verwijderen?') }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{# Herbruikbare stukjes voor formulieren #}
+
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{# Knop die een POST doet, met optionele bevestigingsvraag #}
+{% macro post_knop(actie, tekst, klasse="knop", bevestig=None, velden={}) %}
+<form method="post" action="{{ actie }}" class="inline"{% if bevestig %} data-bevestig="{{ bevestig }}"{% endif %}>
+  {{ csrf() }}
+  {% for naam, waarde in velden.items() %}<input type="hidden" name="{{ naam }}" value="{{ waarde }}">{% endfor %}
+  <button type="submit" class="{{ klasse }}">{{ tekst }}</button>
+</form>
+{% endmacro %}
+
+{% macro veld(naam, label, waarde="", type="text", hulp=None, verplicht=False, extra="") %}
+<label class="veld">
+  <span>{{ label }}{% if verplicht %} *{% endif %}</span>
+  <input type="{{ type }}" name="{{ naam }}" value="{{ waarde if waarde is not none else '' }}"{% if verplicht %} required{% endif %} {{ extra|safe }}>
+  {% if hulp %}<small>{{ hulp }}</small>{% endif %}
+</label>
+{% endmacro %}
+
+{% macro vink(naam, label, aan=False, hulp=None) %}
+<label class="vink">
+  <input type="checkbox" name="{{ naam }}" value="1"{% if aan %} checked{% endif %}>
+  <span>{{ label }}</span>
+  {% if hulp %}<small>{{ hulp }}</small>{% endif %}
+</label>
+{% endmacro %}

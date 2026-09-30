@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, veld %}
+{% block titel %}Setup – algemeen{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  {% include "setup/_stappen.html" %}
+  <h1>Algemene instellingen</h1>
+  <form method="post">
+    {{ csrf() }}
+    {{ veld('teamnaam', 'Teamnaam / titel', w.teamnaam, verplicht=True) }}
+    {{ veld('tijdzone', 'Tijdzone', w.tijdzone, verplicht=True) }}
+    {{ veld('eerste_jaar', 'Eerste roosterjaar', w.eerste_jaar, type='number', verplicht=True) }}
+    {{ veld('toeslag_zaterdag', 'Toeslagfactor zaterdag', w.toeslag_zaterdag, hulp='Bijvoorbeeld 1,5', verplicht=True) }}
+    {{ veld('toeslag_zondag', 'Toeslagfactor zondag', w.toeslag_zondag, hulp='Bijvoorbeeld 2,0', verplicht=True) }}
+    <fieldset class="rij">
+      <legend>Logboek bewaren</legend>
+      {{ veld('logboek_dagen', 'Dagen', w.logboek_dagen, type='number') }}
+      {{ veld('logboek_uren', 'Uren (0–23)', w.logboek_uren, type='number') }}
+    </fieldset>
+    <button class="knop primair" type="submit">Verder</button>
+  </form>
+</section>
+{% endblock %}

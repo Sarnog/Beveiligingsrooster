@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, veld, vink %}
+{% block titel %}{{ 'Account wijzigen' if g else 'Nieuw account' }}{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>{{ 'Account wijzigen' if g else 'Nieuw account' }}</h1>
+  <form method="post">
+    {{ csrf() }}
+    {{ veld('gebruikersnaam', 'Gebruikersnaam', w.gebruikersnaam, verplicht=True, extra='autocapitalize="none" autocomplete="off"') }}
+    {{ veld('weergavenaam', 'Weergavenaam', w.weergavenaam, verplicht=True) }}
+    <label class="veld"><span>Rol</span>
+      <select name="rol">
+        <option value="gebruiker"{% if w.rol == 'gebruiker' %} selected{% endif %}>Gebruiker (alleen lezen)</option>
+        <option value="beheerder"{% if w.rol == 'beheerder' %} selected{% endif %}>Beheerder (planner)</option>
+      </select></label>
+    <label class="veld"><span>Gekoppelde medewerker (optioneel)</span>
+      <select name="medewerker_id">
+        <option value="">– geen –</option>
+        {% for m in medewerkers %}<option value="{{ m.id }}"{% if w.medewerker_id == m.id %} selected{% endif %}>{{ m.naam }} ({{ m.initialen }})</option>{% endfor %}
+      </select>
+      <small>Dan ziet deze collega na inloggen direct “Mijn rooster”.</small></label>
+    {% if not g %}
+    {{ veld('wachtwoord', 'Tijdelijk wachtwoord', '', type='password', verplicht=True, hulp='Minimaal 10 tekens. Bij de eerste login moet de collega zelf een nieuw wachtwoord kiezen.', extra='autocomplete="new-password" minlength="10"') }}
+    {% endif %}
+    {{ vink('actief', 'Account actief', w.actief) }}
+    <div class="knoppen">
+      <button class="knop primair" type="submit">Opslaan</button>
+      <a class="knop" href="{{ url_for('beheer.gebruikers') }}">Annuleren</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

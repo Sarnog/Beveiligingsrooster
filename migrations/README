@@ -1,0 +1,1 @@
+Migraties van het datamodel (Alembic via Flask-Migrate). Nieuwe migratie: flask db migrate -m 'omschrijving'

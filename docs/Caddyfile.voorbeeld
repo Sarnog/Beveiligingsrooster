@@ -1,0 +1,9 @@
+# Voorbeeld /etc/caddy/Caddyfile voor Beveiligingsrooster.
+# Vervang rooster.voorbeeld.nl door je eigen domeinnaam. Caddy regelt HTTPS automatisch.
+# Zet in /opt/beveiligingsrooster/.env: LUISTER_ADRES=127.0.0.1, BASE_URL=https://rooster.voorbeeld.nl
+# en PROXY_VERTROUWEN=1.
+
+rooster.voorbeeld.nl {
+    encode gzip
+    reverse_proxy 127.0.0.1:8000
+}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block titel %}Wachtwoord gereset{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>Wachtwoord gereset</h1>
+  <p>Het tijdelijke wachtwoord voor <strong>{{ g.gebruikersnaam }}</strong> is:</p>
+  <p class="groot-code" data-kopieer>{{ tijdelijk }}</p>
+  <p class="hulp">Dit wordt maar één keer getoond. Geef het veilig door; bij de volgende login moet een nieuw wachtwoord gekozen worden.</p>
+  <a class="knop" href="{{ url_for('beheer.gebruikers') }}">Terug naar gebruikers</a>
+</section>
+{% endblock %}

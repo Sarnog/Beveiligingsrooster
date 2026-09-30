@@ -1,0 +1,10 @@
+# Aanvulling op docker-compose.yml om de image zelf te bouwen uit de broncode
+# (in plaats van de kant-en-klare image van GitHub te downloaden).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.bouwen.yml up -d --build
+services:
+  web:
+    build: .
+    image: beveiligingsrooster:lokaal
+  worker:
+    image: beveiligingsrooster:lokaal

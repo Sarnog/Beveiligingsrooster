@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, veld, vink, post_knop %}
+{% block titel %}Instellingen{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>Instellingen</h1>
+  <form method="post">
+    {{ csrf() }}
+    <h2>Algemeen</h2>
+    {{ veld('teamnaam', 'Teamnaam / titel', w.teamnaam, verplicht=True) }}
+    {{ veld('tijdzone', 'Tijdzone', w.tijdzone) }}
+    {{ veld('eerste_jaar', 'Eerste roosterjaar', w.eerste_jaar, type='number') }}
+    {{ veld('voettekst', 'Voettekst', w.voettekst, hulp='Bijvoorbeeld een copyright-regel. Leeg = geen voettekst.') }}
+
+    <h2>Uren en toeslagen</h2>
+    <div class="rij">
+      {{ veld('toeslag_zaterdag', 'Factor zaterdag', w.toeslag_zaterdag|replace('.', ',')) }}
+      {{ veld('toeslag_zondag', 'Factor zondag', w.toeslag_zondag|replace('.', ',')) }}
+    </div>
+    {{ vink('feestdagtoeslag_aan', 'Toeslag op feestdagen (standaard uit, zoals in Excel)', w.toeslag_feestdag) }}
+    {{ veld('toeslag_feestdag', 'Factor feestdag', w.toeslag_feestdag|replace('.', ','), hulp='Valt een feestdag in het weekend, dan telt de hoogste factor.') }}
+    {{ vink('opmerkingtijden_meetellen', 'Opmerkingtijden (regel b) meetellen in de uren', w.opmerkingtijden_meetellen == '1') }}
+    {{ veld('blanco_code', 'Blanco-code (betekent "geen dienst")', w.blanco_code, hulp='Standaard 15. Leeg = uit. Een lege cel betekent altijd geen dienst.') }}
+
+    <h2>Logboek</h2>
+    <div class="rij">
+      {{ veld('logboek_dagen', 'Bewaren: dagen', w.logboek_dagen, type='number') }}
+      {{ veld('logboek_uren', 'Bewaren: uren (0–23)', w.logboek_uren, type='number') }}
+    </div>
+
+    <h2>Agenda</h2>
+    {{ veld('agenda_voorvoegsel', 'Voorvoegsel afspraaktitel', w.agenda_voorvoegsel, hulp='Bijvoorbeeld "Werk: ". Leeg = alleen de dienstnaam.') }}
+    <div class="rij">
+      {{ veld('agenda_sync_dagen_terug', 'Volledige sync: dagen terug', w.agenda_sync_dagen_terug, type='number') }}
+      {{ veld('agenda_sync_maanden_vooruit', 'Volledige sync: maanden vooruit', w.agenda_sync_maanden_vooruit, type='number') }}
+    </div>
+
+    <h2>Back-ups</h2>
+    {{ veld('backup_bewaren', 'Aantal nachtelijke back-ups bewaren', w.backup_bewaren, type='number') }}
+
+    <h2>Alleen-lezen deellink</h2>
+    {{ vink('deellink_actief', 'Rooster zonder account te bekijken via een geheime link', w.deellink_actief == '1') }}
+    {% if w.deellink_actief == '1' and w.deellink_token and heeft_route('deel.kalender') %}
+      <p>Link: <code>{{ url_for('deel.kalender', token=w.deellink_token, _external=True) }}</code></p>
+    {% endif %}
+
+    <div class="knoppen"><button class="knop primair" type="submit">Opslaan</button></div>
+  </form>
+  {% if w.deellink_token %}
+  {{ post_knop(url_for('beheer.deellink_vernieuwen'), 'Deellink vernieuwen', 'knop', bevestig='De huidige link werkt daarna niet meer. Doorgaan?') }}
+  {% endif %}
+</section>
+{% endblock %}

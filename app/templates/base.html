@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block titel %}{{ teamnaam }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='js/htmx.min.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  {% block kop %}{% endblock %}
+</head>
+<body class="{% block body_klasse %}{% endblock %}">
+  <header class="balk geen-print">
+    <a class="merk" href="{{ url_for('algemeen.index') }}">{{ teamnaam }}</a>
+    {% if current_user.is_authenticated and not current_user.moet_wachtwoord_wijzigen %}
+    <button class="menu-knop" type="button" data-wissel="hoofdmenu" aria-label="Menu">&#9776;</button>
+    <nav id="hoofdmenu" class="menu">
+      {% if heeft_route('kalender.jaar') %}
+      <a href="{{ url_for('kalender.jaar') }}">Kalender</a>
+      <a href="{{ url_for('rooster.week') }}">Weekrooster</a>
+      {% if current_user.medewerker_id %}<a href="{{ url_for('rooster.mijn') }}">Mijn rooster</a>{% endif %}
+      <a href="{{ url_for('overzicht.uren') }}">Urenoverzicht</a>
+      <a href="{{ url_for('zoeken.zoek') }}">Zoeken</a>
+      {% endif %}
+      {% if current_user.is_beheerder %}<a href="{{ url_for('beheer.index') }}">Beheer</a>{% endif %}
+      <span class="menu-rechts">
+        <a href="{{ url_for('auth.wachtwoord_wijzigen') }}" title="Wachtwoord wijzigen">{{ current_user.weergavenaam }}</a>
+        <form method="post" action="{{ url_for('auth.uitloggen') }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="knop klein">Uitloggen</button>
+        </form>
+      </span>
+    </nav>
+    {% endif %}
+  </header>
+
+  <main class="{% block main_klasse %}inhoud{% endblock %}">
+    {% with meldingen = get_flashed_messages(with_categories=true) %}
+      {% if meldingen %}
+      <div class="meldingen geen-print">
+        {% for soort, tekst in meldingen %}
+        <div class="melding {{ soort }}" role="status">{{ tekst }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% block inhoud %}{% endblock %}
+  </main>
+
+  {% if voettekst %}<footer class="voet">{{ voettekst }}</footer>{% endif %}
+</body>
+</html>

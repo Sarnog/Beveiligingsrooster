@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop, csrf %}
+{% block titel %}Feestdagen {{ jaar }}{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Feestdagen en roostervrije dagen {{ jaar }}</h1>
+  <span class="knoppen">
+    <a class="knop" href="{{ url_for('beheer.feestdagen', jaar=jaar-1) }}">◀ {{ jaar-1 }}</a>
+    <a class="knop" href="{{ url_for('beheer.feestdagen', jaar=jaar+1) }}">{{ jaar+1 }} ▶</a>
+  </span>
+</div>
+<table class="tabel">
+  <thead><tr><th>Naam</th><th>Datum</th><th>Week</th><th>Soort</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for f in feestdagen %}
+    <tr class="{{ '' if f.actief else 'gearchiveerd' }}">
+      <td>{{ f.naam }}</td><td>{{ f.datum|datum_nl }}</td><td class="getal">{{ f.datum.isocalendar()[1] }}</td>
+      <td>{{ 'eigen' if f.is_eigen else 'standaard' }}</td>
+      <td>{{ 'aan' if f.actief else 'uit' }}</td>
+      <td class="nowrap">
+        {{ post_knop(url_for('beheer.feestdag_wissel', fid=f.id), 'Uitzetten' if f.actief else 'Aanzetten', 'knop klein') }}
+        {% if f.is_eigen %}{{ post_knop(url_for('beheer.feestdag_verwijder', fid=f.id), 'Verwijderen', 'knop klein gevaar', bevestig='Verwijderen?') }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>Eigen roostervrije dag toevoegen</h2>
+<form method="post" action="{{ url_for('beheer.feestdag_nieuw') }}" class="rij-formulier">
+  {{ csrf() }}
+  <label class="veld"><span>Naam</span><input name="naam" required></label>
+  <label class="veld"><span>Datum</span><input type="date" name="datum" required></label>
+  <button class="knop primair" type="submit">Toevoegen</button>
+</form>
+{% endblock %}

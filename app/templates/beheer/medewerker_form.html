@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, veld %}
+{% block titel %}{{ 'Medewerker wijzigen' if m else 'Nieuwe medewerker' }}{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>{{ 'Medewerker wijzigen' if m else 'Nieuwe medewerker' }}</h1>
+  <form method="post" data-initialen-url="{{ url_for('beheer.initialen_voorstel') }}" data-medewerker-id="{{ m.id if m else '' }}">
+    {{ csrf() }}
+    {{ veld('naam', 'Naam', w.naam, verplicht=True, extra='data-naam-veld') }}
+    {{ veld('initialen', 'Initialen', w.initialen, hulp='Wordt voorgesteld zoals in Excel (Jan Jansen → JJA). Moet uniek zijn.', extra='data-initialen-veld maxlength="10"') }}
+    {{ veld('functie_opmerking', 'Functie / opmerking', w.functie_opmerking, hulp='Bijvoorbeeld BHV of "Dipl. tot 20:00"') }}
+    {{ veld('email', 'E-mailadres (voor de agenda)', w.email, type='email') }}
+
+    <fieldset>
+      <legend>Contracturen per jaar</legend>
+      <p class="hulp">Zonder waarde voor een jaar geldt het laatste eerdere jaar.</p>
+      <table class="tabel compact">
+        <thead><tr><th>Jaar</th><th>Uren</th></tr></thead>
+        <tbody>
+        {% set contract = w.contract or {} %}
+        {% for jaar_c, uren_c in contract.items() %}
+          <tr><td><input name="cu_jaar_{{ loop.index }}" value="{{ jaar_c }}" inputmode="numeric" size="6"></td>
+              <td><input name="cu_uren_{{ loop.index }}" value="{{ uren_c|uren }}" inputmode="decimal" size="8"></td></tr>
+        {% endfor %}
+          <tr><td><input name="cu_jaar_nieuw" value="{{ '' if contract else jaar }}" placeholder="{{ jaar }}" inputmode="numeric" size="6"></td>
+              <td><input name="cu_uren_nieuw" placeholder="bijv. 1659" inputmode="decimal" size="8"></td></tr>
+        </tbody>
+      </table>
+      <p class="hulp">Een jaar verwijderen: maak beide velden leeg.</p>
+    </fieldset>
+
+    <div class="knoppen">
+      <button class="knop primair" type="submit">Opslaan</button>
+      <a class="knop" href="{{ url_for('beheer.medewerkers') }}">Annuleren</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

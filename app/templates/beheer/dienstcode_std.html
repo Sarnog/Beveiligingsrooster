@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Standaardtijden toepassen{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>Standaardtijden van code {{ c.nummer }} ({{ c.omschrijving }}) toepassen</h1>
+  <p>Nieuwe tijden: <strong>{{ c.std_begin }} – {{ c.std_eind }}</strong>, voor alle diensten met deze code vanaf <strong>{{ vanaf|datum_nl }}</strong>.</p>
+  {% if afwijkend %}
+  <p><strong>{{ afwijkend|length }}</strong> dienst(en) worden gewijzigd (ook handmatig aangepaste tijden):</p>
+  <div class="tabel-schuif"><table class="tabel compact">
+    <thead><tr><th>Datum</th><th>Medewerker</th><th>Nu</th></tr></thead>
+    <tbody>{% for d in afwijkend[:50] %}<tr><td>{{ d.datum|datum_nl }}</td><td>{{ d.medewerker.naam }}</td><td>{{ d.begin or '–' }} – {{ d.eind or '–' }}{% if d.tijden_handmatig %} (handmatig){% endif %}</td></tr>{% endfor %}
+    {% if afwijkend|length > 50 %}<tr><td colspan="3">… en nog {{ afwijkend|length - 50 }} meer</td></tr>{% endif %}</tbody>
+  </table></div>
+  <form method="post" data-bevestig="{{ afwijkend|length }} diensten wijzigen?">
+    {{ csrf() }}
+    <div class="knoppen"><button class="knop primair" type="submit">Toepassen</button>
+      <a class="knop" href="{{ url_for('beheer.dienstcodes') }}">Annuleren</a></div>
+  </form>
+  {% else %}
+  <p>Er zijn geen toekomstige diensten met afwijkende tijden. Er hoeft niets te gebeuren.</p>
+  <a class="knop" href="{{ url_for('beheer.dienstcodes') }}">Terug</a>
+  {% endif %}
+</section>
+{% endblock %}

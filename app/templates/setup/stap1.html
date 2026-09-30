@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Setup – beheerder{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  {% include "setup/_stappen.html" %}
+  <h1>Beheerdersaccount</h1>
+  <form method="post">
+    {{ csrf() }}
+    <label class="veld"><span>Gebruikersnaam *</span>
+      <input name="gebruikersnaam" autocomplete="username" autocapitalize="none" required value="{{ request.form.gebruikersnaam }}"></label>
+    <label class="veld"><span>Weergavenaam *</span>
+      <input name="weergavenaam" required value="{{ request.form.weergavenaam }}"></label>
+    <label class="veld"><span>Wachtwoord *</span>
+      <input name="wachtwoord" type="password" autocomplete="new-password" minlength="10" required>
+      <small>Minimaal 10 tekens.</small></label>
+    <label class="veld"><span>Wachtwoord (herhalen) *</span>
+      <input name="herhaling" type="password" autocomplete="new-password" minlength="10" required></label>
+    <button class="knop primair" type="submit">Account aanmaken</button>
+  </form>
+</section>
+{% endblock %}
