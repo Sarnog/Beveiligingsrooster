@@ -41,7 +41,14 @@
 
 <div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-versie="{{ versie }}"{% endif %}>
   <div class="tabel-schuif rooster-houder">
-  <table class="rooster" data-raster="visueel">
+  {#- Printen: hele week altijd op één A4 (liggend). Beschikbare hoogte ca. 185 mm
+      (A4 210 mm - marges 16 mm - titel 9 mm), verdeeld over alle rijen:
+      2 kopregels + 4 regels per medewerker. Letter max. 7,5 pt, anders kleiner. -#}
+  {% set print_rijen = 2 + 4 * (rijen|length) %}
+  {% set print_rij_mm = [4.2, (185 - print_rijen * 0.27) / print_rijen]|min %}
+  {% set print_letter_pt = [7.5, print_rij_mm * 2.835 * 0.78]|min %}
+  <table class="rooster" data-raster="visueel"
+         style="--print-rij: {{ '%.2f'|format(print_rij_mm) }}mm; --print-letter: {{ '%.2f'|format(print_letter_pt) }}pt">
     <thead>
       <tr>
         <th class="naamkol">Naam</th>

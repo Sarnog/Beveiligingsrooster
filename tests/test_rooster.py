@@ -381,3 +381,25 @@ def test_cache_instructies(als_beheerder, rooster):
 def test_maar_een_opslaan_knop(als_beheerder, rooster):
     pagina = als_beheerder.get("/week/2026/10").data.decode()
     assert pagina.count("data-opslaan") == 1
+
+
+def test_print_schaalt_mee_met_aantal_medewerkers(als_beheerder, rooster):
+    """Meer medewerkers = lagere printregels, zodat de week op één A4 blijft passen."""
+    import re
+
+    def printmaat():
+        pagina = als_beheerder.get("/week/2026/10").data.decode()
+        rij = re.search(r"--print-rij: ([\d.]+)mm", pagina)
+        letter = re.search(r"--print-letter: ([\d.]+)pt", pagina)
+        return float(rij.group(1)), float(letter.group(1))
+
+    klein_rij, klein_letter = printmaat()  # 2 medewerkers: maximale maat
+    assert klein_rij == 4.2 and klein_letter == 7.5
+
+    db.session.add_all(Medewerker(naam=f"Medewerker {nr}", initialen=f"TX{nr}", volgorde=nr)
+                       for nr in range(3, 26))
+    db.session.commit()
+    groot_rij, groot_letter = printmaat()  # 25 medewerkers: kleiner
+    assert groot_rij < klein_rij and groot_letter < klein_letter
+    # Alle regels samen passen binnen de beschikbare hoogte (ca. 185 mm)
+    assert (2 + 4 * 25) * (groot_rij + 0.27) <= 185.1

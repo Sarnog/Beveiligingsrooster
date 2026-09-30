@@ -105,7 +105,7 @@ Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of é
 
 ## 5. Printen
 
-Klik op **Printen**. De week komt liggend op één A4, zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
+Klik op **Printen**. De week komt liggend op één A4 (ook bij meer medewerkers: de print schaalt zelf mee, bij een groot team wordt de letter kleiner), zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
 
 ## 6. Kalender, overzichten en zoeken
 

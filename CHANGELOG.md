@@ -2,6 +2,13 @@
 
 ## [Onuitgebracht]
 
+## [1.1.3] – 2026-10-01
+
+### Gewijzigd
+- Printen van het weekrooster schaalt automatisch mee met het aantal medewerkers: de hele week
+  past altijd op één A4 (liggend). Voorheen liep de print bij meer dan ongeveer 12 medewerkers
+  door naar een tweede pagina. Bij een groot team wordt de letter kleiner.
+
 ## [1.1.2] – 2026-10-01
 
 ### Opgelost

@@ -322,8 +322,15 @@ td.positief { color: #1565c0; font-weight: 600; }
   .inhoud, .inhoud-breed { max-width: none; padding: 0; margin: 0; }
   .week-opmaak { display: block; }
   .tabel-schuif { overflow: visible; max-height: none; }
-  .rooster { min-width: 0; width: 100%; font-size: 7.5pt; margin: 0 auto; }
-  .rooster th, .rooster td { height: auto; padding: 0 2px; }
+  /* Rijhoogte en letter worden per week uitgerekend (zie rooster/week.html), zodat
+     de hele week op één pagina past, ook met veel medewerkers */
+  .rooster { min-width: 0; width: 100%; font-size: var(--print-letter, 7.5pt); margin: 0 auto; }
+  .rooster th, .rooster td { height: var(--print-rij, auto); padding: 0 2px; line-height: 1; }
+  .rooster .opm { font-size: .95em; }
+  .rooster .opmtijd { font-size: .9em; }
+  .rooster .naamkol small { font-size: .85em; }
+  .rooster .urenkol.contract { font-size: .85em; }
+  .rooster .urenkol.totaal { font-size: 1.15em; }
   .rooster thead th, .rooster .naamkol { position: static; }
   .rooster .naamkol { width: 26mm; }
   .rooster .urenkol { width: 12mm; }
