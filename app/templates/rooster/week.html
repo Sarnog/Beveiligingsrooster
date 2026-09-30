@@ -3,7 +3,7 @@
 {% from "macros.html" import csrf %}
 {% block titel %}Week {{ week }} ({{ jaar }}) – {{ teamnaam }}{% endblock %}
 {% block main_klasse %}inhoud inhoud-breed{% endblock %}
-{% block kop %}{% if bewerken %}<script src="{{ url_for('static', filename='js/raster.js') }}" defer></script>{% endif %}{% endblock %}
+{% block kop %}{% if bewerken %}<script src="{{ url_for('static', filename='js/raster.js', v=versie) }}" defer></script>{% endif %}{% endblock %}
 {% set dagkort = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] %}
 {% block inhoud %}
 <div class="week-kop geen-print">
@@ -39,7 +39,7 @@
 </div>
 <h1 class="alleen-print">{{ teamnaam }} – week {{ week }} ({{ jaar }})</h1>
 
-<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-api-dag="{{ url_for('rooster.api_dagopmerking') }}"{% endif %}>
+<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}"{% endif %}>
   <div class="tabel-schuif rooster-houder">
   <table class="rooster" data-raster="visueel">
     <thead>

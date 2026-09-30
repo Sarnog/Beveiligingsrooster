@@ -17,7 +17,6 @@ from ..services.weekrooster import (
     kopieer_week,
     verwerk_rooster,
     week_gegevens,
-    wijzig_dagopmerking,
 )
 from .hulp import beheerder_vereist
 
@@ -110,7 +109,8 @@ def api_cellen():
     Body (JSON):
       wijzigingen:    [{mw, datum, veld, waarde, versie}]
       dagopmerkingen: [{datum, tekst}]
-      opslaan:        true = bewaren; false = alleen voorbeeld berekenen (standaard true)
+      opslaan:        alleen bij precies true wordt er bewaard (knop 'Opslaan');
+                      anders wordt alleen een voorbeeld berekend en niets opgeslagen
       ook_tonen:      ["<mw>|<datum>", ...]  extra dagen om de actuele stand van te krijgen
       ook_dagen:      ["<datum>", ...]       idem voor dagopmerkingen
     """
@@ -147,23 +147,11 @@ def api_cellen():
 
     try:
         resultaat = verwerk_rooster(wijzigingen, dag_wijzigingen,
-                                    opslaan=gegevens.get("opslaan", True) is not False,
+                                    opslaan=gegevens.get("opslaan") is True,
                                     ook_tonen=ook_tonen, ook_dagen=ook_dagen)
     except VersieConflict as fout:
         return jsonify(fout=str(fout)), 409
     return jsonify(resultaat)
-
-
-@bp.route("/api/dagopmerking", methods=["POST"])
-@beheerder_vereist
-def api_dagopmerking():
-    gegevens = request.get_json(silent=True) or {}
-    try:
-        datum = date.fromisoformat(str(gegevens.get("datum")))
-    except ValueError:
-        return jsonify(fout="Ongeldige datum."), 400
-    resultaat = wijzig_dagopmerking(datum, str(gegevens.get("tekst") or ""))
-    return jsonify(datum=datum.isoformat(), **resultaat)
 
 
 @bp.route("/week/<int:jaar>/<int:week>/kopieer", methods=["POST"])

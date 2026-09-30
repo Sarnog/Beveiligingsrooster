@@ -5,6 +5,17 @@
 ## [1.1.1] – 2026-10-01
 
 ### Opgelost
+- Na de update naar 1.1.0 kon de browser nog het oude script uit zijn cache gebruiken, dat elke
+  wijziging direct opsloeg (en geen waarschuwing gaf bij het verlaten van de pagina).
+  - Scripts en stylesheet hebben nu het versienummer in de URL, zodat de browser na elke
+    update het nieuwe bestand ophaalt.
+  - De server slaat alleen nog op bij een expliciete opdracht van de knop **Opslaan**; zonder die
+    opdracht wordt alleen een voorbeeld berekend. Een oud script kan dus nooit meer iets opslaan.
+  - De oude route die dagopmerkingen direct opsloeg, is verwijderd.
+
+## [1.1.1] – 2026-10-01
+
+### Opgelost
 - Google Agenda, modus A: de knop was uitgeschakeld (klikken deed niets) als de medewerker geen
   e-mailadres had, bijvoorbeeld na een Excel-import. Het e-mailadres kan nu direct bij de knop
   ingevuld worden en wordt bij de medewerker bewaard; zonder e-mailadres volgt een duidelijke melding.
