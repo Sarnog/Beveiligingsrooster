@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titel %}Zoeken{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<h1>Zoeken</h1>
+<div class="zoek-opmaak">
+  <div>
+    <form method="get" class="rij-formulier kaart">
+      <label class="veld"><span>Naam / initialen</span><input name="naam" value="{{ args.naam }}" placeholder="min. 3 tekens"></label>
+      <label class="veld"><span>Dienstcode</span><input name="code" value="{{ args.code }}" inputmode="numeric" size="6"></label>
+      <label class="veld"><span>Van datum</span><input type="date" name="van" value="{{ args.van }}"></label>
+      <label class="veld"><span>Tot datum</span><input type="date" name="tot" value="{{ args.tot }}"></label>
+      <button class="knop primair" type="submit">Zoeken</button>
+    </form>
+    {% if fout %}<p class="melding fout">{{ fout }}</p>{% endif %}
+    {% if resultaten is not none %}
+    <div class="kop-rij">
+      <p><strong>Aantal diensten: {{ resultaten|length }}</strong></p>
+      {% if resultaten %}<a class="knop" href="{{ url_for('zoeken.export_csv', **args) }}">Exporteren (CSV)</a>{% endif %}
+    </div>
+    <div class="tabel-schuif">
+    <table class="tabel">
+      <thead><tr><th>Datum</th><th class="getal">Week</th><th>Initialen</th><th class="getal">Dienstcode</th><th>Begin</th><th>Eind</th><th>Dienst</th><th></th></tr></thead>
+      <tbody>
+      {% for d in resultaten %}
+        {% set iso = d.datum.isocalendar() %}
+        <tr>
+          <td>{{ d.datum|datum_nl }}</td><td class="getal">{{ iso[1] }}</td>
+          <td title="{{ d.medewerker.naam }}">{{ d.medewerker.initialen }}</td>
+          <td class="getal">{{ d.dienstcode.nummer if d.dienstcode else '' }}</td>
+          <td>{{ d.begin or '' }}</td><td>{{ d.eind or '' }}{% if d.tijden_handmatig %} <span class="afwijkend" title="Tijden wijken af van de standaard van deze code">afwijkend</span>{% endif %}</td>
+          <td>{% if d.dienstcode %}<span class="dienst-voorbeeld" style="background:{{ d.dienstcode.kleur_achtergrond }};color:{{ d.dienstcode.kleur_tekst }}">{{ d.dienstnaam }}</span>{% else %}{{ d.dienstnaam }}{% endif %}</td>
+          <td><a href="{{ url_for('rooster.week_tonen', jaar=iso[0], week=iso[1], dag=d.datum.isoformat()) }}">Week {{ iso[1] }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+  <aside class="kaart legenda-zoek">
+    <h2>Dienstcodes</h2>
+    <table class="tabel compact">
+      <thead><tr><th class="getal">Code</th><th>Omschrijving</th></tr></thead>
+      <tbody>{% for c in codes %}<tr><td class="getal">{{ c.nummer }}</td><td>{{ c.omschrijving }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </aside>
+</div>
+{% endblock %}

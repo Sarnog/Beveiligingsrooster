@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop, csrf %}
+{% block titel %}Vakanties{% endblock %}
+{% block inhoud %}
+<h1>Vakanties</h1>
+<p class="hulp">Vakanties mogen over de jaargrens lopen. Werkdagen = ma t/m vr (zoals NETWORKDAYS in Excel).</p>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Vakantie</th><th>Datum van</th><th>Datum tot</th><th>Werkdagen</th><th></th></tr></thead>
+  <tbody>
+  {% for v, aantal in rijen %}
+    <tr>
+      <td colspan="3">
+        <form method="post" action="{{ url_for('beheer.vakantie_opslaan') }}" class="rij-formulier compact">
+          {{ csrf() }}<input type="hidden" name="id" value="{{ v.id }}">
+          <input name="naam" value="{{ v.naam }}" required aria-label="Naam">
+          <input type="date" name="datum_van" value="{{ v.datum_van.isoformat() }}" required aria-label="Datum van">
+          <input type="date" name="datum_tot" value="{{ v.datum_tot.isoformat() }}" required aria-label="Datum tot">
+          <button class="knop klein" type="submit">Opslaan</button>
+        </form>
+      </td>
+      <td class="getal">{{ aantal }}</td>
+      <td>{{ post_knop(url_for('beheer.vakantie_verwijder', vid=v.id), 'Verwijderen', 'knop klein gevaar', bevestig='Vakantie ' ~ v.naam ~ ' verwijderen?') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="3">Totaal</th><th class="getal">{{ totaal }}</th><th></th></tr></tfoot>
+</table>
+</div>
+<h2>Vakantie toevoegen</h2>
+<form method="post" action="{{ url_for('beheer.vakantie_opslaan') }}" class="rij-formulier">
+  {{ csrf() }}
+  <label class="veld"><span>Naam</span><input name="naam" placeholder="Meivakantie" required></label>
+  <label class="veld"><span>Van</span><input type="date" name="datum_van" required></label>
+  <label class="veld"><span>Tot en met</span><input type="date" name="datum_tot" required></label>
+  <button class="knop primair" type="submit">Toevoegen</button>
+</form>
+{% endblock %}

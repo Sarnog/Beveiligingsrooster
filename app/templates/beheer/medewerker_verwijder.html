@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Medewerker verwijderen{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>{{ m.naam }} verwijderen</h1>
+  {% if aantal %}
+  <p class="melding fout">Let op: <strong>alle {{ aantal }} diensten</strong> van deze medewerker worden ook verwijderd. Dit kan niet ongedaan worden gemaakt.</p>
+  <p>Wil je de historie bewaren? Gebruik dan <strong>Archiveren</strong>.</p>
+  {% else %}
+  <p>Deze medewerker heeft geen diensten.</p>
+  {% endif %}
+  <form method="post">
+    {{ csrf() }}
+    {% if m.agenda_modus %}
+    <fieldset><legend>Google Agenda</legend>
+      <label class="vink"><input type="radio" name="agenda" value="behouden" checked><span>Afspraken in de agenda laten staan</span></label>
+      <label class="vink"><input type="radio" name="agenda" value="verwijderen"><span>Afspraken{% if m.agenda_modus == 'A' %} (de hele agenda){% endif %} ook verwijderen</span></label>
+    </fieldset>
+    {% endif %}
+    {% if aantal %}
+    <label class="vink"><input type="checkbox" name="bevestig" value="{{ aantal }}" required>
+      <span>Ja, verwijder {{ m.naam }} en alle {{ aantal }} diensten</span></label>
+    {% endif %}
+    <div class="knoppen">
+      <button class="knop gevaar" type="submit">Definitief verwijderen</button>
+      <a class="knop" href="{{ url_for('beheer.medewerkers') }}">Annuleren</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titel %}Fout {{ code }}{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>Fout {{ code }}</h1>
+  <p>{{ melding }}</p>
+  <p><a class="knop" href="{{ url_for('algemeen.index') }}">Naar de startpagina</a></p>
+</section>
+{% endblock %}

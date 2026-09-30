@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Uren herberekenen{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>Alle uren herberekenen</h1>
+  <p>Uren worden berekend op het moment van opslaan. Heb je de toeslagfactoren, de feestdagtoeslag of feestdagen gewijzigd, dan kun je hier alle <strong>{{ aantal }}</strong> diensten opnieuw laten berekenen.</p>
+  <p class="melding fout">Let op: dit wijzigt ook historische totalen.</p>
+  <form method="post">
+    {{ csrf() }}
+    <label class="vink"><input type="checkbox" name="bevestig" value="1" required><span>Ik begrijp dat historische totalen kunnen veranderen</span></label>
+    <button class="knop primair" type="submit">Herberekenen</button>
+  </form>
+</section>
+{% endblock %}

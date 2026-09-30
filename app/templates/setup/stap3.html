@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Setup – dienstcodes{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  {% include "setup/_stappen.html" %}
+  <h1>Dienstcodes</h1>
+  <p>Begin met een lege lijst, of laad het <strong>voorbeeldpakket</strong> (18 dienstcodes met kleuren, plus 2 voorbeeld-kleurregels voor opmerkingen). Alles blijft daarna aan te passen via <em>Beheer → Dienstcodes</em>.</p>
+  <p class="hulp">Code 15 zit niet in het pakket: dat is de <em>blanco-code</em> (geen dienst), in te stellen bij Instellingen.</p>
+  <form method="post" class="knoppen">
+    {{ csrf() }}
+    <button class="knop primair" name="keuze" value="voorbeeld" type="submit">Voorbeeldpakket laden</button>
+    <button class="knop" name="keuze" value="leeg" type="submit">Leeg beginnen</button>
+  </form>
+</section>
+{% endblock %}

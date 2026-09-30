@@ -1,0 +1,33 @@
+# --- Privacy: nooit roosterdata, databases of geheimen in git ---
+*.xlsm
+*.xlsx
+*.xls
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+.env
+*.env
+!.env.voorbeeld
+data/
+backups/
+*service-account*.json
+setup-code*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

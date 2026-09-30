@@ -1,0 +1,4 @@
+# Extra pakketten voor ontwikkelen en testen
+-r requirements.txt
+pytest>=8
+ruff>=0.5

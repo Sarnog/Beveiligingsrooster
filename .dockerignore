@@ -1,0 +1,19 @@
+# Niet meenemen in de image
+.git
+.github
+data
+backups
+tests
+docs
+scripts
+*.xlsm
+*.xlsx
+*.db
+*.db-*
+.env
+*.env
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.venv
+venv

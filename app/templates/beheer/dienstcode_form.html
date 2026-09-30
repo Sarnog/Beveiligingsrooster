@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, veld, vink %}
+{% block titel %}{{ 'Dienstcode wijzigen' if c else 'Nieuwe dienstcode' }}{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>{{ 'Dienstcode ' ~ c.nummer ~ ' wijzigen' if c else 'Nieuwe dienstcode' }}</h1>
+  <form method="post" data-kleur-voorbeeld>
+    {{ csrf() }}
+    <div class="rij">
+      {{ veld('nummer', 'Nummer', w.nummer, type='number', verplicht=True, extra='min="1"') }}
+      {{ veld('omschrijving', 'Omschrijving (dienstnaam)', w.omschrijving, verplicht=True, extra='maxlength="60" data-voorbeeld-tekst') }}
+    </div>
+    <div class="rij">
+      {{ veld('std_begin', 'Standaard begin', w.std_begin, hulp='Bijv. 715 of 07:15. Leeg = geen tijden.', extra='inputmode="numeric"') }}
+      {{ veld('std_eind', 'Standaard eind', w.std_eind, extra='inputmode="numeric"') }}
+      {{ veld('std_uren', 'Standaard uren (informatief)', w.std_uren|uren if w.std_uren is not none else '', extra='inputmode="decimal"') }}
+    </div>
+    {% if c %}<p class="hulp">Nieuwe standaardtijden gelden alleen voor <strong>nieuwe</strong> invoer. Bestaande diensten veranderen niet (daarvoor is de knop “Tijden toepassen…”).</p>{% endif %}
+    <div class="rij">
+      <label class="veld"><span>Achtergrondkleur</span><input type="color" name="kleur_achtergrond" value="{{ w.kleur_achtergrond or '#FFFFFF' }}" data-voorbeeld-achtergrond></label>
+      <label class="veld"><span>Tekstkleur</span><input type="color" name="kleur_tekst" value="{{ w.kleur_tekst or '#000000' }}" data-voorbeeld-kleur></label>
+      <div class="veld"><span>Voorbeeld</span><span class="dienst-voorbeeld groot" data-voorbeeld>{{ w.omschrijving or 'Voorbeeld' }}</span></div>
+    </div>
+    {{ vink('vet', 'Vet', w.vet) }}
+    {{ vink('cursief', 'Cursief', w.cursief) }}
+    {{ vink('in_agenda', 'Zichtbaar in de agenda', w.in_agenda) }}
+    {{ vink('hele_dag_zonder_tijden', 'Zonder tijden: als hele-dag-afspraak in de agenda', w.hele_dag_zonder_tijden) }}
+    {{ vink('actief', 'Actief (te gebruiken in het code-raster)', w.actief) }}
+    <div class="knoppen">
+      <button class="knop primair" type="submit">Opslaan</button>
+      <a class="knop" href="{{ url_for('beheer.dienstcodes') }}">Annuleren</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

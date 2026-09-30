@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Setup – medewerkers{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  {% include "setup/_stappen.html" %}
+  <h1>Medewerkers</h1>
+  <p>Eén medewerker per regel. Optioneel met contracturen per jaar na een puntkomma. Initialen worden automatisch voorgesteld; aanpassen kan later.</p>
+  <form method="post">
+    {{ csrf() }}
+    <label class="veld"><span>Medewerkers</span>
+      <textarea name="medewerkers" rows="8" placeholder="Medewerker A;1659&#10;Medewerker B;1489"></textarea></label>
+    <div class="knoppen">
+      <button class="knop primair" type="submit">Toevoegen en verder</button>
+      <button class="knop" type="submit" name="overslaan" value="1">Later doen</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Setup – agenda{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  {% include "setup/_stappen.html" %}
+  <h1>Google Agenda (optioneel)</h1>
+  <p>De koppeling met Google Agenda stel je in via <em>Beheer → Google Agenda</em>. Dat kan op elk moment; de handleiding staat in <code>docs/google-agenda.md</code>.</p>
+  <form method="post">
+    {{ csrf() }}
+    <button class="knop primair" type="submit">Setup afronden</button>
+  </form>
+</section>
+{% endblock %}

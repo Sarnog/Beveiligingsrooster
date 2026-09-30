@@ -1,0 +1,49 @@
+# ==========================================================
+# Beveiligingsrooster – docker-compose.yml
+#
+# Gebruik:   docker compose up -d
+# Logs:      docker compose logs -f
+# Setup-code: docker compose exec -u rooster web flask setup-code
+#
+# Alle data (database, back-ups, geheime sleutel) staat in ./data naast dit bestand.
+# Instellingen kun je hieronder aanpassen of in een .env-bestand zetten
+# (zie .env.voorbeeld).
+# ==========================================================
+services:
+  web:
+    image: ghcr.io/sarnog/beveiligingsrooster:latest
+    container_name: beveiligingsrooster
+    command: web
+    restart: unless-stopped
+    ports:
+      # 0.0.0.0 = bereikbaar in het LAN; 127.0.0.1 = alleen via een reverse proxy op deze host
+      - "${LUISTER_ADRES:-0.0.0.0}:${POORT:-8000}:8000"
+    environment:
+      TZ: Europe/Amsterdam
+      BASE_URL: ${BASE_URL:-}                   # bijv. https://rooster.voorbeeld.nl
+      PROXY_VERTROUWEN: ${PROXY_VERTROUWEN:-0}  # 1 als er een reverse proxy/tunnel voor staat
+      SECRET_KEY: ${SECRET_KEY:-}               # leeg = automatisch aangemaakt in ./data
+      SESSIE_UREN: ${SESSIE_UREN:-12}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    image: ghcr.io/sarnog/beveiligingsrooster:latest
+    container_name: beveiligingsrooster-worker
+    command: worker
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Amsterdam
+      BASE_URL: ${BASE_URL:-}
+      SECRET_KEY: ${SECRET_KEY:-}
+    volumes:
+      - ./data:/data
+    depends_on:
+      web:
+        condition: service_healthy   # eerst moet de database bijgewerkt zijn

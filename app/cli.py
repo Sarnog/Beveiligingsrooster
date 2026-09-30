@@ -1,0 +1,107 @@
+"""Commando's voor de command line (noodgevallen en onderhoud).
+
+Aanroepen in Docker, vanuit de map met docker-compose.yml:
+    docker compose exec web flask reset-wachtwoord <gebruiker>
+    docker compose exec web flask maak-beheerder
+    docker compose exec web flask setup-code
+    docker compose exec web flask herbereken-uren
+"""
+
+import getpass
+import secrets
+
+import click
+from flask import Flask
+
+from .extensions import db
+from .models import ROL_BEHEERDER, Gebruiker
+from .services import instellingen, logboek, setup_code
+from .services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
+
+
+def _vraag_wachtwoord() -> str:
+    """Vraag een nieuw wachtwoord (twee keer), of maak er een als er geen terminal is."""
+    try:
+        wachtwoord = getpass.getpass("Nieuw wachtwoord (minimaal 10 tekens): ")
+        herhaling = getpass.getpass("Nog een keer: ")
+    except (EOFError, OSError):
+        wachtwoord = herhaling = ""
+    if not wachtwoord:
+        wachtwoord = secrets.token_urlsafe(9)
+        click.echo(f"Tijdelijk wachtwoord: {wachtwoord}")
+        return wachtwoord
+    if fout := wachtwoord_fout(wachtwoord, herhaling):
+        raise click.ClickException(fout)
+    return wachtwoord
+
+
+def registreer_commando_s(app: Flask) -> None:
+    @app.cli.command("reset-wachtwoord")
+    @click.argument("gebruikersnaam")
+    def reset_wachtwoord(gebruikersnaam: str):
+        """Zet een nieuw wachtwoord voor een gebruiker en activeer het account."""
+        gebruiker = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam.lower()).first()
+        if gebruiker is None:
+            raise click.ClickException(f"Gebruiker '{gebruikersnaam}' bestaat niet.")
+        wachtwoord = _vraag_wachtwoord()
+        gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
+        gebruiker.actief = True
+        gebruiker.moet_wachtwoord_wijzigen = True
+        logboek.log("Wachtwoord gereset", "Via command line", gebruiker="cli",
+                    nieuw=gebruiker.gebruikersnaam)
+        db.session.commit()
+        click.echo(f"Wachtwoord van '{gebruiker.gebruikersnaam}' is gereset. "
+                   "Bij de volgende login moet een nieuw wachtwoord gekozen worden.")
+
+    @app.cli.command("maak-beheerder")
+    @click.option("--gebruikersnaam", prompt="Gebruikersnaam")
+    @click.option("--weergavenaam", prompt="Weergavenaam")
+    def maak_beheerder(gebruikersnaam: str, weergavenaam: str):
+        """Maak een (extra) beheerder aan, of maak een bestaande gebruiker beheerder."""
+        gebruikersnaam = gebruikersnaam.strip().lower()
+        gebruiker = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
+        wachtwoord = _vraag_wachtwoord()
+        if gebruiker is None:
+            gebruiker = Gebruiker(gebruikersnaam=gebruikersnaam, weergavenaam=weergavenaam,
+                                  wachtwoord_hash="")
+            db.session.add(gebruiker)
+        gebruiker.rol = ROL_BEHEERDER
+        gebruiker.actief = True
+        gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
+        gebruiker.moet_wachtwoord_wijzigen = False
+        logboek.log("Beheerder aangemaakt", "Via command line", gebruiker="cli",
+                    nieuw=gebruikersnaam)
+        db.session.commit()
+        click.echo(f"'{gebruikersnaam}' is nu beheerder.")
+
+    @app.cli.command("setup-code")
+    def toon_setup_code():
+        """Toon de setup-code (alleen zolang de setup niet is afgerond)."""
+        if instellingen.setup_voltooid():
+            click.echo("De setup is al afgerond; er is geen setup-code meer nodig.")
+            return
+        click.echo(f"Setup-code: {setup_code.haal_of_maak_code()}")
+
+    @app.cli.command("herbereken-uren")
+    @click.confirmation_option(prompt="Dit wijzigt ook historische totalen. Doorgaan?")
+    def herbereken_uren():
+        """Alle uren opnieuw berekenen (na wijziging van toeslagfactoren)."""
+        from .services.rooster import herbereken_alle
+
+        gewijzigd = herbereken_alle()
+        logboek.log("Uren herberekend", f"Via command line: {gewijzigd} gewijzigd", gebruiker="cli")
+        db.session.commit()
+        click.echo(f"Klaar: {gewijzigd} diensten gewijzigd.")
+
+    @app.cli.command("backup")
+    @click.option("--label", default="", help="Bijvoorbeeld 'voor-update'")
+    def backup_maken(label: str):
+        """Maak nu een back-up van de database (in <datamap>/backups)."""
+        from .services import backup
+
+        click.echo(f"Back-up gemaakt: {backup.maak_backup(label)}")
+
+    @app.cli.command("logboek-opschonen")
+    def logboek_opschonen():
+        """Verwijder logboekregels ouder dan de bewaartermijn."""
+        click.echo(f"{logboek.opschonen()} regels verwijderd.")

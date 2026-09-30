@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titel %}Beheer<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
+{% endblock %}
+{% block inhoud %}
+<h1>Beheer</h1>
+<div class="tegels">
+  <a class="tegel" href="{{ url_for('beheer.medewerkers') }}"><strong>Medewerkers</strong><span>Toevoegen, volgorde, contracturen, archiveren</span></a>
+  <a class="tegel" href="{{ url_for('beheer.dienstcodes') }}"><strong>Dienstcodes</strong><span>Codes, tijden, kleuren en kleurregels</span></a>
+  <a class="tegel" href="{{ url_for('beheer.vakanties') }}"><strong>Vakanties</strong><span>Vakantieperiodes en werkdagen</span></a>
+  <a class="tegel" href="{{ url_for('beheer.feestdagen') }}"><strong>Feestdagen</strong><span>Per jaar aan/uit, eigen roostervrije dagen</span></a>
+  <a class="tegel" href="{{ url_for('beheer.gebruikers') }}"><strong>Gebruikers</strong><span>Accounts, rollen en wachtwoorden</span></a>
+  <a class="tegel" href="{{ url_for('beheer.instellingen_scherm') }}"><strong>Instellingen</strong><span>Toeslagen, logboek, blanco-code, deellink</span></a>
+  {% for endpoint, titel, uitleg in [
+      ('beheer.logboek', 'Logboek', 'Alle wijzigingen en logins'),
+      ('beheer.agenda', 'Google Agenda', 'Koppeling en synchronisatie'),
+      ('beheer.backups', "Back-ups", 'Downloaden en terugzetten'),
+      ('beheer.excel_import', 'Excel-import', 'Oud rooster (.xlsm) inlezen')] %}
+    {% if heeft_route(endpoint) %}
+    <a class="tegel" href="{{ url_for(endpoint) }}"><strong>{{ titel }}</strong><span>{{ uitleg }}</span></a>
+    {% endif %}
+  {% endfor %}
+  <a class="tegel" href="{{ url_for('beheer.herberekenen') }}"><strong>Uren herberekenen</strong><span>Na wijziging van toeslagen</span></a>
+</div>
+<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
+{% endblock %}

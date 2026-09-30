@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop, csrf %}
+{% block titel %}Dienstcodes{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Dienstcodes</h1>
+  <span class="knoppen">
+    <a class="knop primair" href="{{ url_for('beheer.dienstcode_nieuw') }}">+ Nieuwe code</a>
+    {{ post_knop(url_for('beheer.voorbeeldpakket'), 'Voorbeeldpakket laden', 'knop', bevestig='Ontbrekende codes uit het voorbeeldpakket toevoegen? Bestaande codes blijven ongewijzigd.') }}
+  </span>
+</div>
+<p class="hulp">Blanco-code (geen dienst): <strong>{{ blanco if blanco is not none else 'uit' }}</strong> — wijzigen bij Instellingen.</p>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Code</th><th>Voorbeeld</th><th>Van</th><th>Tot</th><th>Uren</th><th>Agenda</th><th>Status</th><th>In gebruik</th><th></th></tr></thead>
+  <tbody>
+  {% for c in codes %}
+    <tr class="{{ '' if c.actief else 'gearchiveerd' }}">
+      <td class="getal">{{ c.nummer }}</td>
+      <td><span class="dienst-voorbeeld" style="background:{{ c.kleur_achtergrond }};color:{{ c.kleur_tekst }};font-weight:{{ 'bold' if c.vet else 'normal' }};font-style:{{ 'italic' if c.cursief else 'normal' }}">{{ c.omschrijving }}</span></td>
+      <td>{{ c.std_begin or '–' }}</td><td>{{ c.std_eind or '–' }}</td>
+      <td class="getal">{{ c.std_uren|uren if c.std_uren is not none else '–' }}</td>
+      <td>{{ 'ja' if c.in_agenda else 'nee' }}{% if c.hele_dag_zonder_tijden %} (hele dag){% endif %}</td>
+      <td>{{ 'actief' if c.actief else 'gedeactiveerd' }}</td>
+      <td class="getal">{{ in_gebruik.get(c.id, 0) }}</td>
+      <td class="nowrap">
+        <a class="knop klein" href="{{ url_for('beheer.dienstcode_bewerk', cid=c.id) }}">Wijzigen</a>
+        {% if c.std_begin %}<a class="knop klein" href="{{ url_for('beheer.dienstcode_std_toepassen', cid=c.id) }}">Tijden toepassen…</a>{% endif %}
+        {{ post_knop(url_for('beheer.dienstcode_verwijder', cid=c.id), 'Verwijderen', 'knop klein gevaar',
+             bevestig=('Code in gebruik: deze wordt gedeactiveerd in plaats van verwijderd. Doorgaan?' if in_gebruik.get(c.id) else 'Code ' ~ c.nummer ~ ' verwijderen?')) }}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9">Nog geen dienstcodes.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 id="kleurregels">Opmerking-kleurregels</h2>
+<p class="hulp">Een opmerking (regel a van het rooster) die precies deze tekst heeft, krijgt deze kleur. Handig voor locaties.</p>
+<table class="tabel compact">
+  <thead><tr><th>Tekst</th><th>Voorbeeld</th><th></th></tr></thead>
+  <tbody>
+  {% for r in regels %}
+    <tr><td>{{ r.tekst }}</td>
+      <td><span class="dienst-voorbeeld" style="background:{% if r.kleur_achtergrond2 %}linear-gradient(90deg,{{ r.kleur_achtergrond }},{{ r.kleur_achtergrond2 }}){% else %}{{ r.kleur_achtergrond }}{% endif %};color:{{ r.kleur_tekst }}">{{ r.tekst }}</span></td>
+      <td>{{ post_knop(url_for('beheer.kleurregel_verwijder', rid=r.id), 'Verwijderen', 'knop klein gevaar', bevestig='Kleurregel verwijderen?') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<form method="post" action="{{ url_for('beheer.kleurregel_nieuw') }}" class="rij-formulier">
+  {{ csrf() }}
+  <label class="veld"><span>Tekst</span><input name="tekst" required></label>
+  <label class="veld"><span>Achtergrond</span><input type="color" name="kleur_achtergrond" value="#FFFF00"></label>
+  <label class="vink"><input type="checkbox" name="verloop" value="1"><span>Verloop naar</span></label>
+  <label class="veld"><span>2e kleur</span><input type="color" name="kleur_achtergrond2" value="#FF0000"></label>
+  <label class="veld"><span>Tekst</span><input type="color" name="kleur_tekst" value="#000000"></label>
+  <button class="knop" type="submit">Toevoegen</button>
+</form>
+{% endblock %}

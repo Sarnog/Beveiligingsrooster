@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Setup{% endblock %}
+{% block inhoud %}
+<section class="kaart smal">
+  <h1>Eerste installatie</h1>
+  <p>Vul de <strong>setup-code</strong> in. Die staat in de uitvoer van het installatiescript, of vraag hem op met:</p>
+  <pre>docker compose exec web flask setup-code</pre>
+  <form method="post">
+    {{ csrf() }}
+    <label class="veld"><span>Setup-code</span>
+      <input name="code" autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX" required autofocus></label>
+    <button class="knop primair" type="submit">Verder</button>
+  </form>
+</section>
+{% endblock %}
