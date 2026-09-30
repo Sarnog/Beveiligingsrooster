@@ -41,12 +41,14 @@
           {% if m.agenda_modus %}
             Modus {{ m.agenda_modus }}<br><small class="hulp breek">{{ m.agenda_id }}</small>
           {% elif sleutel %}
-            <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="inline">
+            <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="koppel-formulier" data-bezig>
               {{ csrf() }}<input type="hidden" name="modus" value="A">
-              <button class="knop klein primair" type="submit" {% if not m.email %}disabled title="Vul eerst een e-mailadres in"{% endif %}>Modus A: eigen agenda aanmaken</button>
+              <input type="email" name="email" value="{{ m.email }}" placeholder="Google-account (e-mail)" required
+                     aria-label="E-mailadres van {{ m.naam }}" class="klein">
+              <button class="knop klein primair" type="submit">Modus A: eigen agenda aanmaken</button>
             </form>
             <details><summary class="hulp">Modus B: gedeelde agenda</summary>
-              <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="rij-formulier compact">
+              <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="rij-formulier compact" data-bezig>
                 {{ csrf() }}<input type="hidden" name="modus" value="B">
                 <input name="agenda_id" placeholder="agenda-ID (…@group.calendar.google.com of e-mailadres)" size="34" required>
                 <button class="knop klein" type="submit">Koppelen</button>

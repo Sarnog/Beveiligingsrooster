@@ -366,3 +366,5 @@ details > summary { cursor: pointer; }
 .dialoog::backdrop { background: rgba(0, 0, 0, .45); }
 .dialoog h2 { margin-top: 0; }
 @media print { .opslaan-knop, .dialoog { display: none !important; } }
+.koppel-formulier { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; margin-bottom: .3rem; }
+.koppel-formulier input[type="email"] { min-width: 200px; }

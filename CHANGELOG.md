@@ -2,6 +2,18 @@
 
 ## [Onuitgebracht]
 
+## [1.1.1] – 2026-10-01
+
+### Opgelost
+- Google Agenda, modus A: de knop was uitgeschakeld (klikken deed niets) als de medewerker geen
+  e-mailadres had, bijvoorbeeld na een Excel-import. Het e-mailadres kan nu direct bij de knop
+  ingevuld worden en wordt bij de medewerker bewaard; zonder e-mailadres volgt een duidelijke melding.
+- Duidelijke meldingen als Google de sleutel weigert of de Calendar API uit staat
+  (voorheen: "Verbindingsfout").
+- Maximaal 30 seconden wachten op Google, zodat een pagina nooit blijft hangen.
+- Koppelknoppen tonen "Bezig…" en werken maar één keer per klik (geen dubbele agenda's).
+- Mislukt het delen van een nieuwe agenda, dan wordt die agenda weer opgeruimd.
+
 ## [1.1.0] – 2026-10-01
 
 ### Gewijzigd
