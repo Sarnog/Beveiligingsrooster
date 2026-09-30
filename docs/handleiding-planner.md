@@ -15,7 +15,28 @@ Open **Weekrooster** (of klik in de **Kalender** op een weeknummer). Rechts van 
    - de standaard begin- en eindtijd van die code worden ingevuld;
    - de uren van die dag en het weektotaal worden berekend.
 
-Elke cel wordt meteen opgeslagen. Boven het code-raster zie je "Opgeslagen ✓".
+### Opslaan
+
+Wijzigingen worden **niet** meteen opgeslagen. Wat je typt, zie je wel direct terug: de dienstnaam, de tijden en de uren worden al uitgerekend. Maar de gegevens worden pas bewaard als je op **Opslaan** klikt of **Ctrl+S** drukt. Zo richt een per ongeluk getypte waarde geen schade aan.
+
+Zolang er iets niet is opgeslagen:
+- hebben gewijzigde cellen een **oranje hoekje** en een oranje streep onderaan;
+- staat er boven het code-raster "*N wijzigingen nog niet opgeslagen*";
+- toont de knop het aantal, bijvoorbeeld **Opslaan (3)**.
+
+Je kunt gewoon meerdere cellen achter elkaar wijzigen en dan één keer opslaan.
+
+Wil je de pagina verlaten zonder op te slaan, bijvoorbeeld via het menu, een andere week, de weekkiezer of Uitloggen? Dan vraagt de app eerst wat je wilt:
+
+| Knop | Wat gebeurt er |
+|---|---|
+| **Opslaan** | alles opslaan en daarna verder naar waar je heen wilde |
+| **Terug** | terug naar het rooster om verder te wijzigen |
+| **Doorgaan** | verder zonder opslaan: alle wijzigingen gaan verloren |
+
+Sluit of ververs je de browser (of het tabblad) met niet-opgeslagen wijzigingen, dan toont de browser zijn eigen vraag ("Pagina verlaten?"). Browsers staan daar geen eigen knoppen toe, dus daar kun je alleen kiezen tussen blijven en verlaten.
+
+Klikken in het rooster, printen en de uitklapbare lijsten (Dienstcodes, Toetsen) geven geen vraag.
 
 | Wat je typt | Betekenis |
 |---|---|
@@ -35,7 +56,8 @@ Elke cel wordt meteen opgeslagen. Boven het code-raster zie je "Opgeslagen ✓".
 | Delete / Backspace | geselecteerde cellen leegmaken |
 | Shift + pijltjes of Shift + klik | een blok cellen selecteren |
 | Ctrl+C / Ctrl+V | kopiëren en plakken, ook een blok dat je in Excel hebt gekopieerd |
-| Ctrl+Z | de laatste wijziging(en) ongedaan maken (zolang je de pagina niet verlaat) |
+| Ctrl+Z | de laatste niet-opgeslagen wijziging(en) ongedaan maken |
+| Ctrl+S | opslaan |
 
 Plakken van één waarde terwijl een blok geselecteerd is, vult het hele blok (handig om een hele rij `4` te geven).
 
@@ -136,4 +158,4 @@ Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag o
 
 ## 10. Twee planners tegelijk
 
-Werken twee beheerders tegelijk aan dezelfde cel, dan krijgt de tweede een melding en wordt de pagina ververst met de nieuwste gegevens. Er gaat niets stilletjes verloren.
+Heeft een andere beheerder dezelfde dag van dezelfde medewerker al opgeslagen terwijl jij er nog mee bezig bent? Dan krijg je bij die cel een melding en wordt jouw wijziging daar niet opgeslagen. Ververs de pagina om de nieuwste stand te zien. Er gaat niets stilletjes verloren.

@@ -9,8 +9,14 @@
      data-veld                   welk veld (code, begin, eind, opmerking, ...)
 
    Bediening: pijltjes, Tab, Enter, direct typen, F2/dubbelklik, Delete,
-   Esc, Shift+pijltjes (selecteren), Ctrl+C / Ctrl+V (ook vanuit Excel)
-   en Ctrl+Z (ongedaan maken). Elke wijziging wordt direct opgeslagen.
+   Esc, Shift+pijltjes (selecteren), Ctrl+C / Ctrl+V (ook vanuit Excel),
+   Ctrl+Z (ongedaan maken) en Ctrl+S (opslaan).
+
+   Wijzigingen worden NIET direct opgeslagen. Ze worden gemarkeerd en de
+   server rekent een voorbeeld uit (dienstnaam, tijden, uren), zonder iets
+   te bewaren. Pas bij 'Opslaan' wordt alles in één keer bewaard.
+   Wie de pagina wil verlaten met niet-opgeslagen wijzigingen, krijgt eerst
+   een vraag: Opslaan, Terug of Doorgaan (wijzigingen vergeten).
    ========================================================== */
 (function () {
   "use strict";
@@ -18,7 +24,6 @@
   var houder = document.querySelector("[data-api-cellen]");
   if (!houder) return;
   var API_CELLEN = houder.getAttribute("data-api-cellen");
-  var API_DAG = houder.getAttribute("data-api-dag");
   var statusVak = document.querySelector("[data-status]");
 
   // ---------- Raster: posities van cellen ----------
@@ -179,7 +184,11 @@
     var raster = cel._raster;
     // Deze toets is voor het invoerveld; niet ook nog door het raster laten verwerken
     e.stopPropagation();
-    if (e.key === "Enter") {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      e.preventDefault();
+      stopBewerken(true);
+      opslaan();
+    } else if (e.key === "Enter") {
       e.preventDefault();
       stopBewerken(true);
       kies(raster.stap(cel, e.shiftKey ? -1 : 1, 0));
@@ -202,27 +211,20 @@
     kies(cel._raster.stap(cel, richting[0], richting[1]), uitbreiden);
   }
 
-  // ---------- Opslaan ----------
+  // ---------- Wijzigingen bijhouden (pas bewaren bij 'Opslaan') ----------
 
-  function sleutel(cel) {
-    return cel.getAttribute("data-mw") + "|" + cel.getAttribute("data-datum");
+  var wachtend = [];        // niet-opgeslagen wijzigingen: [{sleutel, dag, mw, datum, veld, waarde}]
+  var getoond = {};         // "mw|datum" die ooit gewijzigd zijn (om na Ctrl+Z te kunnen herstellen)
+  var getoondeDagen = {};   // idem voor dagopmerkingen
+  var vrijgegeven = false;  // true = de pagina mag zonder vraag verlaten worden
+  var opslaanKnoppen = document.querySelectorAll("[data-opslaan]");
+
+  function heeftWijzigingen() {
+    return wachtend.length > 0;
   }
 
-  function versieVan(mw, datum) {
-    var naam = document.querySelector('[data-toon="dienstnaam"][data-mw="' + mw + '"][data-datum="' + datum + '"]');
-    return naam ? parseInt(naam.getAttribute("data-versie") || "0", 10) : 0;
-  }
-
-  // Alle verzoeken gaan na elkaar (in volgorde), zodat snelle wijzigingen
-  // aan dezelfde dag elkaar niet inhalen en de versies kloppen.
-  var wachtrij = Promise.resolve();
-  function inWachtrij(taak) {
-    wachtrij = wachtrij.then(taak, taak);
-    return wachtrij;
-  }
-
-  function post(url, gegevens) {
-    return fetch(url, {
+  function post(gegevens) {
+    return fetch(API_CELLEN, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRFToken": window.csrfToken() },
@@ -230,92 +232,185 @@
     });
   }
 
-  // items: [{cel, waarde}]; zonderOngedaan = true bij Ctrl+Z zelf
-  function bewaar(items, zonderOngedaan) {
-    if (!items.length) return;
-    if (!zonderOngedaan) {
-      ongedaan.push(items.map(function (i) { return { cel: i.cel, waarde: i.cel.textContent.trim() }; }));
-      if (ongedaan.length > MAX_ONGEDAAN) ongedaan.shift();
-    }
-    var dagItems = items.filter(function (i) { return i.cel.getAttribute("data-veld") === "dagopmerking"; });
-    var celItems = items.filter(function (i) { return i.cel.getAttribute("data-veld") !== "dagopmerking"; });
-
-    // Direct tonen wat er getypt is (wordt daarna vervangen door het antwoord van de server)
-    items.forEach(function (i) { i.cel.textContent = i.waarde; i.cel.classList.add("bezig"); i.cel.classList.remove("fout"); });
-    status("Opslaan…", "bezig");
-
-    dagItems.forEach(function (i) {
-      inWachtrij(function () { return post(API_DAG, { datum: i.cel.getAttribute("data-datum"), tekst: i.waarde })
-        .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
-        .then(function (g) {
-          i.cel.textContent = g.tekst;
-          i.cel.classList.toggle("gevuld", !!g.tekst);
-          i.cel.title = g.handmatig ? "Handmatig aangepast" : "";
-          i.cel.classList.remove("bezig");
-          status("Opgeslagen ✓", "ok");
-        })
-        .catch(function () { i.cel.classList.remove("bezig"); status("Opslaan mislukt. Probeer het opnieuw.", "fout"); }); });
-    });
-
-    if (!celItems.length) return;
-    inWachtrij(function () { return verstuurCellen(celItems); });
+  function versieVan(mw, datum) {
+    var naam = document.querySelector('[data-toon="dienstnaam"][data-mw="' + mw + '"][data-datum="' + datum + '"]');
+    return naam ? parseInt(naam.getAttribute("data-versie") || "0", 10) : 0;
   }
 
-  function verstuurCellen(celItems) {
-    // De versies worden pas NU gelezen, na het vorige antwoord uit de wachtrij
-    var gezien = {};
-    var wijzigingen = celItems.map(function (i) {
-      var mw = i.cel.getAttribute("data-mw"), datum = i.cel.getAttribute("data-datum");
-      var k = mw + "|" + datum;
-      // Versie alleen meesturen bij de eerste cel van een dag (de server telt verder)
-      var versie = gezien[k] ? null : versieVan(mw, datum);
-      gezien[k] = true;
-      return { mw: mw, datum: datum, veld: i.cel.getAttribute("data-veld"), waarde: i.waarde, versie: versie };
+  // Registreer wijzigingen (typen, plakken, wissen). items: [{cel, waarde}]
+  function bewaar(items) {
+    if (!items.length) return;
+    ongedaan.push(wachtend.slice());  // stand van vóór deze actie, voor Ctrl+Z
+    if (ongedaan.length > MAX_ONGEDAAN) ongedaan.shift();
+    items.forEach(function (i) {
+      var veld = i.cel.getAttribute("data-veld");
+      var mw = i.cel.getAttribute("data-mw");
+      var datum = i.cel.getAttribute("data-datum");
+      var dag = veld === "dagopmerking";
+      var sleutel = dag ? "dag|" + datum : mw + "|" + datum + "|" + veld;
+      // Zelfde cel opnieuw gewijzigd: alleen de laatste waarde telt
+      wachtend = wachtend.filter(function (w) { return w.sleutel !== sleutel; });
+      wachtend.push({ sleutel: sleutel, dag: dag, mw: mw, datum: datum, veld: veld, waarde: i.waarde });
+      if (dag) { getoondeDagen[datum] = true; } else { getoond[mw + "|" + datum] = true; }
+      i.cel.textContent = i.waarde;  // direct tonen wat er getypt is
+      i.cel.classList.remove("fout");
     });
+    if (statusVak) statusVak.className = "raster-status";  // oude foutmelding weghalen
+    voorbeeld();
+  }
 
-    return post(API_CELLEN, { wijzigingen: wijzigingen })
+  // Het verzoek aan de server: alle wachtende wijzigingen, met de versies van de laatste opslag
+  function verzoek(opslaan) {
+    var gezien = {};
+    var cellen = [];
+    var dagen = [];
+    wachtend.forEach(function (w) {
+      if (w.dag) {
+        dagen.push({ datum: w.datum, tekst: w.waarde });
+        return;
+      }
+      var k = w.mw + "|" + w.datum;
+      cellen.push({ mw: w.mw, datum: w.datum, veld: w.veld, waarde: w.waarde,
+                    versie: gezien[k] ? null : versieVan(w.mw, w.datum) });
+      gezien[k] = true;
+    });
+    return { opslaan: opslaan, wijzigingen: cellen, dagopmerkingen: dagen,
+             ook_tonen: Object.keys(getoond), ook_dagen: Object.keys(getoondeDagen) };
+  }
+
+  // Voorbeeld opvragen (niets wordt bewaard). Tijdens een lopend verzoek: daarna nog één keer.
+  var voorbeeldBezig = false;
+  var voorbeeldOpnieuw = false;
+  var ronde = 0;  // verhoogd bij elke opslag: oudere voorbeelden worden dan genegeerd
+  function voorbeeld() {
+    toonTeller();
+    if (voorbeeldBezig) { voorbeeldOpnieuw = true; return; }
+    voorbeeldBezig = true;
+    var mijnRonde = ronde;
+    post(verzoek(false))
       .then(function (r) {
-        if (r.status === 409) {
-          status("Iemand anders wijzigde dit tegelijk. De pagina wordt ververst…", "fout");
-          setTimeout(function () { location.reload(); }, 1500);
-          throw new Error("conflict");
-        }
-        if (r.status === 401) {
-          status("Je bent uitgelogd. Log opnieuw in.", "fout");
-          throw new Error("uitgelogd");
-        }
+        if (r.status === 401) throw new Error("uitgelogd");
         if (!r.ok) throw new Error("fout");
         return r.json();
       })
       .then(function (antwoord) {
-        Object.keys(antwoord.bijgewerkt).forEach(function (k) {
-          var delen = k.split("|");
-          werkBij(delen[0], delen[1], antwoord.bijgewerkt[k]);
-        });
-        celItems.forEach(function (i) { i.cel.classList.remove("bezig"); });
-        if (antwoord.fouten.length) {
-          antwoord.fouten.forEach(function (f) {
-            var cel = document.querySelector('.cel[data-mw="' + f.mw + '"][data-datum="' + f.datum + '"][data-veld="' + f.veld + '"]');
-            if (!cel) return;
-            cel.classList.add("fout");
-            cel.title = f.melding;
-            // Ongeldige invoer zichtbaar laten (niet opgeslagen), zodat je ziet wat er mis was
-            var poging = celItems.filter(function (i) { return i.cel === cel; })[0];
-            if (poging && !f.conflict) cel.textContent = poging.waarde;
-          });
-          status(antwoord.fouten[0].melding, "fout");
-        } else {
-          status("Opgeslagen ✓", "ok");
-        }
+        // Intussen opgeslagen of opnieuw gewijzigd? Dan is dit voorbeeld verouderd.
+        if (!voorbeeldOpnieuw && mijnRonde === ronde) verwerkAntwoord(antwoord, false);
       })
       .catch(function (fout) {
-        celItems.forEach(function (i) { i.cel.classList.remove("bezig"); });
-        if (fout.message === "fout") status("Opslaan mislukt. Controleer de verbinding.", "fout");
+        status(fout.message === "uitgelogd" ? "Je bent uitgelogd. Log opnieuw in (je wijzigingen zijn niet opgeslagen)."
+                                            : "Geen verbinding met de server.", "fout");
+      })
+      .then(function () {
+        voorbeeldBezig = false;
+        if (voorbeeldOpnieuw) { voorbeeldOpnieuw = false; voorbeeld(); }
       });
   }
 
+  // Definitief opslaan. 'daarna' wordt uitgevoerd als alles goed is opgeslagen.
+  var opslaanBezig = false;
+  function opslaan(daarna) {
+    if (invoer) stopBewerken(true);
+    if (!heeftWijzigingen()) { if (daarna) daarna(); return; }
+    if (opslaanBezig) return;
+    opslaanBezig = true;
+    ronde++;
+    var verstuurd = wachtend.slice();
+    status("Opslaan…", "bezig");
+    opslaanKnoppen.forEach(function (k) { k.disabled = true; });
+    post(verzoek(true))
+      .then(function (r) {
+        if (r.status === 409) throw new Error("conflict");
+        if (r.status === 401) throw new Error("uitgelogd");
+        if (!r.ok) throw new Error("fout");
+        return r.json();
+      })
+      .then(function (antwoord) {
+        // Alleen wat verstuurd is, is opgeslagen; nieuwere wijzigingen blijven wachten
+        wachtend = wachtend.filter(function (w) { return verstuurd.indexOf(w) === -1; });
+        ongedaan = [];
+        verwerkAntwoord(antwoord, true);
+        if (!wachtend.length) { getoond = {}; getoondeDagen = {}; } else { voorbeeld(); }
+        if (antwoord.fouten.length) {
+          status(antwoord.fouten[0].melding, "fout");
+        } else {
+          status("Opgeslagen ✓", "ok");
+          if (daarna) daarna();
+        }
+      })
+      .catch(function (fout) {
+        var meldingen = {
+          conflict: "Iemand anders wijzigde tegelijk dezelfde dienst. Niets opgeslagen; ververs de pagina.",
+          uitgelogd: "Je bent uitgelogd. Log opnieuw in; je wijzigingen zijn niet opgeslagen."
+        };
+        status(meldingen[fout.message] || "Opslaan mislukt. Controleer de verbinding en probeer opnieuw.", "fout");
+      })
+      .then(function () {
+        opslaanBezig = false;
+        toonTeller();
+      });
+  }
+
+  // Antwoord van de server tonen (voorbeeld of opgeslagen)
+  function verwerkAntwoord(antwoord, opgeslagen) {
+    Object.keys(antwoord.bijgewerkt).forEach(function (k) {
+      var delen = k.split("|");
+      werkBij(delen[0], delen[1], antwoord.bijgewerkt[k], opgeslagen);
+    });
+    Object.keys(antwoord.dagopmerkingen || {}).forEach(function (datum) {
+      var g = antwoord.dagopmerkingen[datum];
+      var cel = document.querySelector('.dagopm[data-datum="' + datum + '"]');
+      if (!cel) return;
+      cel.textContent = g.tekst;
+      cel.classList.toggle("gevuld", !!g.tekst);
+      cel.title = g.handmatig ? "Handmatig aangepast" : "";
+    });
+    // Ongeldige invoer: rood tonen en niet meenemen bij het opslaan
+    antwoord.fouten.forEach(function (f) {
+      var cel = document.querySelector('.cel[data-mw="' + f.mw + '"][data-datum="' + f.datum + '"][data-veld="' + f.veld + '"]');
+      var sleutel = f.mw + "|" + f.datum + "|" + f.veld;
+      var poging = wachtend.filter(function (w) { return w.sleutel === sleutel; })[0];
+      if (!f.conflict) wachtend = wachtend.filter(function (w) { return w.sleutel !== sleutel; });
+      if (!cel) return;
+      cel.classList.add("fout");
+      cel.title = f.melding;
+      if (poging && !f.conflict) cel.textContent = poging.waarde;
+    });
+    if (antwoord.fouten.length && !opgeslagen) status(antwoord.fouten[0].melding, "fout");
+    markeerGewijzigd();
+    toonTeller();
+  }
+
+  function markeerGewijzigd() {
+    document.querySelectorAll(".cel.gewijzigd").forEach(function (c) { c.classList.remove("gewijzigd"); });
+    wachtend.forEach(function (w) {
+      var selector = w.dag ? '.dagopm[data-datum="' + w.datum + '"]'
+        : '.cel[data-mw="' + w.mw + '"][data-datum="' + w.datum + '"][data-veld="' + w.veld + '"]';
+      var cel = document.querySelector(selector);
+      if (cel) cel.classList.add("gewijzigd");
+    });
+  }
+
+  function toonTeller() {
+    var aantal = wachtend.length;
+    opslaanKnoppen.forEach(function (k) {
+      k.disabled = aantal === 0 || opslaanBezig;
+      k.textContent = aantal ? "Opslaan (" + aantal + ")" : "Opslaan";
+    });
+    if (aantal && !opslaanBezig && statusVak && statusVak.className.indexOf("fout") === -1) {
+      status(aantal === 1 ? "1 wijziging nog niet opgeslagen" : aantal + " wijzigingen nog niet opgeslagen", "wacht");
+    }
+  }
+
+  function ongedaanMaken() {
+    if (!ongedaan.length) return;
+    wachtend = ongedaan.pop();
+    status("Ongedaan gemaakt", "ok");
+    voorbeeld();
+  }
+
   // Alle cellen van één medewerker/dag bijwerken met de gegevens van de server
-  function werkBij(mw, datum, g) {
+  function werkBij(mw, datum, g, opgeslagen) {
     var selector = '[data-mw="' + mw + '"][data-datum="' + datum + '"]';
     document.querySelectorAll(selector).forEach(function (el) {
       var veld = el.getAttribute("data-veld");
@@ -326,7 +421,6 @@
       } else if (veld === "begin" || veld === "eind") {
         el.textContent = g[veld];
         el.classList.toggle("handmatig", g.handmatig);
-        el.title = g.handmatig ? "Handmatig aangepast" : "";
       } else if (veld === "opmerking") {
         el.textContent = g.opmerking;
         el.setAttribute("style", g.opmerking_stijl);
@@ -335,7 +429,8 @@
       } else if (toon === "dienstnaam") {
         el.textContent = g.dienstnaam;
         el.setAttribute("style", g.dienst_stijl);
-        el.setAttribute("data-versie", g.versie);
+        // De versie alleen overnemen na echt opslaan (een voorbeeld is niet bewaard)
+        if (opgeslagen) el.setAttribute("data-versie", g.versie);
       } else if (toon === "uren") {
         el.textContent = g.uren;
         el.classList.toggle("handmatig", !!g.uren_handmatig);
@@ -347,6 +442,78 @@
     var totaal = document.querySelector('[data-totaal="' + mw + '"]');
     if (totaal) totaal.textContent = g.weektotaal;
   }
+
+  // ---------- Opslaan-knoppen en waarschuwing bij verlaten ----------
+
+  opslaanKnoppen.forEach(function (knop) {
+    knop.addEventListener("click", function () { opslaan(); });
+  });
+
+  var dialoog = document.getElementById("niet-opgeslagen");
+  var vervolg = null;
+
+  // Vraag eerst wat er moet gebeuren als er niet-opgeslagen wijzigingen zijn
+  function vraagEerst(actie) {
+    if (invoer) stopBewerken(true);
+    if (!heeftWijzigingen() || vrijgegeven || !dialoog) { actie(); return; }
+    vervolg = actie;
+    dialoog.showModal();
+  }
+
+  if (dialoog) {
+    dialoog.addEventListener("click", function (e) {
+      var keuze = e.target.getAttribute && e.target.getAttribute("data-keuze");
+      if (!keuze) return;
+      dialoog.close();
+      if (keuze === "doorgaan") {
+        vrijgegeven = true;  // wijzigingen vergeten
+        if (vervolg) vervolg();
+      } else if (keuze === "opslaan") {
+        opslaan(function () { vrijgegeven = true; if (vervolg) vervolg(); });
+      }
+      // 'terug': niets doen, verder wijzigen
+    });
+  }
+
+  // Links (menu, weeknavigatie, kalender, ...)
+  document.addEventListener("click", function (e) {
+    if (!heeftWijzigingen() || vrijgegeven || e.defaultPrevented) return;
+    var link = e.target.closest ? e.target.closest("a[href]") : null;
+    if (!link || link.target === "_blank" || link.getAttribute("href").charAt(0) === "#") return;
+    e.preventDefault();
+    e.stopPropagation();
+    vraagEerst(function () { window.location.href = link.href; });
+  }, true);
+
+  // Formulieren (uitloggen, week kopiëren, ...)
+  document.addEventListener("submit", function (e) {
+    if (!heeftWijzigingen() || vrijgegeven || e.defaultPrevented) return;
+    var formulier = e.target;
+    if (dialoog && dialoog.contains(formulier)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    vraagEerst(function () { HTMLFormElement.prototype.submit.call(formulier); });
+  }, true);
+
+  // Keuzelijsten die naar een andere pagina gaan (weekkiezer)
+  document.addEventListener("change", function (e) {
+    var lijst = e.target;
+    if (!lijst.hasAttribute || !lijst.hasAttribute("data-navigeer")) return;
+    if (!heeftWijzigingen() || vrijgegeven) return;
+    e.stopImmediatePropagation();
+    var doel = lijst.value;
+    // Keuze terugzetten tot er een besluit is
+    Array.prototype.forEach.call(lijst.options, function (o) { o.selected = o.defaultSelected; });
+    vraagEerst(function () { if (doel) window.location.href = doel; });
+  }, true);
+
+  // Browser of tabblad sluiten, verversen, terug-knop: de browser toont zijn eigen vraag
+  window.addEventListener("beforeunload", function (e) {
+    if (heeftWijzigingen() && !vrijgegeven) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
 
   // ---------- Muis ----------
 
@@ -371,6 +538,12 @@
   // ---------- Toetsenbord ----------
 
   document.addEventListener("keydown", function (e) {
+    // Ctrl+S: opslaan (ook als er geen cel geselecteerd is)
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      e.preventDefault();
+      opslaan();
+      return;
+    }
     if (!actief || invoer) return;
     var focus = document.activeElement;
     if (focus && focus !== actief && focus !== document.body && !focus.classList.contains("cel")) return;
@@ -397,8 +570,7 @@
       bewaar(items);
     } else if (ctrl && (e.key === "z" || e.key === "Z")) {
       e.preventDefault();
-      var laatste = ongedaan.pop();
-      if (laatste) { bewaar(laatste, true); status("Ongedaan gemaakt", "ok"); }
+      ongedaanMaken();
     } else if (e.key === "Escape") {
       anker = null;
       toonSelectie();

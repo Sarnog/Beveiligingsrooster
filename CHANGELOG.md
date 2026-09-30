@@ -2,6 +2,22 @@
 
 ## [Onuitgebracht]
 
+## [1.1.0] – 2026-10-01
+
+### Gewijzigd
+- Weekrooster: wijzigingen worden niet meer automatisch opgeslagen. Je ziet direct het resultaat
+  (dienstnaam, tijden, uren; berekend door de server als voorbeeld), maar pas bij **Opslaan**
+  (of Ctrl+S) wordt alles in één keer bewaard. Gewijzigde cellen zijn oranje gemarkeerd en de knop
+  toont het aantal wijzigingen.
+- Wie de pagina wil verlaten met niet-opgeslagen wijzigingen (menu, andere week, weekkiezer,
+  uitloggen, formulieren) krijgt een vraag met **Opslaan**, **Terug** of **Doorgaan** (wijzigingen
+  vergeten). Bij sluiten of verversen van de browser toont de browser zijn eigen waarschuwing.
+- Ctrl+Z maakt niet-opgeslagen wijzigingen ongedaan.
+
+### Opgelost
+- Een voorbeeldberekening kon ongemerkt gegevens opslaan als voor dat jaar nog feestdagen
+  aangemaakt moesten worden.
+
 ## [1.0.1] – 2026-09-30
 
 ### Opgelost
