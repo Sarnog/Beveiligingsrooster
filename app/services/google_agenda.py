@@ -21,6 +21,7 @@ from .weekrooster import dagopmerkingen
 BESTANDSNAAM = "google-service-account.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 BRON = "beveiligingsrooster"  # markering in extendedProperties.private
+TIMEOUT = 30  # seconden
 BEHEERD_TEKST = "Automatisch beheerd door Beveiligingsrooster – niet handmatig wijzigen"
 
 
@@ -107,8 +108,24 @@ def _vertaal_fout(fout: Exception) -> AgendaFout:
         }
         melding = meldingen.get(status, f"Google gaf fout {status} {reden}".strip())
         return AgendaFout(melding, tijdelijk=tijdelijk, status=status)
-    # Netwerkfouten e.d. zijn meestal tijdelijk
-    return AgendaFout(f"Verbindingsfout met Google: {fout}", tijdelijk=True)
+    # Google weigert de sleutel zelf (verwijderd, ingetrokken of verkeerd bestand)
+    from google.auth.exceptions import RefreshError, TransportError
+
+    if isinstance(fout, RefreshError):
+        tekst = str(fout)
+        if "account not found" in tekst or "invalid_grant" in tekst:
+            melding = ("Google weigert de sleutel: het service-account of de sleutel bestaat niet "
+                       "(meer). Maak in Google Cloud een nieuwe JSON-sleutel en upload die opnieuw.")
+        elif "API has not been used" in tekst or "disabled" in tekst:
+            melding = "De Google Calendar API staat nog niet aan in het Google Cloud-project."
+        else:
+            melding = f"Google weigert de sleutel: {tekst}"
+        return AgendaFout(melding, tijdelijk=False, status=401)
+    if isinstance(fout, (TransportError, TimeoutError, OSError)):
+        return AgendaFout("Google is niet bereikbaar (geen internet of time-out). "
+                          "Wordt later opnieuw geprobeerd.", tijdelijk=True)
+    # Overige fouten: later opnieuw proberen
+    return AgendaFout(f"Fout bij Google: {fout}", tijdelijk=True)
 
 
 class AgendaKlant:
@@ -177,11 +194,19 @@ def klant() -> AgendaKlant:
     """Maak een verbonden klant met het service-account. In tests vervangen door een nep-klant."""
     if not sleutel_aanwezig():
         raise AgendaFout("Er is nog geen service-account-sleutel geüpload.")
+    import google_auth_httplib2
+    import httplib2
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
-    referenties = service_account.Credentials.from_service_account_file(sleutel_pad(), scopes=SCOPES)
-    return AgendaKlant(build("calendar", "v3", credentials=referenties, cache_discovery=False))
+    try:
+        referenties = service_account.Credentials.from_service_account_file(
+            sleutel_pad(), scopes=SCOPES)
+    except (ValueError, KeyError) as fout:
+        raise AgendaFout("Het sleutelbestand is ongeldig. Upload het JSON-bestand opnieuw.") from fout
+    # Maximaal 30 seconden wachten op Google, zodat een pagina nooit blijft hangen
+    http = google_auth_httplib2.AuthorizedHttp(referenties, http=httplib2.Http(timeout=TIMEOUT))
+    return AgendaKlant(build("calendar", "v3", http=http, cache_discovery=False))
 
 
 # ---------------------------------------------------------------------------

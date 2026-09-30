@@ -3,7 +3,7 @@
 {% from "macros.html" import csrf %}
 {% block titel %}Week {{ week }} ({{ jaar }}) – {{ teamnaam }}{% endblock %}
 {% block main_klasse %}inhoud inhoud-breed{% endblock %}
-{% block kop %}{% if bewerken %}<script src="{{ url_for('static', filename='js/raster.js') }}" defer></script>{% endif %}{% endblock %}
+{% block kop %}{% if bewerken %}<script src="{{ url_for('static', filename='js/raster.js', v=versie) }}" defer></script>{% endif %}{% endblock %}
 {% set dagkort = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] %}
 {% block inhoud %}
 <div class="week-kop geen-print">
@@ -19,6 +19,7 @@
     <a class="knop" href="{{ u.week_url(huidig[0], huidig[1]) }}">Vandaag</a>
     <a class="knop" href="{{ u.kalender_url(jaar) }}">Kalender</a>
     <button class="knop" type="button" data-print>Printen</button>
+    {% if bewerken %}<button class="knop primair opslaan-knop" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>{% endif %}
   </nav>
   {% if bewerken %}
   <details class="kopieer">
@@ -38,7 +39,7 @@
 </div>
 <h1 class="alleen-print">{{ teamnaam }} – week {{ week }} ({{ jaar }})</h1>
 
-<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-api-dag="{{ url_for('rooster.api_dagopmerking') }}"{% endif %}>
+<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-versie="{{ versie }}"{% endif %}>
   <div class="tabel-schuif rooster-houder">
   <table class="rooster" data-raster="visueel">
     <thead>
@@ -134,6 +135,7 @@
         <li>Delete: wissen · Esc: annuleren</li>
         <li>Shift + pijltjes: selecteren · Ctrl+C / Ctrl+V: kopiëren en plakken (ook uit Excel)</li>
         <li>Ctrl+Z: laatste wijziging ongedaan maken</li>
+        <li>Ctrl+S: opslaan (wijzigingen worden pas bewaard na <strong>Opslaan</strong>)</li>
         <li>Tijden: 715, 7:15, 07.15 of 0715</li>
         <li>Dienstnaam of uren in het rooster typen: vrije dienst of eigen uren (Delete = weer automatisch)</li>
       </ul>
@@ -141,4 +143,21 @@
   </aside>
   {% endif %}
 </div>
+
+{% if bewerken %}
+<dialog id="niet-opgeslagen" class="dialoog" aria-labelledby="dialoog-titel">
+  <h2 id="dialoog-titel">Wijzigingen niet opgeslagen</h2>
+  <p>Je hebt wijzigingen in het rooster die nog niet zijn opgeslagen.</p>
+  <ul class="hulp">
+    <li><strong>Opslaan</strong>: wijzigingen bewaren en doorgaan.</li>
+    <li><strong>Terug</strong>: terug naar het rooster om verder te wijzigen.</li>
+    <li><strong>Doorgaan</strong>: doorgaan zonder opslaan; alle wijzigingen gaan verloren.</li>
+  </ul>
+  <div class="knoppen">
+    <button type="button" class="knop primair" data-keuze="opslaan">Opslaan</button>
+    <button type="button" class="knop" data-keuze="terug" autofocus>Terug</button>
+    <button type="button" class="knop gevaar" data-keuze="doorgaan">Doorgaan</button>
+  </div>
+</dialog>
+{% endif %}
 {% endblock %}

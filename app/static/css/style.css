@@ -346,3 +346,25 @@ td.positief { color: #1565c0; font-weight: 600; }
 .breek { word-break: break-all; }
 .melding-inline.fout { color: var(--gevaar); font-size: .85rem; }
 details > summary { cursor: pointer; }
+
+/* ---------- Niet-opgeslagen wijzigingen ---------- */
+/* Oranje hoekje rechtsboven: gewijzigd maar nog niet opgeslagen */
+.cel.gewijzigd::after {
+  content: ""; position: absolute; top: 0; right: 0; pointer-events: none;
+  border-style: solid; border-width: 0 9px 9px 0;
+  border-color: transparent #f08c00 transparent transparent;
+}
+.cel.gewijzigd { box-shadow: inset 0 -2px 0 #f08c00; }
+.raster-status.wacht { color: #fff; background: #d9480f; font-weight: 600; }
+.opslaan-knop:disabled { opacity: .45; cursor: default; }
+.opslaan-knop.breed { width: 100%; margin-bottom: .5rem; }
+.dialoog {
+  max-width: 440px; border: 1px solid var(--rand); border-radius: var(--radius);
+  background: var(--kaart); color: var(--tekst); padding: 1.2rem 1.4rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .35);
+}
+.dialoog::backdrop { background: rgba(0, 0, 0, .45); }
+.dialoog h2 { margin-top: 0; }
+@media print { .opslaan-knop, .dialoog { display: none !important; } }
+.koppel-formulier { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; margin-bottom: .3rem; }
+.koppel-formulier input[type="email"] { min-width: 200px; }

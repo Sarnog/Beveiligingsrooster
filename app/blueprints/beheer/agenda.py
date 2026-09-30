@@ -67,15 +67,36 @@ def agenda_koppel(mid: int):
     """Modus A: agenda aanmaken en delen. Modus B: bestaande (gedeelde) agenda gebruiken."""
     medewerker = db.get_or_404(Medewerker, mid)
     modus = request.form.get("modus")
+    if medewerker.agenda_modus:
+        flash(f"{medewerker.naam} is al gekoppeld.", "info")
+        return _terug()
+
+    if modus == "A":
+        # Het e-mailadres kan direct bij de knop ingevuld worden
+        email = request.form.get("email", medewerker.email or "").strip()
+        if not EMAIL_PATROON.match(email):
+            flash(f"Vul een geldig e-mailadres (Google-account) in voor {medewerker.naam}.", "fout")
+            return _terug()
+        if email != medewerker.email:
+            logboek.log("Medewerker gewijzigd", "Bij agenda koppelen", medewerker=medewerker.naam,
+                        veld="email", oud=medewerker.email, nieuw=email)
+            medewerker.email = email
+            db.session.commit()
+
     try:
         klant = google_agenda.klant()
         if modus == "A":
-            if not EMAIL_PATROON.match(medewerker.email or ""):
-                flash("Vul eerst een geldig e-mailadres in bij de medewerker.", "fout")
-                return _terug()
             agenda_id = klant.maak_agenda(google_agenda.agenda_titel(medewerker),
                                           instellingen.lees("tijdzone") or "Europe/Amsterdam")
-            klant.deel_agenda(agenda_id, medewerker.email)
+            try:
+                klant.deel_agenda(agenda_id, medewerker.email)
+            except AgendaFout:
+                # Delen mislukt: de net gemaakte agenda weer opruimen (niet laten slingeren)
+                try:
+                    klant.verwijder_agenda(agenda_id)
+                except AgendaFout:
+                    pass
+                raise
         elif modus == "B":
             agenda_id = request.form.get("agenda_id", "").strip()
             if not agenda_id:

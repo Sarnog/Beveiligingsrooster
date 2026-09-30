@@ -28,7 +28,7 @@ def cel(client, mw, datum, veld, waarde, versie=None):
     wijziging = {"mw": mw.id, "datum": datum.isoformat(), "veld": veld, "waarde": waarde}
     if versie is not None:
         wijziging["versie"] = versie
-    return client.post("/api/cellen", json={"wijzigingen": [wijziging]})
+    return client.post("/api/cellen", json={"wijzigingen": [wijziging], "opslaan": True})
 
 
 def dienst(mw, datum):
@@ -111,7 +111,7 @@ def test_plakken_meerdere_cellen_in_een_verzoek(als_beheerder, rooster):
         {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "opmerking", "waarde": "BHV", "versie": None},
         {"mw": b.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "7", "versie": 0},
     ]
-    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": wijzigingen})
+    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": wijzigingen, "opslaan": True})
     assert antwoord.json["fouten"] == []
     assert dienst(a, MAANDAG).opmerking_tekst == "BHV"
     assert dienst(b, MAANDAG).dienstnaam == "OB Vroeg"
@@ -137,15 +137,17 @@ def test_dagopmerking_automatisch_en_handmatig(als_beheerder, rooster):
     assert "Meivakantie" in pagina  # overige werkdagen
 
     dag = date(2026, 4, 28)
-    antwoord = als_beheerder.post("/api/dagopmerking",
-                                  json={"datum": dag.isoformat(), "tekst": "Extra inzet"})
-    assert antwoord.json == {"datum": dag.isoformat(), "tekst": "Extra inzet", "handmatig": True}
+
+    def dagopmerking(tekst):
+        antwoord = als_beheerder.post("/api/cellen", json={
+            "opslaan": True, "dagopmerkingen": [{"datum": dag.isoformat(), "tekst": tekst}]})
+        return antwoord.json["dagopmerkingen"][dag.isoformat()]
+
+    assert dagopmerking("Extra inzet") == {"tekst": "Extra inzet", "handmatig": True}
     # Wissen: automatische tekst komt terug
-    antwoord = als_beheerder.post("/api/dagopmerking", json={"datum": dag.isoformat(), "tekst": ""})
-    assert antwoord.json["tekst"] == "Meivakantie" and not antwoord.json["handmatig"]
+    assert dagopmerking("") == {"tekst": "Meivakantie", "handmatig": False}
     # Nogmaals wissen: automatische tekst wordt verborgen
-    antwoord = als_beheerder.post("/api/dagopmerking", json={"datum": dag.isoformat(), "tekst": ""})
-    assert antwoord.json["tekst"] == "" and antwoord.json["handmatig"]
+    assert dagopmerking("") == {"tekst": "", "handmatig": True}
     assert Dagopmerking.query.count() == 1
 
 
@@ -261,3 +263,121 @@ def test_deellink(client, rooster, klaar):
     assert "Medewerker A" in week and "data-api-cellen" not in week
     # Via de deellink kan niets gewijzigd worden
     assert client.post("/api/cellen", json={"wijzigingen": []}).status_code == 401
+
+
+# ---------- Eerst een voorbeeld, pas opslaan bij 'Opslaan' ----------
+
+def test_voorbeeld_slaat_niets_op(als_beheerder, rooster):
+    a = rooster["a"]
+    antwoord = als_beheerder.post("/api/cellen", json={
+        "opslaan": False,
+        "wijzigingen": [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "4",
+                         "versie": 0}],
+        "dagopmerkingen": [{"datum": MAANDAG.isoformat(), "tekst": "Test"}],
+    })
+    gegevens = antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]
+    # Het voorbeeld toont het resultaat ...
+    assert (gegevens["dienstnaam"], gegevens["uren"], gegevens["weektotaal"]) == ("VW Vroeg", "8,00", "8,00")
+    assert antwoord.json["dagopmerkingen"][MAANDAG.isoformat()]["tekst"] == "Test"
+    # ... maar er is niets opgeslagen of gelogd
+    assert dienst(a, MAANDAG) is None
+    assert Dagopmerking.query.count() == 0
+    assert Logboek.query.filter_by(actie="Rooster gewijzigd").count() == 0
+
+
+def test_opslaan_in_een_keer(als_beheerder, rooster):
+    a, b = rooster["a"], rooster["b"]
+    antwoord = als_beheerder.post("/api/cellen", json={
+        "opslaan": True,
+        "wijzigingen": [
+            {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "4", "versie": 0},
+            {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind", "waarde": "1600", "versie": None},
+            {"mw": b.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "99", "versie": 0},
+        ],
+        "dagopmerkingen": [{"datum": MAANDAG.isoformat(), "tekst": "Test"}],
+    })
+    assert antwoord.json["fouten"][0]["melding"] == "Onbekende dienstcode: 99"
+    d = dienst(a, MAANDAG)
+    assert (d.eind, d.uren_berekend) == ("16:00", 8.25)
+    assert Dagopmerking.query.one().tekst == "Test"
+
+
+def test_voorbeeld_met_ook_tonen_geeft_actuele_stand(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    # Na 'ongedaan maken' vraagt de browser de stand van een dag op zonder wijzigingen
+    antwoord = als_beheerder.post("/api/cellen", json={
+        "opslaan": False, "wijzigingen": [], "ook_tonen": [f"{a.id}|{MAANDAG.isoformat()}"],
+        "ook_dagen": [MAANDAG.isoformat()]})
+    assert antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]["code"] == "4"
+    assert MAANDAG.isoformat() in antwoord.json["dagopmerkingen"]
+
+
+def test_voorbeeld_meldt_conflict(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")  # versie is nu 1
+    antwoord = als_beheerder.post("/api/cellen", json={
+        "opslaan": False,
+        "wijzigingen": [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "5",
+                         "versie": 0}]})
+    assert antwoord.json["fouten"][0]["conflict"] is True
+
+
+def test_weekpagina_heeft_opslaan_en_dialoog(als_beheerder, rooster):
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert "data-opslaan" in pagina and 'id="niet-opgeslagen"' in pagina
+    assert 'data-keuze="doorgaan"' in pagina and 'data-keuze="terug"' in pagina
+
+
+def test_gebruiker_ziet_geen_opslaan(als_gebruiker, rooster):
+    pagina = als_gebruiker.get("/week/2026/10").data.decode()
+    assert "data-opslaan" not in pagina and "niet-opgeslagen" not in pagina
+
+
+def test_zonder_expliciet_opslaan_wordt_niets_bewaard(als_beheerder, rooster):
+    """Ook een oud (gecachet) script dat 'opslaan' niet meestuurt, kan niets opslaan."""
+    a = rooster["a"]
+    for extra in ({}, {"opslaan": "ja"}, {"opslaan": 1}, {"opslaan": False}):
+        antwoord = als_beheerder.post("/api/cellen", json={
+            "wijzigingen": [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind",
+                             "waarde": "1600"}], **extra})
+        assert antwoord.status_code == 200
+    assert dienst(a, MAANDAG) is None
+    # De oude route die dagopmerkingen direct opsloeg, bestaat niet meer
+    assert als_beheerder.post("/api/dagopmerking", json={"datum": "2026-03-02"}).status_code == 404
+
+
+def test_statische_bestanden_met_versienummer(als_beheerder, rooster):
+    from app import VERSIE
+
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert f"js/raster.js?v={VERSIE}" in pagina and f"css/style.css?v={VERSIE}" in pagina
+
+
+def test_scriptversie_gelijk_aan_appversie():
+    """raster.js controleert zelf of het bij de pagina hoort; de versies moeten gelijk zijn."""
+    import pathlib
+    import re
+
+    from app import VERSIE
+
+    script = (pathlib.Path(__file__).parent.parent / "app/static/js/raster.js").read_text()
+    assert re.search(r'var SCRIPT_VERSIE = "([^"]+)"', script).group(1) == VERSIE
+
+
+def test_cache_instructies(als_beheerder, rooster):
+    from app import VERSIE
+
+    pagina = als_beheerder.get("/week/2026/10")
+    assert pagina.headers["Cache-Control"] == "no-store"
+    assert 'data-versie="' + VERSIE + '"' in pagina.data.decode()
+    api = als_beheerder.post("/api/cellen", json={"wijzigingen": []})
+    assert api.headers["Cache-Control"] == "no-store"
+    script = als_beheerder.get(f"/static/js/raster.js?v={VERSIE}")
+    assert "max-age=31536000" in script.headers["Cache-Control"]
+    assert als_beheerder.get("/static/js/raster.js").headers["Cache-Control"] == "no-cache"
+
+
+def test_maar_een_opslaan_knop(als_beheerder, rooster):
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert pagina.count("data-opslaan") == 1

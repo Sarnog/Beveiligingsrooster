@@ -15,9 +15,8 @@ from ..services.weekrooster import (
     Wijziging,
     komende_diensten,
     kopieer_week,
+    verwerk_rooster,
     week_gegevens,
-    wijzig_cellen,
-    wijzig_dagopmerking,
 )
 from .hulp import beheerder_vereist
 
@@ -105,15 +104,26 @@ def agenda_info():
 @bp.route("/api/cellen", methods=["POST"])
 @beheerder_vereist
 def api_cellen():
-    """Een of meer cellen opslaan. Body: {"wijzigingen": [{mw, datum, veld, waarde, versie}]}"""
-    gegevens = request.get_json(silent=True) or {}
-    ruwe = gegevens.get("wijzigingen")
-    if not isinstance(ruwe, list) or not ruwe or len(ruwe) > 2000:
-        return jsonify(fout="Geen (geldige) wijzigingen ontvangen."), 400
+    """Wijzigingen in het rooster verwerken: als voorbeeld of definitief opslaan.
 
-    wijzigingen = []
-    for item in ruwe:
-        try:
+    Body (JSON):
+      wijzigingen:    [{mw, datum, veld, waarde, versie}]
+      dagopmerkingen: [{datum, tekst}]
+      opslaan:        alleen bij precies true wordt er bewaard (knop 'Opslaan');
+                      anders wordt alleen een voorbeeld berekend en niets opgeslagen
+      ook_tonen:      ["<mw>|<datum>", ...]  extra dagen om de actuele stand van te krijgen
+      ook_dagen:      ["<datum>", ...]       idem voor dagopmerkingen
+    """
+    gegevens = request.get_json(silent=True) or {}
+    ruwe = gegevens.get("wijzigingen") or []
+    ruwe_dagen = gegevens.get("dagopmerkingen") or []
+    if not isinstance(ruwe, list) or not isinstance(ruwe_dagen, list) \
+            or len(ruwe) + len(ruwe_dagen) > 5000:
+        return jsonify(fout="Geen geldige wijzigingen ontvangen."), 400
+
+    try:
+        wijzigingen = []
+        for item in ruwe:
             veld = str(item["veld"])
             if veld not in VELDEN:
                 raise ValueError
@@ -125,26 +135,23 @@ def api_cellen():
                 waarde="" if item.get("waarde") is None else str(item["waarde"]),
                 versie=None if versie is None else int(versie),
             ))
-        except (KeyError, TypeError, ValueError):
-            return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
+        dag_wijzigingen = [(date.fromisoformat(str(d["datum"])), str(d.get("tekst") or ""))
+                           for d in ruwe_dagen]
+        ook_tonen = []
+        for sleutel in gegevens.get("ook_tonen") or []:
+            mw, datum = str(sleutel).split("|")
+            ook_tonen.append((int(mw), date.fromisoformat(datum)))
+        ook_dagen = [date.fromisoformat(str(d)) for d in gegevens.get("ook_dagen") or []]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
 
     try:
-        bijgewerkt, fouten = wijzig_cellen(wijzigingen)
+        resultaat = verwerk_rooster(wijzigingen, dag_wijzigingen,
+                                    opslaan=gegevens.get("opslaan") is True,
+                                    ook_tonen=ook_tonen, ook_dagen=ook_dagen)
     except VersieConflict as fout:
         return jsonify(fout=str(fout)), 409
-    return jsonify(bijgewerkt=bijgewerkt, fouten=fouten)
-
-
-@bp.route("/api/dagopmerking", methods=["POST"])
-@beheerder_vereist
-def api_dagopmerking():
-    gegevens = request.get_json(silent=True) or {}
-    try:
-        datum = date.fromisoformat(str(gegevens.get("datum")))
-    except ValueError:
-        return jsonify(fout="Ongeldige datum."), 400
-    resultaat = wijzig_dagopmerking(datum, str(gegevens.get("tekst") or ""))
-    return jsonify(datum=datum.isoformat(), **resultaat)
+    return jsonify(resultaat)
 
 
 @bp.route("/week/<int:jaar>/<int:week>/kopieer", methods=["POST"])

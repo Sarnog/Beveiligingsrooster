@@ -14,7 +14,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
-VERSIE = "1.0.0"
+VERSIE = "1.1.2"
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
 SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen"}
@@ -162,6 +162,17 @@ def _registreer_controles(app: Flask) -> None:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+
+        # Cache: pagina's en API-antwoorden nooit bewaren (ook niet door een proxy).
+        # Scripts/CSS met versienummer (?v=...) mogen lang bewaard worden: bij een nieuwe
+        # versie verandert het adres, dus dan haalt de browser (of proxy) het nieuwe bestand.
+        if request.endpoint == "static":
+            if request.args.get("v") == VERSIE:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "no-cache"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.errorhandler(403)

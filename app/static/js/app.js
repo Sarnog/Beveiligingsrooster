@@ -29,6 +29,17 @@
     }
   }, true);
 
+  // Formulieren met data-bezig: knop uitschakelen en "Bezig…" tonen tijdens het wachten
+  // (voorkomt dat een dubbele klik iets twee keer doet, bijv. twee agenda's aanmaken)
+  document.addEventListener("submit", function (e) {
+    if (e.defaultPrevented || !e.target.hasAttribute("data-bezig")) return;
+    var knop = e.target.querySelector('button[type="submit"]');
+    if (knop) {
+      setTimeout(function () { knop.disabled = true; }, 0);  // na het versturen
+      knop.textContent = "Bezig…";
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", function () {
     // Menu open/dicht op smalle schermen
     document.querySelectorAll("[data-wissel]").forEach(function (knop) {

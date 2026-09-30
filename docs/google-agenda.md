@@ -61,11 +61,11 @@ Verwijder daarna het gedownloade bestand van je computer (of bewaar het in een w
 
 ## Deel 2: medewerkers koppelen
 
-Vul eerst bij **Beheer → Medewerkers** het e-mailadres (Google-account) van de collega in. Kies daarna per medewerker een van de twee modi.
+Kies per medewerker een van de twee modi. Het e-mailadres (Google-account) van de collega kun je direct bij de knop van modus A invullen; het wordt ook bij de medewerker opgeslagen. Na een Excel-import zijn die e-mailadressen nog leeg.
 
 ### Modus A (aanbevolen): de app maakt een eigen agenda
 
-Klik bij de medewerker op **Modus A: eigen agenda aanmaken**. Dan gebeurt het volgende:
+Vul bij de medewerker het e-mailadres in en klik op **Modus A: eigen agenda aanmaken**. De knop toont even "Bezig…". Daarna gebeurt het volgende:
 
 1. De app maakt een agenda **"Rooster – naam"** aan.
 2. De app deelt die agenda (alleen lezen) met het e-mailadres van de collega.
@@ -140,6 +140,9 @@ De status toont:
 | Agenda niet gevonden (404) | Klopt het agenda-ID? Is de agenda verwijderd? Ontkoppel en koppel opnieuw. |
 | Google weigert de sleutel (401) | Is de sleutel ingetrokken in Google Cloud? Upload een nieuwe sleutel. |
 | Er is nog geen service-account-sleutel geüpload | Zie deel 1, stap 5. |
+| Google weigert de sleutel: het service-account of de sleutel bestaat niet (meer) | De sleutel of het service-account is verwijderd, of het is een verkeerd bestand. Maak in Google Cloud een nieuwe JSON-sleutel (deel 1, stap 4) en upload die opnieuw. |
+| De Google Calendar API staat nog niet aan | Zet de API aan (deel 1, stap 2) en wacht een paar minuten. |
+| Google is niet bereikbaar | De LXC heeft geen internet (DNS, firewall, proxy). De app wacht maximaal 30 seconden en probeert synchronisaties later opnieuw. |
 
 ---
 

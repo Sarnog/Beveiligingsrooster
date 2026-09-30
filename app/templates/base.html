@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block titel %}{{ teamnaam }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-  <script src="{{ url_for('static', filename='js/htmx.min.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=versie) }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=versie) }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='js/htmx.min.js', v=versie) }}" defer></script>
+  <script src="{{ url_for('static', filename='js/app.js', v=versie) }}" defer></script>
   {% block kop %}{% endblock %}
 </head>
 <body class="{% block body_klasse %}{% endblock %}">

@@ -258,6 +258,9 @@ def test_ontkoppelen_modus_a_verwijdert_agenda(app, gekoppeld, nep, als_beheerde
 
 
 def test_koppelen_modus_b_test_agenda(app, gekoppeld, nep, als_beheerder):
+    medewerker = db.session.get(Medewerker, gekoppeld.id)
+    medewerker.agenda_modus, medewerker.agenda_id = "", ""
+    db.session.commit()
     antwoord = als_beheerder.post(f"/beheer/agenda/{gekoppeld.id}/koppel",
                                   data={"modus": "B", "agenda_id": "bestaat-niet"}, follow_redirects=True)
     assert "Koppelen mislukt" in antwoord.data.decode()
@@ -335,3 +338,75 @@ def test_migraties_kloppen_met_model(tmp_path, monkeypatch):
         with db.engine.connect() as verbinding:
             verschillen = compare_metadata(MigrationContext.configure(verbinding), db.metadata)
         assert verschillen == []
+
+
+# ---------- Modus A koppelen (knop mag nooit 'stil' niets doen) ----------
+
+def test_modus_a_met_email_in_het_formulier(app, klaar, nep, als_beheerder, monkeypatch):
+    monkeypatch.setattr(google_agenda, "sleutel_aanwezig", lambda: True)
+    # Na een Excel-import hebben medewerkers nog geen e-mailadres
+    medewerker = Medewerker(naam="Medewerker Z", initialen="TSZ")
+    db.session.add(medewerker)
+    db.session.commit()
+    pagina = als_beheerder.get("/beheer/agenda").data.decode()
+    formulier = pagina.split('name="modus" value="A"')[1].split("</form>")[0]
+    assert 'name="email"' in formulier and "disabled" not in formulier
+    antwoord = als_beheerder.post(f"/beheer/agenda/{medewerker.id}/koppel",
+                                  data={"modus": "A", "email": "z@voorbeeld.nl"}, follow_redirects=True)
+    assert "is gekoppeld" in antwoord.data.decode()
+    medewerker = db.session.get(Medewerker, medewerker.id)
+    assert medewerker.email == "z@voorbeeld.nl" and medewerker.agenda_modus == "A"
+    assert nep.gedeeld == [(medewerker.agenda_id, "z@voorbeeld.nl")]
+
+
+def test_modus_a_zonder_email_geeft_duidelijke_melding(app, klaar, nep, als_beheerder):
+    medewerker = Medewerker(naam="Medewerker Z", initialen="TSZ")
+    db.session.add(medewerker)
+    db.session.commit()
+    antwoord = als_beheerder.post(f"/beheer/agenda/{medewerker.id}/koppel",
+                                  data={"modus": "A", "email": ""}, follow_redirects=True)
+    assert "Vul een geldig e-mailadres" in antwoord.data.decode()
+    assert db.session.get(Medewerker, medewerker.id).agenda_modus == ""
+
+
+def test_modus_a_delen_mislukt_ruimt_agenda_op(app, klaar, monkeypatch, als_beheerder):
+    class DelenMislukt(NepKlant):
+        def deel_agenda(self, agenda_id, email):
+            raise AgendaFout("Geen toegang (403)", status=403)
+
+    klant = DelenMislukt()
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    medewerker = Medewerker(naam="Medewerker Z", initialen="TSZ", email="z@voorbeeld.nl")
+    db.session.add(medewerker)
+    db.session.commit()
+    antwoord = als_beheerder.post(f"/beheer/agenda/{medewerker.id}/koppel", data={"modus": "A"},
+                                  follow_redirects=True)
+    assert "Koppelen mislukt" in antwoord.data.decode()
+    assert klant.agendas == {}  # geen losse agenda achtergelaten
+    assert db.session.get(Medewerker, medewerker.id).agenda_modus == ""
+
+
+def test_geweigerde_sleutel_geeft_duidelijke_melding():
+    from google.auth.exceptions import RefreshError
+
+    from app.services.google_agenda import _vertaal_fout
+
+    fout = _vertaal_fout(RefreshError("invalid_grant: Invalid grant: account not found"))
+    assert "weigert de sleutel" in str(fout) and not fout.tijdelijk
+
+
+def test_klant_met_echte_bibliotheek(app, tmp_path):
+    """De echte Google-klant kan gebouwd worden (zonder internet), met time-out."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    sleutel = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = sleutel.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                serialization.NoEncryption()).decode()
+    google_agenda.bewaar_sleutel(json.dumps({
+        "type": "service_account", "project_id": "test", "private_key_id": "x",
+        "private_key": pem, "client_email": "rooster@test.iam.gserviceaccount.com",
+        "client_id": "1", "token_uri": "https://oauth2.googleapis.com/token"}).encode())
+    klant = google_agenda.klant()
+    assert isinstance(klant, google_agenda.AgendaKlant)
+    assert klant.service._http.http.timeout == google_agenda.TIMEOUT

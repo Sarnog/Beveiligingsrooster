@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models import Dagopmerking, Dienst, Dienstcode, Medewerker, OpmerkingKleurregel
 from . import instellingen, klok, logboek, sync_planning
-from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode
+from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
 from .tijden import OngeldigeTijd, normaliseer_tijd
@@ -128,8 +128,8 @@ def dagopmerkingen(dagen: list[date]) -> dict[date, dict]:
     return resultaat
 
 
-def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
-    """Sla een dagopmerking op.
+def pas_dagopmerking_toe(datum: date, tekst: str) -> None:
+    """Wijzig een dagopmerking in de sessie (opslaan of terugdraaien doet de aanroeper).
 
     - Tekst gelijk aan de automatische tekst: handmatige versie weghalen.
     - Lege tekst en er is een handmatige versie: weghalen (automatisch komt terug).
@@ -139,6 +139,8 @@ def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
     automatisch = automatische_dagopmerkingen(datum, datum).get(datum, "")
     bestaand = Dagopmerking.query.filter_by(datum=datum).first()
     oud = bestaand.tekst if bestaand else automatisch
+    if bestaand is None and tekst == automatisch:
+        return  # niets veranderd
 
     if tekst == automatisch or (tekst == "" and bestaand is not None):
         if bestaand:
@@ -147,14 +149,18 @@ def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
         bestaand.tekst = tekst
     else:
         db.session.add(Dagopmerking(datum=datum, tekst=tekst, handmatig=True))
+    db.session.flush()
 
     logboek.log("Dagopmerking gewijzigd", datum=datum, veld="dagopmerking", oud=oud, nieuw=tekst)
-    markeer_bijgewerkt()
     # De dagopmerking staat in de omschrijving van agenda-afspraken
     for dienst in Dienst.query.filter_by(datum=datum).all():
         sync_planning.plan_dag(dienst.medewerker, datum, commit=False)
-    db.session.commit()
-    return dagopmerkingen([datum])[datum]
+
+
+def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
+    """Wijzig en sla direct op (gebruikt door scripts en tests)."""
+    resultaat = verwerk_rooster([], [(datum, tekst)], opslaan=True)
+    return resultaat["dagopmerkingen"][datum.isoformat()]
 
 
 # ---------------------------------------------------------------------------
@@ -322,14 +328,8 @@ class Wijziging:
     versie: int | None = None  # None = niet controleren
 
 
-def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
-    """Voer een of meer celwijzigingen uit (één cel, plakken, wissen van een selectie).
-
-    Geeft (bijgewerkte dagen, fouten) terug:
-      bijgewerkt: {'<mw>|<datum>': dienst_naar_dict(...) + weektotaal}
-      fouten: [{'mw', 'datum', 'veld', 'melding'}]
-    Geldige cellen worden opgeslagen, ook als andere cellen een fout geven.
-    """
+def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
+    """Pas celwijzigingen toe in de sessie. Geeft (geraakte (mw, datum), fouten)."""
     fouten: list[dict] = []
     geraakt: dict[tuple[int, date], Dienst | None] = {}
     gecontroleerd: set[tuple[int, date]] = set()
@@ -397,21 +397,62 @@ def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
         db.session.flush()  # zodat een volgende cel van dezelfde dag deze dienst terugvindt
         geraakt[sleutel] = dienst
 
-    markeer_bijgewerkt()
+    return set(geraakt), fouten
+
+
+def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: bool = True,
+                    ook_tonen=(), ook_dagen=()) -> dict:
+    """Verwerk wijzigingen in het rooster: opslaan, of alleen een voorbeeld berekenen.
+
+    opslaan=False: alles wordt uitgerekend (dienstnaam, standaardtijden, uren,
+    weektotalen) en teruggegeven, maar daarna teruggedraaid. Zo ziet de planner
+    direct het resultaat, terwijl er pas iets bewaard wordt bij 'Opslaan'.
+
+    ook_tonen / ook_dagen: extra dagen waarvan de actuele stand mee terug moet
+    (bijv. na 'ongedaan maken', zodat die cellen hun oude waarde weer tonen).
+    Geeft {'bijgewerkt': {...}, 'dagopmerkingen': {...}, 'fouten': [...]}.
+    """
+    # Feestdagen van de betrokken jaren vooraf aanmaken. Dat moet vóór de wijzigingen,
+    # want het aanmaken slaat direct op (en een voorbeeld mag niets opslaan).
+    jaren = {w.datum.year for w in wijzigingen} | {d.year for d, _ in dag_wijzigingen} \
+        | {d.year for _, d in ook_tonen} | {d.year for d in ook_dagen}
+    for jaar in jaren:
+        for j in (jaar - 1, jaar, jaar + 1):  # een week kan over de jaargrens lopen
+            zorg_voor_jaar(j)
+
     try:
-        db.session.commit()
+        geraakt, fouten = _pas_cellen_toe(wijzigingen)
+        for datum, tekst in dag_wijzigingen:
+            pas_dagopmerking_toe(datum, tekst)
+        if wijzigingen or dag_wijzigingen:
+            markeer_bijgewerkt()
+        db.session.flush()
+
+        # Antwoord opbouwen vóór opslaan/terugdraaien (dan zijn de gegevens nog actueel)
+        regels = kleurregels()
+        bijgewerkt = {}
+        for mw, datum in geraakt | set(ook_tonen):
+            actueel = Dienst.query.filter_by(medewerker_id=mw, datum=datum).first()
+            gegevens = dienst_naar_dict(actueel, regels)
+            gegevens["weektotaal"] = formatteer_uren(weektotaal(mw, datum))
+            bijgewerkt[f"{mw}|{datum.isoformat()}"] = gegevens
+        dagen = sorted({d for d, _ in dag_wijzigingen} | set(ook_dagen))
+        dagresultaat = {d.isoformat(): v for d, v in dagopmerkingen(dagen).items()} if dagen else {}
+
+        if opslaan:
+            db.session.commit()
+        else:
+            db.session.rollback()  # alleen een voorbeeld: niets bewaren
     except IntegrityError as fout:  # tegelijk door een ander aangemaakt
         db.session.rollback()
         raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst.") from fout
+    return {"bijgewerkt": bijgewerkt, "dagopmerkingen": dagresultaat, "fouten": fouten}
 
-    regels = kleurregels()
-    bijgewerkt = {}
-    for (mw, datum), _dienst in geraakt.items():
-        actueel = Dienst.query.filter_by(medewerker_id=mw, datum=datum).first()
-        gegevens = dienst_naar_dict(actueel, regels)
-        gegevens["weektotaal"] = formatteer_uren(weektotaal(mw, datum))
-        bijgewerkt[f"{mw}|{datum.isoformat()}"] = gegevens
-    return bijgewerkt, fouten
+
+def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
+    """Wijzig cellen en sla direct op. Geeft (bijgewerkte dagen, fouten)."""
+    resultaat = verwerk_rooster(wijzigingen, opslaan=True)
+    return resultaat["bijgewerkt"], resultaat["fouten"]
 
 
 def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | None = None) -> int:
