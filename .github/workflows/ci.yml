@@ -1,6 +1,11 @@
 # Bij elke push en pull request: lint (ruff) en tests (pytest).
-# Op de main-branch (en bij een versietag) daarna ook de Docker-image bouwen
-# en publiceren op ghcr.io/sarnog/beveiligingsrooster.
+#
+# Docker-image bouwen en publiceren op ghcr.io/sarnog/beveiligingsrooster:
+#   - bij elke push naar main (tag 'latest');
+#   - bij een NIEUWE versie: staat er in app/__init__.py een VERSIE waarvoor nog geen
+#     tag v<VERSIE> bestaat, dan maakt deze workflow de image (<VERSIE> en 'latest'),
+#     de git-tag en een GitHub-release met de tekst uit CHANGELOG.md.
+# Een release maken is dus: VERSIE ophogen, CHANGELOG bijwerken, pushen.
 name: CI
 
 on:
@@ -26,9 +31,33 @@ jobs:
       - name: Tests (pytest)
         run: pytest -q
 
+  versie:
+    # Is dit een nieuwe versie (nog geen tag)?
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    outputs:
+      versie: ${{ steps.lees.outputs.versie }}
+      nieuw: ${{ steps.lees.outputs.nieuw }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versie lezen en vergelijken met de bestaande tags
+        id: lees
+        run: |
+          VERSIE=$(sed -n 's/^VERSIE = "\(.*\)"/\1/p' app/__init__.py)
+          echo "versie=$VERSIE" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSIE" >/dev/null; then
+            echo "nieuw=false" >> "$GITHUB_OUTPUT"
+            echo "Versie $VERSIE heeft al een tag."
+          else
+            echo "nieuw=true" >> "$GITHUB_OUTPUT"
+            echo "Nieuwe versie: $VERSIE"
+          fi
+
   image:
-    needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [test, versie]
+    if: >-
+      always() && needs.test.result == 'success' && github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || needs.versie.outputs.nieuw == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,9 +79,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || needs.versie.outputs.nieuw == 'true' }}
+            type=raw,value=${{ needs.versie.outputs.versie }},enable=${{ needs.versie.outputs.nieuw == 'true' }}
             type=sha,prefix=
       - name: Bouwen en publiceren (amd64 + arm64)
         uses: docker/build-push-action@v6
@@ -65,18 +95,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Bij een versietag (v1.2.3): GitHub-release aanmaken met de tekst uit CHANGELOG.md
   release:
-    needs: [test, image]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Tag v<VERSIE> en GitHub-release aanmaken, met de tekst uit CHANGELOG.md
+    needs: [test, versie, image]
+    if: needs.versie.outputs.nieuw == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Releasetekst uit CHANGELOG.md halen
+        env:
+          VERSIE: ${{ needs.versie.outputs.versie }}
         run: |
-          VERSIE="${GITHUB_REF_NAME#v}"
           # Alles tussen '## [VERSIE]' en de volgende '## ['-kop
           awk -v v="$VERSIE" '
             index($0, "## [" v "]") == 1 { bezig = 1; next }
@@ -86,12 +117,15 @@ jobs:
           {
             echo ""
             echo "### Installeren of bijwerken"
-            echo "Docker-image: \`${IMAGE:-ghcr.io/sarnog/beveiligingsrooster}:${VERSIE}\` (en \`latest\`)."
+            echo "Docker-image: \`ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/beveiligingsrooster:${VERSIE}\` (en \`latest\`)."
             echo "Zie de README voor het docker-compose-bestand, \`install.sh\` en \`update.sh\`."
           } >> release-tekst.md
           cat release-tekst.md
-      - name: Release aanmaken
+      - name: Tag en release aanmaken
         uses: softprops/action-gh-release@v2
         with:
-          name: Beveiligingsrooster ${{ github.ref_name }}
+          tag_name: v${{ needs.versie.outputs.versie }}
+          target_commitish: ${{ github.sha }}
+          name: Beveiligingsrooster v${{ needs.versie.outputs.versie }}
           body_path: release-tekst.md
+          make_latest: true
