@@ -85,6 +85,19 @@ def mijn():
                            vandaag=klok.vandaag())
 
 
+@bp.route("/mijn/agenda")
+@login_required
+def agenda_info():
+    """Uitleg voor de collega: hoe krijg ik mijn diensten in mijn eigen agenda?"""
+    medewerker = current_user.medewerker
+    if medewerker is None:
+        flash("Je account is niet gekoppeld aan een medewerker.", "info")
+        return redirect(url_for("kalender.jaar"))
+    ics_url = url_for("ics.feed", token=medewerker.ics_token, _external=True) \
+        if medewerker.ics_token else ""
+    return render_template("rooster/agenda_info.html", medewerker=medewerker, ics_url=ics_url)
+
+
 # ---------------------------------------------------------------------------
 # API voor het raster (alleen beheerder). Antwoorden altijd in JSON.
 # ---------------------------------------------------------------------------

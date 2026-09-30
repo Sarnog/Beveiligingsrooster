@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titel %}Rooster in mijn agenda{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>Mijn diensten in mijn agenda</h1>
+  {% if medewerker.agenda_modus == 'A' %}
+    <p>✅ Er is een Google-agenda <strong>"Rooster – {{ medewerker.naam }}"</strong> voor je gemaakt en gedeeld met <strong>{{ medewerker.email }}</strong>. Accepteer de uitnodiging in je e-mail; daarna staat de agenda naast je eigen agenda's. Wijzigingen verschijnen binnen ongeveer een minuut.</p>
+  {% elif medewerker.agenda_modus == 'B' %}
+    <p>✅ Je diensten worden automatisch in jouw gedeelde Google-agenda gezet. Wijzigingen verschijnen binnen ongeveer een minuut.</p>
+  {% else %}
+    <p>Er is (nog) geen koppeling met Google Agenda. Vraag de planner om die in te stellen.</p>
+  {% endif %}
+
+  <h2>Abonnementslink (ICS)</h2>
+  {% if ics_url %}
+    <p>Voor Outlook, Apple Agenda of andere apps:</p>
+    <input class="ics-link" readonly value="{{ ics_url }}" aria-label="ICS-link">
+    <ul class="hulp">
+      <li><strong>Google Agenda:</strong> Andere agenda's → + → Via URL → plak de link.</li>
+      <li><strong>Outlook:</strong> Agenda toevoegen → Abonneren via internet.</li>
+      <li><strong>iPhone:</strong> Instellingen → Agenda → Accounts → Voeg account toe → Andere → Voeg agenda-abonnement toe.</li>
+    </ul>
+    <p class="melding info">Google ververst een abonnementslink maar enkele keren per dag. Houd de link geheim: iedereen met de link ziet je diensten.</p>
+  {% else %}
+    <p class="hulp">Er is geen ICS-link voor je aangemaakt. Vraag de planner als je die wilt gebruiken.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -5,8 +5,8 @@ import secrets
 from flask import flash, redirect, render_template, request, url_for
 
 from ...extensions import db
-from ...models import Dienst
-from ...services import instellingen, logboek
+from ...models import Dienst, Medewerker
+from ...services import instellingen, logboek, sync_planning
 from ...services.rooster import herbereken_alle
 from ..hulp import beheerder_vereist, getal, vinkje
 from . import bp
@@ -77,6 +77,7 @@ def instellingen_scherm():
         if nieuw["deellink_actief"] == "1" and not instellingen.lees("deellink_token"):
             instellingen.schrijf("deellink_token", secrets.token_urlsafe(24))
 
+        oude = _huidig()
         uren_relevant = ("toeslag_zaterdag", "toeslag_zondag", "toeslag_feestdag",
                          "opmerkingtijden_meetellen")
         uren_gewijzigd = False
@@ -87,6 +88,10 @@ def instellingen_scherm():
                 instellingen.schrijf(sleutel, waarde)
                 uren_gewijzigd = uren_gewijzigd or sleutel in uren_relevant
         db.session.commit()
+        # Titel of tijdzone van afspraken gewijzigd: alle gekoppelde agenda's bijwerken
+        if any(instellingen.lees(k) != oude.get(k) for k in ("agenda_voorvoegsel", "tijdzone")):
+            for medewerker in Medewerker.query.filter(Medewerker.agenda_modus != "").all():
+                sync_planning.plan_volledig(medewerker)
         flash("Instellingen opgeslagen.", "succes")
         if uren_gewijzigd:
             flash("Je hebt iets gewijzigd dat de uren beïnvloedt. Bestaande uren zijn nog niet "

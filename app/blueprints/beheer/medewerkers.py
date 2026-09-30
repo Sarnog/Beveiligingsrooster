@@ -6,7 +6,7 @@ from flask import flash, jsonify, redirect, render_template, request, url_for
 
 from ...extensions import db
 from ...models import Contracturen, Dienst, Gebruiker, Medewerker
-from ...services import klok, logboek
+from ...services import klok, logboek, sync_planning
 from ...services.medewerkers import uniek_voorstel
 from ...services.tijden import parse_datum
 from ..hulp import beheerder_vereist, getal
@@ -143,6 +143,7 @@ def medewerker_bewerk(mid: int):
                 flash(fout, "fout")
             return render_template("beheer/medewerker_form.html", m=medewerker, w=waarden,
                                    jaar=klok.vandaag().year), 400
+        naam_gewijzigd = medewerker.naam != waarden["naam"]
         # Elke gewijzigde eigenschap apart loggen (oud -> nieuw)
         for veld in ("naam", "initialen", "functie_opmerking", "email"):
             oud = getattr(medewerker, veld)
@@ -152,6 +153,8 @@ def medewerker_bewerk(mid: int):
                 setattr(medewerker, veld, waarden[veld])
         _sla_contracturen_op(medewerker, waarden["contract"])
         db.session.commit()
+        if naam_gewijzigd:
+            sync_planning.plan_toekomst(medewerker)  # agenda-afspraken bijwerken
         flash("Wijzigingen opgeslagen.", "succes")
         return redirect(url_for("beheer.medewerkers"))
     waarden = {
@@ -196,6 +199,8 @@ def medewerker_archiveer(mid: int):
     else:
         vanaf = parse_datum(request.form.get("vanaf")) or klok.vandaag()
         medewerker.gearchiveerd_vanaf = vanaf
+        if medewerker.agenda_modus and request.form.get("agenda") in ("behouden", "verwijderen"):
+            sync_planning.plan_ontkoppel(medewerker, request.form.get("agenda") == "verwijderen")
         logboek.log("Medewerker gearchiveerd", medewerker=medewerker.naam,
                     veld="gearchiveerd_vanaf", nieuw=vanaf.strftime("%d-%m-%Y"))
         flash(f"{medewerker.naam} is gearchiveerd vanaf {vanaf:%d-%m-%Y}.", "succes")
@@ -213,6 +218,9 @@ def medewerker_verwijder(mid: int):
         if aantal and request.form.get("bevestig") != str(aantal):
             flash("Bevestig eerst dat alle diensten ook verwijderd worden.", "fout")
             return render_template("beheer/medewerker_verwijder.html", m=medewerker, aantal=aantal), 400
+        # Agenda: afspraken laten staan of (via de worker) verwijderen
+        if medewerker.agenda_modus:
+            sync_planning.plan_ontkoppel(medewerker, request.form.get("agenda") == "verwijderen")
         # Gekoppelde accounts losmaken
         Gebruiker.query.filter_by(medewerker_id=mid).update({"medewerker_id": None})
         Dienst.query.filter_by(medewerker_id=mid).delete()

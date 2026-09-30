@@ -280,8 +280,9 @@ class SyncTaak(db.Model):
     __tablename__ = "sync_wachtrij"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Mag leeg zijn: een 'ontkoppel'-taak blijft bestaan als de medewerker is verwijderd
     medewerker_id = db.Column(
-        db.Integer, db.ForeignKey("medewerker.id", ondelete="CASCADE"), nullable=False
+        db.Integer, db.ForeignKey("medewerker.id", ondelete="SET NULL"), nullable=True
     )
     datum = db.Column(db.Date, nullable=True)  # leeg = volledige synchronisatie
     soort = db.Column(db.String(20), nullable=False, default="dag")  # dag/volledig/ontkoppel

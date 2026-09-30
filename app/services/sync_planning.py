@@ -8,10 +8,11 @@ wachtende taak, dan schuiven we die een paar seconden op in plaats van een
 nieuwe toe te voegen. Tien snelle wijzigingen leveren zo één API-call op.
 """
 
+import json
 from datetime import date, timedelta
 
 from ..extensions import db
-from ..models import Dienst, Medewerker, SyncTaak
+from ..models import Dienst, Dienstcode, Medewerker, SyncTaak
 from . import klok
 
 DEBOUNCE_SECONDEN = 10
@@ -66,3 +67,36 @@ def plan_volledig(medewerker: Medewerker) -> None:
         db.session.add(SyncTaak(medewerker_id=medewerker.id, soort="volledig",
                                 niet_voor=klok.nu()))
     db.session.commit()
+
+
+def plan_code(code: Dienstcode) -> None:
+    """Na het wijzigen van een dienstcode: toekomstige diensten met die code opnieuw zetten."""
+    diensten = Dienst.query.filter(
+        Dienst.dienstcode_id == code.id, Dienst.datum >= klok.vandaag()
+    ).all()
+    plan_diensten(diensten)
+
+
+def plan_ontkoppel(medewerker: Medewerker, verwijder: bool) -> None:
+    """Ontkoppel een medewerker. Met verwijder=True ruimt de worker de afspraken op
+    (modus A: de hele agenda, modus B: alle afspraken van deze app).
+
+    De koppeling zelf wordt direct losgemaakt; de afspraak-ID's in het rooster ook.
+    """
+    extra = {"agenda_id": medewerker.agenda_id, "modus": medewerker.agenda_modus,
+             "verwijder": verwijder}
+    if medewerker.agenda_id and verwijder:
+        db.session.add(SyncTaak(medewerker_id=medewerker.id, soort="ontkoppel",
+                                niet_voor=klok.nu(), extra=json.dumps(extra)))
+    # Openstaande taken voor deze medewerker zijn niet meer nodig
+    SyncTaak.query.filter(SyncTaak.medewerker_id == medewerker.id,
+                          SyncTaak.soort != "ontkoppel", SyncTaak.status == "wacht").delete()
+    for dienst in Dienst.query.filter(Dienst.medewerker_id == medewerker.id,
+                                      Dienst.google_event_id != "").all():
+        dienst.google_event_id = ""
+        if dienst.is_leeg:
+            db.session.delete(dienst)
+    medewerker.agenda_modus = ""
+    medewerker.agenda_id = ""
+    medewerker.agenda_laatste_fout = ""
+    medewerker.agenda_laatst_gesync = None

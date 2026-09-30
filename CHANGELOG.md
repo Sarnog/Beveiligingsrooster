@@ -2,6 +2,15 @@
 
 ## [Onuitgebracht]
 
+### Fase 3 – agenda
+- Google Agenda-koppeling via een service-account: modus A (app maakt en deelt een agenda) en
+  modus B (gedeelde bestaande agenda); test, volledige synchronisatie en ontkoppelen.
+- Asynchrone sync-wachtrij met samenvoegen (debounce), exponentiële backoff en foutstatus;
+  alleen eigen afspraken (gemarkeerd) worden aangeraakt, verweesde afspraken worden opgeruimd.
+- Her-synchronisatie na wijziging van dienstcode, medewerkersnaam, dagopmerking of voorvoegsel.
+- Geheime ICS-feed per medewerker (vernieuwen/intrekken), tijden in UTC (zomer-/wintertijd correct).
+- Handleiding docs/google-agenda.md.
+
 ### Fase 2 – het rooster
 - Weekrooster met code-raster en visueel rooster naast elkaar; Excel-achtige toetsenbordbediening
   (pijltjes, Tab, Enter, typen, F2, Delete, Esc, selecteren, kopiëren/plakken ook uit Excel, Ctrl+Z).

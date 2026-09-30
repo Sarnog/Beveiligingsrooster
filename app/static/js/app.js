@@ -45,6 +45,20 @@
       });
     });
 
+    // Kopieerknop (bijv. e-mailadres van het service-account)
+    document.querySelectorAll("[data-kopieer-knop]").forEach(function (knop) {
+      knop.addEventListener("click", function () {
+        navigator.clipboard.writeText(knop.getAttribute("data-kopieer-knop")).then(function () {
+          knop.textContent = "Gekopieerd ✓";
+        });
+      });
+    });
+
+    // ICS-link: in één klik alles selecteren
+    document.querySelectorAll(".ics-link").forEach(function (veld) {
+      veld.addEventListener("focus", function () { veld.select(); });
+    });
+
     // Printknop
     document.querySelectorAll("[data-print]").forEach(function (knop) {
       knop.addEventListener("click", function () { window.print(); });

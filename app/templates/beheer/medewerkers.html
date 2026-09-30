@@ -30,6 +30,13 @@
                 data-bevestig="{{ m.naam }} archiveren? Historische diensten blijven bewaard.">
             {{ csrf() }}
             <input type="date" name="vanaf" value="{{ vandaag.isoformat() }}" class="klein" aria-label="Archiveren vanaf">
+            {% if m.agenda_modus %}
+            <select name="agenda" class="klein" aria-label="Agenda">
+              <option value="">Agenda gekoppeld laten</option>
+              <option value="behouden">Ontkoppelen, afspraken laten staan</option>
+              <option value="verwijderen">Ontkoppelen en afspraken verwijderen</option>
+            </select>
+            {% endif %}
             <button class="knop klein" type="submit">Archiveren</button>
           </form>
         {% endif %}

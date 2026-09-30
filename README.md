@@ -35,7 +35,7 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 | **Urenberekening** | Precies zoals de oude Excel-VBA: pauze-aftrek, toeslag voor zaterdag en zondag, afronding op kwartieren | ✅ |
 | **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf | ✅ |
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | ✅ |
-| **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | fase 3 |
+| **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
 | **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen; back-ups downloaden en terugzetten | fase 4 |
 
 ## Hoe werkt het?
@@ -295,6 +295,7 @@ Een nieuwe databasemigratie maak je na een wijziging in `models.py` met `flask -
 
 - [Handleiding voor de planner](docs/handleiding-planner.md): een week invullen met het code-raster, toetsen, tijden, opmerkingen, beheer.
 - [Handleiding voor collega's](docs/handleiding-collega.md): inloggen, rooster bekijken, printen, agenda.
+- [Google Agenda koppelen](docs/google-agenda.md): service-account, modus A/B, ICS-feed.
 - [Installatie op Proxmox](docs/proxmox-lxc.md): LXC aanmaken, Docker, HTTPS.
 
 ## Licentie

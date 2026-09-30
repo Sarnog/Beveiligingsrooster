@@ -12,6 +12,12 @@
   {% endif %}
   <form method="post">
     {{ csrf() }}
+    {% if m.agenda_modus %}
+    <fieldset><legend>Google Agenda</legend>
+      <label class="vink"><input type="radio" name="agenda" value="behouden" checked><span>Afspraken in de agenda laten staan</span></label>
+      <label class="vink"><input type="radio" name="agenda" value="verwijderen"><span>Afspraken{% if m.agenda_modus == 'A' %} (de hele agenda){% endif %} ook verwijderen</span></label>
+    </fieldset>
+    {% endif %}
     {% if aantal %}
     <label class="vink"><input type="checkbox" name="bevestig" value="{{ aantal }}" required>
       <span>Ja, verwijder {{ m.naam }} en alle {{ aantal }} diensten</span></label>

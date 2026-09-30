@@ -340,3 +340,9 @@ td.positief { color: #1565c0; font-weight: 600; }
   body { background: #fff; color: #000; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Agenda-beheer ---------- */
+.ics-link { width: 100%; min-width: 240px; font-size: .8rem; font-family: ui-monospace, Consolas, monospace; }
+.breek { word-break: break-all; }
+.melding-inline.fout { color: var(--gevaar); font-size: .85rem; }
+details > summary { cursor: pointer; }

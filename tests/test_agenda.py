@@ -1,0 +1,337 @@
+"""Google Agenda-synchronisatie (met een nep-Google) en de ICS-feed (fase 3)."""
+
+import io
+import json
+import os
+import stat
+from datetime import date, datetime, timedelta
+
+import pytest
+
+from app.extensions import db
+from app.models import Dienst, Dienstcode, Logboek, Medewerker, SyncTaak
+from app.services import google_agenda, sync
+from app.services.google_agenda import AgendaFout, afspraak_voor
+from app.services.urenberekening import bereken_uren
+from app.services.voorbeeldpakket import laad_voorbeeldpakket
+from app.services.weekrooster import Wijziging, wijzig_cellen
+
+MAANDAG = date(2026, 3, 2)
+
+
+class NepKlant:
+    """Doet alsof het Google Calendar is (alles in het geheugen)."""
+
+    def __init__(self):
+        self.agendas: dict[str, dict] = {}
+        self.teller = 0
+        self.gedeeld: list[tuple[str, str]] = []
+
+    def _nieuw_id(self, soort):
+        self.teller += 1
+        return f"{soort}{self.teller}"
+
+    def maak_agenda(self, titel, tijdzone):
+        agenda_id = self._nieuw_id("agenda") + "@group.calendar.google.com"
+        self.agendas[agenda_id] = {}
+        return agenda_id
+
+    def deel_agenda(self, agenda_id, email):
+        self.gedeeld.append((agenda_id, email))
+
+    def agenda_info(self, agenda_id):
+        if agenda_id not in self.agendas:
+            raise AgendaFout("niet gevonden", status=404)
+        return {"summary": "Test"}
+
+    def verwijder_agenda(self, agenda_id):
+        self.agendas.pop(agenda_id, None)
+
+    def maak_afspraak(self, agenda_id, body):
+        event_id = self._nieuw_id("event")
+        self.agendas.setdefault(agenda_id, {})[event_id] = dict(body, id=event_id)
+        return event_id
+
+    def wijzig_afspraak(self, agenda_id, event_id, body):
+        if event_id not in self.agendas.get(agenda_id, {}):
+            raise AgendaFout("niet gevonden", status=404)
+        self.agendas[agenda_id][event_id] = dict(body, id=event_id)
+        return event_id
+
+    def verwijder_afspraak(self, agenda_id, event_id):
+        self.agendas.get(agenda_id, {}).pop(event_id, None)
+
+    def eigen_afspraken(self, agenda_id, van=None, tot=None):
+        return [e for e in self.agendas.get(agenda_id, {}).values()
+                if e.get("extendedProperties", {}).get("private", {}).get("bron") == "beveiligingsrooster"]
+
+
+@pytest.fixture
+def nep(app, monkeypatch):
+    klant = NepKlant()
+    klant.agendas["agenda-a"] = {}
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    return klant
+
+
+@pytest.fixture
+def gekoppeld(klaar, nep):
+    laad_voorbeeldpakket()
+    medewerker = Medewerker(naam="Medewerker A", initialen="TSA", email="a@voorbeeld.nl",
+                            agenda_modus="B", agenda_id="agenda-a")
+    db.session.add(medewerker)
+    db.session.commit()
+    return medewerker
+
+
+def wachtrij_nu_uitvoeren():
+    """Debounce overslaan: alle wachtende taken direct aan de beurt."""
+    SyncTaak.query.update({"niet_voor": datetime(2000, 1, 1)})
+    db.session.commit()
+    return sync.verwerk_wachtrij()
+
+
+def afspraken(nep, agenda="agenda-a"):
+    return list(nep.agendas.get(agenda, {}).values())
+
+
+# ---------- Afspraak opbouwen ----------
+
+def test_afspraak_met_tijden(app, gekoppeld):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4"),
+                   Wijziging(gekoppeld.id, MAANDAG, "opmerking", "BHV")])
+    dienst = Dienst.query.one()
+    body = afspraak_voor(dienst, "Voorjaarsvakantie").body
+    assert body["summary"] == "VW Vroeg"
+    assert body["start"] == {"dateTime": "2026-03-02T07:15:00", "timeZone": "Europe/Amsterdam"}
+    assert body["end"]["dateTime"] == "2026-03-02T15:45:00"
+    assert "Dienstcode: 4" in body["description"] and "Opmerking: BHV" in body["description"]
+    assert "Dag: Voorjaarsvakantie" in body["description"]
+    assert "niet handmatig wijzigen" in body["description"]
+    assert body["extendedProperties"]["private"]["bron"] == "beveiligingsrooster"
+
+
+def test_nachtdienst_in_de_nacht_van_de_klokwissel(app, gekoppeld):
+    # Zaterdag 24-10-2026 -> zondag 25-10-2026: de klok gaat om 03:00 terug naar 02:00
+    zaterdag = date(2026, 10, 24)
+    wijzig_cellen([Wijziging(gekoppeld.id, zaterdag, "begin", "22:00"),
+                   Wijziging(gekoppeld.id, zaterdag, "eind", "06:30")])
+    dienst = Dienst.query.one()
+    dienst.dienstnaam_override = "Nachtdienst"
+    body = afspraak_voor(dienst).body
+    assert body["start"]["dateTime"] == "2026-10-24T22:00:00"
+    assert body["end"]["dateTime"] == "2026-10-25T06:30:00"  # volgende dag, Google regelt de DST
+    # Uren volgen bewust de Excel-logica (wandklok): 8,5 - 0,5 = 8,0 x 1,5 (zaterdag)
+    assert bereken_uren("22:00", "06:30", 1.5) == 12.0
+
+
+def test_hele_dag_en_niet_in_agenda(app, gekoppeld):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "10")])  # Bapo, geen tijden
+    body = afspraak_voor(Dienst.query.one()).body
+    assert body["start"] == {"date": "2026-03-02"} and body["end"] == {"date": "2026-03-03"}
+    code = Dienstcode.query.filter_by(nummer=10).one()
+    code.in_agenda = False
+    db.session.commit()
+    assert afspraak_voor(Dienst.query.one()) is None
+
+
+def test_voorvoegsel(app, gekoppeld):
+    from app.services import instellingen
+
+    instellingen.schrijf("agenda_voorvoegsel", "Werk: ")
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    assert afspraak_voor(Dienst.query.one()).body["summary"] == "Werk: VW Vroeg"
+
+
+# ---------- Wachtrij en synchronisatie ----------
+
+def test_wijziging_komt_via_wachtrij_in_agenda(app, gekoppeld, nep):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    taak = SyncTaak.query.one()
+    assert taak.niet_voor > datetime.now() - timedelta(minutes=5)  # debounce: nog even wachten
+    assert wachtrij_nu_uitvoeren() == 1
+    assert SyncTaak.query.count() == 0
+    assert [a["summary"] for a in afspraken(nep)] == ["VW Vroeg"]
+    assert Dienst.query.one().google_event_id
+    assert db.session.get(Medewerker, gekoppeld.id).agenda_laatst_gesync is not None
+
+
+def test_tien_snelle_wijzigingen_een_taak(app, gekoppeld, nep):
+    for code in ["4", "5", "4", "5", "4", "5", "4", "5", "4", "7"]:
+        wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", code)])
+    assert SyncTaak.query.count() == 1
+    wachtrij_nu_uitvoeren()
+    assert [a["summary"] for a in afspraken(nep)] == ["OB Vroeg"]
+
+
+def test_dienst_wissen_verwijdert_afspraak(app, gekoppeld, nep):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    wachtrij_nu_uitvoeren()
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "15")])  # blanco-code
+    # De lege regel blijft even bestaan zolang de afspraak nog weg moet
+    assert Dienst.query.count() == 1
+    wachtrij_nu_uitvoeren()
+    assert afspraken(nep) == [] and Dienst.query.count() == 0
+
+
+def test_handmatig_verwijderde_afspraak_wordt_opnieuw_gemaakt(app, gekoppeld, nep):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    wachtrij_nu_uitvoeren()
+    nep.agendas["agenda-a"].clear()  # iemand verwijdert hem in Google
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "eind", "16:00")])
+    wachtrij_nu_uitvoeren()
+    assert afspraken(nep)[0]["end"]["dateTime"].endswith("16:00:00")
+
+
+def test_volledige_sync_ruimt_wezen_op(app, gekoppeld, nep):
+    # Een oude afspraak van de app zonder dienst ('wees') en een afspraak van de collega zelf
+    nep.agendas["agenda-a"]["wees"] = {"id": "wees", "start": {"date": "2026-03-03"},
+                                       "extendedProperties": {"private": {"bron": "beveiligingsrooster"}}}
+    nep.agendas["agenda-a"]["eigen"] = {"id": "eigen", "summary": "Tandarts"}
+    vandaag = date.today()
+    db.session.add(Dienst(medewerker_id=gekoppeld.id, datum=vandaag + timedelta(days=3),
+                          dienstcode_id=Dienstcode.query.filter_by(nummer=4).one().id,
+                          begin="07:15", eind="15:45", dienstnaam_override="", opmerking_tekst=""))
+    db.session.commit()
+    from app.services import sync_planning
+
+    sync_planning.plan_volledig(gekoppeld)
+    wachtrij_nu_uitvoeren()
+    ids = set(nep.agendas["agenda-a"])
+    assert "wees" not in ids and "eigen" in ids  # alleen eigen afspraken worden aangeraakt
+    assert len(ids) == 2
+    assert Logboek.query.filter_by(actie="Agenda gesynchroniseerd").count() == 1
+
+
+def test_tijdelijke_fout_backoff_en_definitieve_fout(app, gekoppeld, monkeypatch):
+    class KapotteKlant(NepKlant):
+        def maak_afspraak(self, agenda_id, body):
+            raise AgendaFout("Te veel verzoeken (429)", tijdelijk=True, status=429)
+
+    kapot = KapotteKlant()
+    monkeypatch.setattr(google_agenda, "klant", lambda: kapot)
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    wachtrij_nu_uitvoeren()
+    taak = SyncTaak.query.one()
+    assert taak.pogingen == 1 and taak.status == "wacht" and taak.niet_voor > datetime.now()
+    for _ in range(sync.MAX_POGINGEN):
+        wachtrij_nu_uitvoeren()
+    taak = SyncTaak.query.one()
+    assert taak.status == "fout"
+    assert "429" in db.session.get(Medewerker, gekoppeld.id).agenda_laatste_fout
+    assert Logboek.query.filter_by(actie="Agenda-sync fout").count() == 1
+    # Opnieuw proberen zet de taak terug
+    assert sync.probeer_mislukte_opnieuw() == 1
+
+
+def test_wachttijd_groeit_exponentieel():
+    assert [sync.wachttijd(p).seconds for p in (1, 2, 3, 4)] == [30, 60, 120, 240]
+    assert sync.wachttijd(20).seconds == 3600
+
+
+def test_naamwijziging_code_plant_hersync(app, gekoppeld, als_beheerder):
+    toekomst = date.today() + timedelta(days=2)
+    wijzig_cellen([Wijziging(gekoppeld.id, toekomst, "code", "4")])
+    wachtrij_nu_uitvoeren()
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    als_beheerder.post(f"/beheer/dienstcodes/{code.id}", data={
+        "nummer": "4", "omschrijving": "VW Vroeg (nieuw)", "std_begin": "07:15", "std_eind": "15:45",
+        "vet": "1", "actief": "1", "in_agenda": "1"})
+    assert SyncTaak.query.count() == 1
+
+
+# ---------- Beheerscherm ----------
+
+def test_ontkoppelen_modus_a_verwijdert_agenda(app, gekoppeld, nep, als_beheerder):
+    medewerker = db.session.get(Medewerker, gekoppeld.id)
+    medewerker.agenda_modus, medewerker.agenda_id = "", ""
+    db.session.commit()
+    als_beheerder.post(f"/beheer/agenda/{medewerker.id}/koppel", data={"modus": "A"})
+    medewerker = db.session.get(Medewerker, medewerker.id)
+    assert medewerker.agenda_modus == "A" and medewerker.agenda_id in nep.agendas
+    assert nep.gedeeld == [(medewerker.agenda_id, "a@voorbeeld.nl")]
+    agenda_id = medewerker.agenda_id
+    als_beheerder.post(f"/beheer/agenda/{medewerker.id}/ontkoppel", data={"verwijder": "1"})
+    assert db.session.get(Medewerker, medewerker.id).agenda_modus == ""
+    wachtrij_nu_uitvoeren()
+    assert agenda_id not in nep.agendas
+
+
+def test_koppelen_modus_b_test_agenda(app, gekoppeld, nep, als_beheerder):
+    antwoord = als_beheerder.post(f"/beheer/agenda/{gekoppeld.id}/koppel",
+                                  data={"modus": "B", "agenda_id": "bestaat-niet"}, follow_redirects=True)
+    assert "Koppelen mislukt" in antwoord.data.decode()
+
+
+def test_medewerker_verwijderen_met_agenda(app, gekoppeld, nep, als_beheerder):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    wachtrij_nu_uitvoeren()
+    als_beheerder.post(f"/beheer/medewerkers/{gekoppeld.id}/verwijder",
+                       data={"bevestig": "1", "agenda": "verwijderen"})
+    assert Medewerker.query.count() == 0
+    taak = SyncTaak.query.one()
+    assert taak.medewerker_id is None and taak.soort == "ontkoppel"
+    wachtrij_nu_uitvoeren()
+    assert afspraken(nep) == []
+
+
+def test_sleutel_uploaden(app, als_beheerder):
+    antwoord = als_beheerder.post("/beheer/agenda/sleutel", data={
+        "sleutel": (io.BytesIO(b'{"type": "iets anders"}'), "sleutel.json")},
+        content_type="multipart/form-data", follow_redirects=True)
+    assert "geen sleutelbestand" in antwoord.data.decode()
+    geldig = json.dumps({"type": "service_account", "client_email": "rooster@project.iam.gserviceaccount.com",
+                         "private_key": "-----BEGIN PRIVATE KEY-----\\nXX\\n-----END PRIVATE KEY-----\\n"})
+    antwoord = als_beheerder.post("/beheer/agenda/sleutel", data={
+        "sleutel": (io.BytesIO(geldig.encode()), "sleutel.json")},
+        content_type="multipart/form-data", follow_redirects=True)
+    pagina = antwoord.data.decode()
+    assert "rooster@project.iam.gserviceaccount.com" in pagina
+    rechten = stat.S_IMODE(os.stat(google_agenda.sleutel_pad()).st_mode)
+    assert rechten == 0o600
+
+
+def test_agenda_scherm(als_beheerder, gekoppeld):
+    assert als_beheerder.get("/beheer/agenda").status_code == 200
+
+
+# ---------- ICS ----------
+
+def test_ics_feed(app, client, gekoppeld, als_beheerder):
+    vandaag = date.today()
+    wijzig_cellen([Wijziging(gekoppeld.id, vandaag, "code", "4")])
+    als_beheerder.post(f"/beheer/agenda/{gekoppeld.id}/ics")
+    token = db.session.get(Medewerker, gekoppeld.id).ics_token
+    assert len(token) > 20
+    als_beheerder.post("/uitloggen")
+    antwoord = client.get(f"/ics/{token}.ics")  # zonder login
+    assert antwoord.status_code == 200 and antwoord.mimetype == "text/calendar"
+    tekst = antwoord.data.decode()
+    assert tekst.startswith("BEGIN:VCALENDAR\r\n") and "SUMMARY:VW Vroeg" in tekst
+    assert f"DTSTART:{vandaag.strftime('%Y%m%d')}T" in tekst and "Z\r\n" in tekst
+    assert client.get("/ics/verkeerd-token-van-voldoende-lengte.ics").status_code == 404
+
+
+def test_ics_tijden_in_utc_met_zomertijd(app, gekoppeld):
+    from app.services.ics import _utc
+
+    assert _utc("2026-03-02T07:15:00") == "20260302T061500Z"  # wintertijd (UTC+1)
+    assert _utc("2026-07-01T07:15:00") == "20260701T051500Z"  # zomertijd (UTC+2)
+
+
+def test_migraties_kloppen_met_model(tmp_path, monkeypatch):
+    """Een lege database met 'flask db upgrade' moet precies het datamodel opleveren."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+    from flask_migrate import upgrade
+
+    from app import create_app
+
+    from .conftest import TestConfig
+
+    app = create_app(TestConfig(str(tmp_path)))
+    with app.app_context():
+        upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
+        with db.engine.connect() as verbinding:
+            verschillen = compare_metadata(MigrationContext.configure(verbinding), db.metadata)
+        assert verschillen == []

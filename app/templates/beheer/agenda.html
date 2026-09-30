@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, post_knop %}
+{% block titel %}Google Agenda{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<h1>Google Agenda en ICS</h1>
+
+<section class="kaart">
+  <h2>1. Service-account</h2>
+  {% if sleutel %}
+    <p>Sleutel aanwezig. E-mailadres van het service-account:</p>
+    <p><code class="kopieerbaar" data-kopieer>{{ sa_email }}</code>
+       <button class="knop klein" type="button" data-kopieer-knop="{{ sa_email }}">Kopiëren</button></p>
+    <p class="hulp">Modus B: de collega deelt zijn of haar agenda met dit adres, met het recht <em>"Wijzigingen aanbrengen in afspraken"</em>.</p>
+    {{ post_knop(url_for('beheer.agenda_sleutel'), 'Sleutel verwijderen', 'knop klein gevaar', bevestig='Sleutel verwijderen? De synchronisatie stopt dan.', velden={'verwijder': '1'}) }}
+  {% else %}
+    <p>Upload het JSON-sleutelbestand van het Google service-account. De stappen staan in <code>docs/google-agenda.md</code>.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('beheer.agenda_sleutel') }}" enctype="multipart/form-data" class="rij-formulier">
+    {{ csrf() }}
+    <label class="veld"><span>{{ 'Andere sleutel' if sleutel else 'Sleutelbestand (.json)' }}</span><input type="file" name="sleutel" accept=".json,application/json" required></label>
+    <button class="knop primair" type="submit">Uploaden</button>
+  </form>
+  <p class="hulp">Het bestand wordt alleen-leesbaar in de datamap bewaard en komt nooit in git.
+    Let op: het zit wél in back-ups van de datamap; bewaar die dus veilig.</p>
+</section>
+
+<section class="kaart">
+  <h2>2. Medewerkers koppelen</h2>
+  <p class="hulp">Wijzigingen verschijnen binnen ongeveer een minuut in de agenda. Volledige synchronisatie: {{ periode[0]|datum_nl }} t/m {{ periode[1]|datum_nl }}.
+    Wachtrij: {{ wachtrij.get('wacht', 0) }} wachtend, {{ wachtrij.get('fout', 0) }} mislukt.
+    {% if wachtrij.get('fout') %}{{ post_knop(url_for('beheer.agenda_opnieuw'), 'Mislukte opnieuw proberen', 'knop klein') }}{% endif %}</p>
+  <div class="tabel-schuif">
+  <table class="tabel">
+    <thead><tr><th>Medewerker</th><th>Google Agenda</th><th>Status</th><th>Acties</th><th>ICS-feed</th></tr></thead>
+    <tbody>
+    {% for m in medewerkers %}
+      <tr>
+        <td><strong>{{ m.naam }}</strong><br><small class="hulp">{{ m.email or 'geen e-mailadres' }}</small></td>
+        <td>
+          {% if m.agenda_modus %}
+            Modus {{ m.agenda_modus }}<br><small class="hulp breek">{{ m.agenda_id }}</small>
+          {% elif sleutel %}
+            <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="inline">
+              {{ csrf() }}<input type="hidden" name="modus" value="A">
+              <button class="knop klein primair" type="submit" {% if not m.email %}disabled title="Vul eerst een e-mailadres in"{% endif %}>Modus A: eigen agenda aanmaken</button>
+            </form>
+            <details><summary class="hulp">Modus B: gedeelde agenda</summary>
+              <form method="post" action="{{ url_for('beheer.agenda_koppel', mid=m.id) }}" class="rij-formulier compact">
+                {{ csrf() }}<input type="hidden" name="modus" value="B">
+                <input name="agenda_id" placeholder="agenda-ID (…@group.calendar.google.com of e-mailadres)" size="34" required>
+                <button class="knop klein" type="submit">Koppelen</button>
+              </form>
+            </details>
+          {% else %}<span class="hulp">eerst sleutel uploaden</span>{% endif %}
+        </td>
+        <td>
+          {% if m.agenda_modus %}
+            {{ afspraken.get(m.id, 0) }} afspraken<br>
+            <small class="hulp">Laatst: {{ m.agenda_laatst_gesync.strftime('%d-%m-%Y %H:%M') if m.agenda_laatst_gesync else 'nog niet' }}</small>
+            {% if m.agenda_laatste_fout %}<br><span class="melding-inline fout">{{ m.agenda_laatste_fout }}</span>{% endif %}
+          {% endif %}
+        </td>
+        <td class="nowrap">
+          {% if m.agenda_modus %}
+            {{ post_knop(url_for('beheer.agenda_test', mid=m.id), 'Test koppeling', 'knop klein') }}
+            {{ post_knop(url_for('beheer.agenda_volledig', mid=m.id), 'Volledig synchroniseren', 'knop klein') }}
+            <details><summary class="knop klein gevaar">Ontkoppelen…</summary>
+              <form method="post" action="{{ url_for('beheer.agenda_ontkoppel', mid=m.id) }}" data-bevestig="{{ m.naam }} ontkoppelen?">
+                {{ csrf() }}
+                <label class="vink"><input type="checkbox" name="verwijder" value="1"><span>Ook de afspraken verwijderen{% if m.agenda_modus == 'A' %} (de hele agenda){% endif %}</span></label>
+                <button class="knop klein gevaar" type="submit">Ontkoppelen</button>
+              </form>
+            </details>
+          {% endif %}
+        </td>
+        <td>
+          {% if m.ics_token %}
+            <input class="ics-link" readonly value="{{ url_for('ics.feed', token=m.ics_token, _external=True) }}" aria-label="ICS-link">
+            {{ post_knop(url_for('beheer.agenda_ics', mid=m.id), 'Vernieuwen', 'knop klein', bevestig='Nieuwe link maken? De oude werkt dan niet meer.') }}
+            {{ post_knop(url_for('beheer.agenda_ics', mid=m.id), 'Intrekken', 'knop klein gevaar', bevestig='ICS-link intrekken?', velden={'intrekken': '1'}) }}
+          {% else %}
+            {{ post_knop(url_for('beheer.agenda_ics', mid=m.id), 'ICS-link maken', 'knop klein') }}
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="5">Nog geen medewerkers.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="hulp"><strong>ICS-feed:</strong> werkt met Google, Outlook en Apple. Google ververst een geabonneerde feed maar <strong>enkele keren per dag</strong>; voor directe updates gebruik je de koppeling (modus A of B). Google moet de app via internet kunnen bereiken (HTTPS via Caddy of een tunnel).</p>
+</section>
+{% endblock %}

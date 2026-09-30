@@ -7,7 +7,7 @@
   <span class="knoppen">
     <a class="knop" href="{{ url_for('rooster.week') }}">Deze week</a>
     <a class="knop" href="{{ url_for('kalender.jaar') }}">Kalender</a>
-    {% if heeft_route('ics.agenda_info') %}<a class="knop" href="{{ url_for('ics.agenda_info') }}">In mijn agenda</a>{% endif %}
+    {% if heeft_route('rooster.agenda_info') %}<a class="knop" href="{{ url_for('rooster.agenda_info') }}">In mijn agenda</a>{% endif %}
   </span>
 </div>
 <p class="hulp">Je diensten voor de komende 8 weken.</p>

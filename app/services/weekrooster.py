@@ -148,6 +148,9 @@ def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
 
     logboek.log("Dagopmerking gewijzigd", datum=datum, veld="dagopmerking", oud=oud, nieuw=tekst)
     markeer_bijgewerkt()
+    # De dagopmerking staat in de omschrijving van agenda-afspraken
+    for dienst in Dienst.query.filter_by(datum=datum).all():
+        sync_planning.plan_dag(dienst.medewerker, datum, commit=False)
     db.session.commit()
     return dagopmerkingen([datum])[datum]
 

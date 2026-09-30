@@ -33,7 +33,7 @@ De site werkt ook op je telefoon. Via het menu (☰) kies je *Mijn rooster*. Het
 
 ## Je diensten in je eigen agenda
 
-Dit wordt ingesteld door de planner (vanaf fase 3):
+Dit wordt ingesteld door de planner. Kijk bij **Mijn rooster → In mijn agenda** wat er voor jou is ingesteld.
 
 - **Google Agenda**: je krijgt een uitnodiging voor een agenda "Rooster – jouw naam". Accepteer die, dan staan je diensten automatisch in je agenda. Wijzigingen verschijnen binnen ongeveer een minuut.
 - **Andere agenda's** (Outlook, Apple): de planner kan je een geheime abonnementslink (ICS) geven. Let op: Google ververst zo'n link maar een paar keer per dag.

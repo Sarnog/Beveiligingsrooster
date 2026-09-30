@@ -84,9 +84,20 @@ def _lees_of_maak_geheime_sleutel(data_map: str) -> str:
 
 
 def _registreer_blueprints(app: Flask) -> None:
-    from .blueprints import algemeen, auth, beheer, deel, kalender, overzicht, rooster, setup, zoeken
+    from .blueprints import (
+        algemeen,
+        auth,
+        beheer,
+        deel,
+        ics,
+        kalender,
+        overzicht,
+        rooster,
+        setup,
+        zoeken,
+    )
 
-    for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel):
+    for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics):
         app.register_blueprint(module.bp)
 
 
