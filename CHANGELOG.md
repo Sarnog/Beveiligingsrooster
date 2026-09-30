@@ -2,6 +2,24 @@
 
 ## [Onuitgebracht]
 
+## [1.1.2] – 2026-10-01
+
+### Opgelost
+- Wijzigingen in het weekrooster werden nog steeds direct opgeslagen. Oorzaken:
+  - de beveiliging aan serverkant (alleen opslaan via de knop) zat niet in een gebouwde image,
+    omdat een andere wijziging al als 1.1.1 was uitgebracht;
+  - er werd een oud script geladen (cache in de browser of een reverse proxy).
+- De server slaat alleen nog op bij een expliciete opdracht van de knop **Opslaan**; anders wordt
+  alleen een voorbeeld berekend. Een oud script kan dus niets meer opslaan.
+- Scripts en CSS hebben het versienummer in het adres; pagina's en API-antwoorden krijgen
+  `Cache-Control: no-store`, zodat ook een proxy geen oude versie meer doorgeeft.
+- Het script controleert of het bij de pagina hoort; zo niet, dan kan er niets gewijzigd worden en
+  verschijnt de melding om de pagina te verversen.
+- Er is nog maar één knop **Opslaan** (bovenaan bij de weeknavigatie).
+- Opslaan direct na het typen (bijv. met Ctrl+S) kon een onterechte foutmelding geven, omdat het
+  voorbeeld en het opslaan tegelijk bij de server aankwamen. Alle verzoeken gaan nu na elkaar.
+- CI: een push met gewijzigde code onder een al bestaand versienummer faalt nu met een duidelijke melding.
+
 ## [1.1.1] – 2026-10-01
 
 ### Opgelost

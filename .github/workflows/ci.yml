@@ -40,14 +40,22 @@ jobs:
       nieuw: ${{ steps.lees.outputs.nieuw }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # alle tags en geschiedenis, voor de vergelijking hieronder
       - name: Versie lezen en vergelijken met de bestaande tags
         id: lees
         run: |
           VERSIE=$(sed -n 's/^VERSIE = "\(.*\)"/\1/p' app/__init__.py)
           echo "versie=$VERSIE" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSIE" >/dev/null; then
+          if git rev-parse -q --verify "refs/tags/v$VERSIE" >/dev/null; then
             echo "nieuw=false" >> "$GITHUB_OUTPUT"
-            echo "Versie $VERSIE heeft al een tag."
+            # Bestaat de versie al, dan mag de app-code niet veranderd zijn: anders komt
+            # die wijziging nooit in een image terecht. Dan moet VERSIE omhoog.
+            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt wsgi.py; then
+              echo "::error::De code is gewijzigd, maar versie $VERSIE bestaat al. Verhoog VERSIE in app/__init__.py (en CHANGELOG.md)."
+              exit 1
+            fi
+            echo "Versie $VERSIE heeft al een tag en de code is gelijk."
           else
             echo "nieuw=true" >> "$GITHUB_OUTPUT"
             echo "Nieuwe versie: $VERSIE"
@@ -56,7 +64,8 @@ jobs:
   image:
     needs: [test, versie]
     if: >-
-      always() && needs.test.result == 'success' && github.event_name == 'push' &&
+      always() && needs.test.result == 'success' && needs.versie.result != 'failure' &&
+      github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || needs.versie.outputs.nieuw == 'true')
     runs-on: ubuntu-latest
     permissions:

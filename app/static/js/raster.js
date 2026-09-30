@@ -21,8 +21,24 @@
 (function () {
   "use strict";
 
+  // Versie van dit script. Moet gelijk zijn aan VERSIE in app/__init__.py
+  // (een test in tests/test_rooster.py controleert dat).
+  var SCRIPT_VERSIE = "1.1.2";
+
   var houder = document.querySelector("[data-api-cellen]");
   if (!houder) return;
+
+  // Hoort dit script bij deze pagina? Zo niet (een oude versie uit een cache), dan
+  // niets laten bewerken en melden dat de pagina opnieuw geladen moet worden.
+  if (houder.getAttribute("data-versie") !== SCRIPT_VERSIE) {
+    var melding = document.querySelector("[data-status]");
+    if (melding) {
+      melding.textContent = "Verouderde versie geladen. Ververs de pagina (Ctrl+F5) voordat je iets wijzigt.";
+      melding.className = "raster-status fout";
+    }
+    document.querySelectorAll("[data-opslaan]").forEach(function (k) { k.disabled = true; });
+    return;
+  }
   var API_CELLEN = houder.getAttribute("data-api-cellen");
   var statusVak = document.querySelector("[data-status]");
 
@@ -278,33 +294,47 @@
              ook_tonen: Object.keys(getoond), ook_dagen: Object.keys(getoondeDagen) };
   }
 
-  // Voorbeeld opvragen (niets wordt bewaard). Tijdens een lopend verzoek: daarna nog één keer.
-  var voorbeeldBezig = false;
-  var voorbeeldOpnieuw = false;
-  var ronde = 0;  // verhoogd bij elke opslag: oudere voorbeelden worden dan genegeerd
+  // Alle verzoeken aan de server gaan strikt na elkaar (voorbeeld, opslaan, voorbeeld, ...).
+  // Zo kunnen een voorbeeld en het opslaan elkaar nooit kruisen.
+  var wachtrij = Promise.resolve();
+  function inWachtrij(taak) {
+    wachtrij = wachtrij.then(taak, taak);
+    return wachtrij;
+  }
+
+  function leesAntwoord(r) {
+    if (r.status === 409) throw new Error("conflict");
+    if (r.status === 401) throw new Error("uitgelogd");
+    if (!r.ok) throw new Error("fout");
+    return r.json();
+  }
+
+  // Voorbeeld opvragen (niets wordt bewaard). Staat er al een voorbeeld klaar in de
+  // wachtrij, dan niet nog een: dat voorbeeld gebruikt straks vanzelf de nieuwste stand.
+  var voorbeeldGepland = false;
+  var ronde = 0;  // verhoogd bij elke opslag: een ouder voorbeeld wordt dan genegeerd
   function voorbeeld() {
     toonTeller();
-    if (voorbeeldBezig) { voorbeeldOpnieuw = true; return; }
-    voorbeeldBezig = true;
-    var mijnRonde = ronde;
-    post(verzoek(false))
-      .then(function (r) {
-        if (r.status === 401) throw new Error("uitgelogd");
-        if (!r.ok) throw new Error("fout");
-        return r.json();
-      })
-      .then(function (antwoord) {
-        // Intussen opgeslagen of opnieuw gewijzigd? Dan is dit voorbeeld verouderd.
-        if (!voorbeeldOpnieuw && mijnRonde === ronde) verwerkAntwoord(antwoord, false);
-      })
-      .catch(function (fout) {
-        status(fout.message === "uitgelogd" ? "Je bent uitgelogd. Log opnieuw in (je wijzigingen zijn niet opgeslagen)."
-                                            : "Geen verbinding met de server.", "fout");
-      })
-      .then(function () {
-        voorbeeldBezig = false;
-        if (voorbeeldOpnieuw) { voorbeeldOpnieuw = false; voorbeeld(); }
-      });
+    if (voorbeeldGepland) return;
+    voorbeeldGepland = true;
+    inWachtrij(function () {
+      voorbeeldGepland = false;
+      var mijnRonde = ronde;
+      return post(verzoek(false))
+        .then(leesAntwoord)
+        .then(function (antwoord) {
+          // Intussen opgeslagen of opnieuw gewijzigd? Dan is dit voorbeeld verouderd.
+          if (!voorbeeldGepland && mijnRonde === ronde) verwerkAntwoord(antwoord, false);
+        })
+        .catch(function (fout) {
+          if (mijnRonde !== ronde) return;  // verouderd: niet melden
+          var meldingen = {
+            uitgelogd: "Je bent uitgelogd. Log opnieuw in (je wijzigingen zijn niet opgeslagen).",
+            conflict: "Iemand anders wijzigde tegelijk dezelfde dienst. Ververs de pagina."
+          };
+          status(meldingen[fout.message] || "Geen verbinding met de server.", "fout");
+        });
+    });
   }
 
   // Definitief opslaan. 'daarna' wordt uitgevoerd als alles goed is opgeslagen.
@@ -315,40 +345,38 @@
     if (opslaanBezig) return;
     opslaanBezig = true;
     ronde++;
-    var verstuurd = wachtend.slice();
     status("Opslaan…", "bezig");
     opslaanKnoppen.forEach(function (k) { k.disabled = true; });
-    post(verzoek(true))
-      .then(function (r) {
-        if (r.status === 409) throw new Error("conflict");
-        if (r.status === 401) throw new Error("uitgelogd");
-        if (!r.ok) throw new Error("fout");
-        return r.json();
-      })
-      .then(function (antwoord) {
-        // Alleen wat verstuurd is, is opgeslagen; nieuwere wijzigingen blijven wachten
-        wachtend = wachtend.filter(function (w) { return verstuurd.indexOf(w) === -1; });
-        ongedaan = [];
-        verwerkAntwoord(antwoord, true);
-        if (!wachtend.length) { getoond = {}; getoondeDagen = {}; } else { voorbeeld(); }
-        if (antwoord.fouten.length) {
-          status(antwoord.fouten[0].melding, "fout");
-        } else {
-          status("Opgeslagen ✓", "ok");
-          if (daarna) daarna();
-        }
-      })
-      .catch(function (fout) {
-        var meldingen = {
-          conflict: "Iemand anders wijzigde tegelijk dezelfde dienst. Niets opgeslagen; ververs de pagina.",
-          uitgelogd: "Je bent uitgelogd. Log opnieuw in; je wijzigingen zijn niet opgeslagen."
-        };
-        status(meldingen[fout.message] || "Opslaan mislukt. Controleer de verbinding en probeer opnieuw.", "fout");
-      })
-      .then(function () {
-        opslaanBezig = false;
-        toonTeller();
-      });
+    inWachtrij(function () {
+      // Pas nu (na een eventueel lopend voorbeeld) bepalen wat er verstuurd wordt
+      var verstuurd = wachtend.slice();
+      return post(verzoek(true))
+        .then(leesAntwoord)
+        .then(function (antwoord) {
+          // Alleen wat verstuurd is, is opgeslagen; nieuwere wijzigingen blijven wachten
+          wachtend = wachtend.filter(function (w) { return verstuurd.indexOf(w) === -1; });
+          ongedaan = [];
+          verwerkAntwoord(antwoord, true);
+          if (!wachtend.length) { getoond = {}; getoondeDagen = {}; } else { voorbeeld(); }
+          if (antwoord.fouten.length) {
+            status(antwoord.fouten[0].melding, "fout");
+          } else {
+            status("Opgeslagen ✓", "ok");
+            if (daarna) daarna();
+          }
+        })
+        .catch(function (fout) {
+          var meldingen = {
+            conflict: "Iemand anders wijzigde tegelijk dezelfde dienst. Niets opgeslagen; ververs de pagina.",
+            uitgelogd: "Je bent uitgelogd. Log opnieuw in; je wijzigingen zijn niet opgeslagen."
+          };
+          status(meldingen[fout.message] || "Opslaan mislukt. Controleer de verbinding en probeer opnieuw.", "fout");
+        })
+        .then(function () {
+          opslaanBezig = false;
+          toonTeller();
+        });
+    });
   }
 
   // Antwoord van de server tonen (voorbeeld of opgeslagen)

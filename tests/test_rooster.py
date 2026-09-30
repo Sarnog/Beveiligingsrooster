@@ -352,3 +352,32 @@ def test_statische_bestanden_met_versienummer(als_beheerder, rooster):
 
     pagina = als_beheerder.get("/week/2026/10").data.decode()
     assert f"js/raster.js?v={VERSIE}" in pagina and f"css/style.css?v={VERSIE}" in pagina
+
+
+def test_scriptversie_gelijk_aan_appversie():
+    """raster.js controleert zelf of het bij de pagina hoort; de versies moeten gelijk zijn."""
+    import pathlib
+    import re
+
+    from app import VERSIE
+
+    script = (pathlib.Path(__file__).parent.parent / "app/static/js/raster.js").read_text()
+    assert re.search(r'var SCRIPT_VERSIE = "([^"]+)"', script).group(1) == VERSIE
+
+
+def test_cache_instructies(als_beheerder, rooster):
+    from app import VERSIE
+
+    pagina = als_beheerder.get("/week/2026/10")
+    assert pagina.headers["Cache-Control"] == "no-store"
+    assert 'data-versie="' + VERSIE + '"' in pagina.data.decode()
+    api = als_beheerder.post("/api/cellen", json={"wijzigingen": []})
+    assert api.headers["Cache-Control"] == "no-store"
+    script = als_beheerder.get(f"/static/js/raster.js?v={VERSIE}")
+    assert "max-age=31536000" in script.headers["Cache-Control"]
+    assert als_beheerder.get("/static/js/raster.js").headers["Cache-Control"] == "no-cache"
+
+
+def test_maar_een_opslaan_knop(als_beheerder, rooster):
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert pagina.count("data-opslaan") == 1

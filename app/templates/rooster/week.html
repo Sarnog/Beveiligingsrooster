@@ -39,7 +39,7 @@
 </div>
 <h1 class="alleen-print">{{ teamnaam }} – week {{ week }} ({{ jaar }})</h1>
 
-<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}"{% endif %}>
+<div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-versie="{{ versie }}"{% endif %}>
   <div class="tabel-schuif rooster-houder">
   <table class="rooster" data-raster="visueel">
     <thead>
@@ -104,7 +104,6 @@
   {% if bewerken %}
   <aside class="code-paneel geen-print">
     <div class="raster-status" data-status aria-live="polite">Typ een dienstcode per dag</div>
-    <button class="knop primair opslaan-knop breed" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>
     <table class="raster" data-raster="codes">
       <thead><tr><th>Init.</th>{% for dag in dagen %}<th class="{{ 'weekend' if dag.weekday() >= 5 }}">{{ dagkort[loop.index0]|upper }}</th>{% endfor %}</tr></thead>
       <tbody>
