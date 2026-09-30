@@ -14,6 +14,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
+VERSIE = "1.0.0"
+
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
 SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen"}
 
@@ -194,6 +196,7 @@ def _registreer_template_helpers(app: Flask) -> None:
         return {
             "teamnaam": teamnaam,
             "voettekst": voettekst,
+            "versie": VERSIE,
             # Bestaat deze route? (zo verschijnen menu-items pas als de functie er is)
             "heeft_route": lambda endpoint: endpoint in app.view_functions,
         }

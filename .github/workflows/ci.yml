@@ -64,3 +64,34 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Bij een versietag (v1.2.3): GitHub-release aanmaken met de tekst uit CHANGELOG.md
+  release:
+    needs: [test, image]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Releasetekst uit CHANGELOG.md halen
+        run: |
+          VERSIE="${GITHUB_REF_NAME#v}"
+          # Alles tussen '## [VERSIE]' en de volgende '## ['-kop
+          awk -v v="$VERSIE" '
+            index($0, "## [" v "]") == 1 { bezig = 1; next }
+            bezig && /^## \[/ { exit }
+            bezig { print }
+          ' CHANGELOG.md > release-tekst.md
+          {
+            echo ""
+            echo "### Installeren of bijwerken"
+            echo "Docker-image: \`${IMAGE:-ghcr.io/sarnog/beveiligingsrooster}:${VERSIE}\` (en \`latest\`)."
+            echo "Zie de README voor het docker-compose-bestand, \`install.sh\` en \`update.sh\`."
+          } >> release-tekst.md
+          cat release-tekst.md
+      - name: Release aanmaken
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Beveiligingsrooster ${{ github.ref_name }}
+          body_path: release-tekst.md

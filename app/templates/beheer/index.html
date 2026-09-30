@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block titel %}Beheer{% endblock %}
+{% block titel %}Beheer<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
+{% endblock %}
 {% block inhoud %}
 <h1>Beheer</h1>
 <div class="tegels">
@@ -20,4 +21,5 @@
   {% endfor %}
   <a class="tegel" href="{{ url_for('beheer.herberekenen') }}"><strong>Uren herberekenen</strong><span>Na wijziging van toeslagen</span></a>
 </div>
+<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
 {% endblock %}

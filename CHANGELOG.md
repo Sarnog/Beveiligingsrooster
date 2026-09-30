@@ -2,6 +2,10 @@
 
 ## [Onuitgebracht]
 
+## [1.0.0] – 2026-09-30
+
+Eerste volledige versie: vervangt het Excel-rooster met macro's.
+
 ### Fase 4 – afronding
 - Excel-import (.xlsm) met droogloop, controle van de weektotalen (kolom Z) en automatische back-up vooraf.
 - Zelf ingevulde uren en vrije dienstnamen (zoals in Excel bij bijvoorbeeld een cursus zonder tijden);
