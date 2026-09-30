@@ -167,7 +167,174 @@ tr.gearchiveerd td { opacity: .55; }
 .stappen li.actief { background: var(--primair); color: var(--primair-tekst); }
 .stappen li.klaar { color: var(--succes); }
 
-/* ---------- Printen ---------- */
+
+/* ==========================================================
+   Weekrooster
+   ========================================================== */
+.week-kop { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.week-kop h1 { margin: 0; }
+.week-kop h1 small { color: var(--tekst-zacht); font-weight: normal; }
+.week-nav { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+.kopieer summary { list-style: none; cursor: pointer; }
+.kopieer[open] form { margin-top: .5rem; background: var(--kaart); padding: .6rem; border: 1px solid var(--rand); border-radius: var(--radius); }
+.alleen-print { display: none; }
+
+.week-opmaak { display: flex; gap: 1rem; align-items: flex-start; }
+.rooster-houder { flex: 1 1 auto; min-width: 0; }
+.code-paneel { flex: 0 0 auto; position: sticky; top: .5rem; max-height: calc(100vh - 1rem); overflow-y: auto; }
+@media (max-width: 1100px) {
+  .week-opmaak { flex-direction: column; }
+  .code-paneel { position: static; max-height: none; }
+}
+
+/* Het rooster zelf gebruikt vaste, lichte kleuren (zoals op papier), ook in donkere modus */
+.rooster {
+  border-collapse: collapse; background: #fff; color: #000; font-size: 13px;
+  table-layout: fixed; min-width: 980px; width: 100%;
+}
+.rooster th, .rooster td { border: 1px solid #c8ccd4; padding: 1px 3px; height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rooster thead th { background: var(--kleur-kop); position: sticky; top: 0; z-index: 2; }
+.rooster .dagkop { text-align: center; font-weight: 700; }
+.rooster .dagkop.weekend { background: var(--kleur-weekend); }
+.rooster .naamkol {
+  width: 150px; text-align: left; vertical-align: middle; background: #f4f6f9;
+  position: sticky; left: 0; z-index: 1; white-space: normal;
+}
+.rooster .naamkol small { display: block; color: #555; font-weight: normal; font-size: 11px; }
+.rooster .urenkol { width: 64px; text-align: right; font-variant-numeric: tabular-nums; background: #f4f6f9; }
+.rooster .urenkol.totaal { font-weight: 700; font-size: 14px; }
+.rooster .urenkol.contract { color: #555; font-size: 11px; }
+.rooster tbody.blok { border-top: 2px solid #5b6475; }
+.rooster .dagopm { text-align: center; }
+.rooster .dagopm.gevuld { background: var(--kleur-dagopmerking); color: #fff; font-weight: 700; font-style: italic; }
+.rooster .opm { text-align: center; font-size: 12px; }
+.rooster .tijd { text-align: center; font-variant-numeric: tabular-nums; }
+.rooster .opmtijd { font-size: 11px; color: #444; }
+.rooster .uren { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; background: #fafafa; }
+.rooster .dienstnaam { text-align: center; font-weight: 700; }
+.rooster td.handmatig { text-decoration: underline dotted #b3261e; text-underline-offset: 3px; background-image: linear-gradient(135deg, #b3261e 5px, transparent 5px); }
+.rooster .gemarkeerd, .rooster .dagkop.gemarkeerd { background: #FFFF00 !important; color: #000 !important; }
+
+/* Code-raster (alleen beheerder) */
+.code-paneel .raster { border-collapse: collapse; background: #fff; color: #000; font-size: 13px; }
+.code-paneel .raster th, .code-paneel .raster td { border: 1px solid #c8ccd4; width: 38px; height: 24px; text-align: center; padding: 0; }
+.code-paneel .raster thead th { background: var(--kleur-kop); }
+.code-paneel .raster thead th.weekend { background: var(--kleur-weekend); }
+.code-paneel .raster tbody th { width: 52px; background: #f4f6f9; font-size: 12px; }
+.code-paneel .raster td.code { font-weight: 700; }
+.legenda-codes { margin-top: .6rem; font-size: .85rem; }
+.legenda-codes summary { cursor: pointer; font-weight: 600; }
+.toetsen { padding-left: 1.1rem; margin: .3rem 0; }
+.raster-status { font-size: .85rem; padding: .3rem .5rem; margin-bottom: .4rem; border-radius: var(--radius); background: var(--achtergrond); color: var(--tekst-zacht); }
+.raster-status.ok { color: var(--succes); }
+.raster-status.fout { color: #fff; background: var(--gevaar); }
+.raster-status.bezig { color: var(--info); }
+
+/* Bewerkbare cellen */
+.cel { cursor: cell; position: relative; outline: none; }
+.cel.geselecteerd { box-shadow: inset 0 0 0 999px rgba(31, 95, 191, .14); }
+.cel.actief { outline: 2px solid #1f5fbf; outline-offset: -2px; }
+.cel.bezig { opacity: .6; }
+.cel.fout { outline: 2px solid #b3261e; outline-offset: -2px; background: #fde2e1 !important; }
+.cel.bewerken { overflow: visible; }
+.cel-invoer {
+  position: absolute; inset: 0; width: 100%; min-width: 60px; height: 100%;
+  border: 2px solid #1f5fbf; border-radius: 0; padding: 0 3px; font: inherit;
+  background: #fff; color: #000; z-index: 5;
+}
+
+/* ==========================================================
+   Mijn rooster
+   ========================================================== */
+.mijn-lijst { list-style: none; padding: 0; margin: 0; max-width: 720px; }
+.mijn-week { margin-top: 1rem; font-weight: 700; }
+.mijn-dag { display: grid; grid-template-columns: 11rem 1fr 4rem; gap: .5rem; align-items: center; padding: .45rem .6rem; background: var(--kaart); border: 1px solid var(--rand); border-radius: var(--radius); margin-top: .3rem; }
+.mijn-dag.vandaag { border-color: var(--kleur-vandaag); border-width: 2px; }
+.mijn-uren { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .mijn-dag { grid-template-columns: 1fr auto; } .mijn-datum { grid-column: 1 / -1; font-weight: 600; } }
+
+/* ==========================================================
+   Jaarkalender
+   ========================================================== */
+.kalender-kop { display: flex; gap: 1.2rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: .8rem; }
+.kalender-kop .veld { margin-bottom: 0; }
+.jaarveld { width: 6rem; }
+.kalender-opmaak { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 1rem; align-items: start; }
+@media (max-width: 1100px) { .kalender-opmaak { grid-template-columns: 1fr; } }
+.jaarkalender h1 { margin-top: 0; }
+.maanden { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
+@media (max-width: 900px) { .maanden { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .maanden { grid-template-columns: 1fr; } }
+.maand { border-collapse: collapse; width: 100%; background: #fff; color: #000; font-size: 13px; border: 1px solid #c8ccd4; }
+.maand caption { font-weight: 700; text-align: left; padding: .2rem 0; color: var(--tekst); }
+.maand th, .maand td { text-align: center; padding: 2px 0; width: 12.5%; }
+.maand thead th { background: var(--kleur-kop); font-size: 12px; }
+.maand .wk { background: #eef1f6; font-size: 11px; color: #555; }
+.maand a { color: inherit; text-decoration: none; display: block; }
+.maand a:hover { text-decoration: underline; }
+.maand .wk a.huidige { font-weight: 700; color: #000; background: var(--kleur-vandaag); border-radius: 3px; }
+.maand td.weekend, .blokje.weekend { background: var(--kleur-weekend); }
+.maand td.vakantie, .blokje.vakantie { background: var(--kleur-vakantie); }
+.maand td.feestdag, .blokje.feestdag { background: var(--kleur-feestdag); }
+.maand td.vandaag, .blokje.vandaag { background: var(--kleur-vandaag); font-weight: 700; }
+.legenda { list-style: none; display: flex; gap: 1rem; padding: 0; flex-wrap: wrap; font-size: .9rem; }
+.blokje { display: inline-block; width: 14px; height: 14px; border: 1px solid #999; vertical-align: -2px; margin-right: .3rem; }
+.zijpanelen .kaart { padding: .8rem; }
+.zijpanelen h2 { margin-top: 0; }
+.zijpanelen .tabel { width: 100%; font-size: .88rem; }
+.zijpanelen .tabel th, .zijpanelen .tabel td { padding: .3rem .4rem; }
+td.negatief { color: #c62828; font-weight: 600; }
+td.nul { color: #2e7d32; font-weight: 600; }
+td.positief { color: #1565c0; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  td.negatief { color: #ff8a80; } td.nul { color: #81c784; } td.positief { color: #82b1ff; }
+}
+
+/* ==========================================================
+   Urenoverzicht
+   ========================================================== */
+.uren-houder { max-height: calc(100vh - 160px); }
+.urenmatrix { border-collapse: separate; border-spacing: 0; background: #fff; color: #000; font-size: 12px; }
+.urenmatrix th, .urenmatrix td { border-right: 1px solid #d8dde6; border-bottom: 1px solid #d8dde6; padding: 3px 6px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.urenmatrix thead th { background: var(--kleur-kop); font-weight: 700; position: sticky; top: 0; z-index: 2; text-align: center; }
+.urenmatrix .vast { position: sticky; left: 0; background: var(--kleur-kop); text-align: left; z-index: 1; }
+.urenmatrix thead .vast { z-index: 3; }
+.urenmatrix tbody .vast { background: #f4f6f9; font-weight: 600; }
+.urenmatrix .huidig { background: var(--kleur-huidige-week); }
+.urenmatrix .totaal { font-weight: 700; background: #eef1f6; }
+.urenmatrix a { color: inherit; text-decoration: none; }
+
+/* ==========================================================
+   Zoeken en logboek
+   ========================================================== */
+.zoek-opmaak { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .zoek-opmaak { grid-template-columns: 1fr; } }
+.afwijkend { font-size: .75rem; color: #fff; background: var(--gevaar); padding: 0 .3rem; border-radius: 3px; }
+.logboek td { font-size: .85rem; vertical-align: top; }
+.paginering { justify-content: center; margin: 1rem 0; }
+
+/* ==========================================================
+   Printen: A4 liggend, hele week op 1 pagina, zonder code-raster
+   ========================================================== */
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  .alleen-print { display: block; font-size: 14pt; margin: 0 0 4mm; text-align: center; }
+  .inhoud, .inhoud-breed { max-width: none; padding: 0; margin: 0; }
+  .week-opmaak { display: block; }
+  .tabel-schuif { overflow: visible; max-height: none; }
+  .rooster { min-width: 0; width: 100%; font-size: 7.5pt; margin: 0 auto; }
+  .rooster th, .rooster td { height: auto; padding: 0 2px; }
+  .rooster thead th, .rooster .naamkol { position: static; }
+  .rooster .naamkol { width: 26mm; }
+  .rooster .urenkol { width: 12mm; }
+  .rooster tbody.blok { break-inside: avoid; }
+  .cel.actief, .cel.geselecteerd { outline: none; box-shadow: none; }
+  .kalender-kop, .zijpanelen .hulp { display: none; }
+  .urenmatrix { font-size: 6.5pt; }
+  .urenmatrix th, .urenmatrix td { padding: 1px 2px; position: static !important; }
+}
+
+/* ---------- Printen (algemeen) ---------- */
 @media print {
   .geen-print, .balk, .meldingen, .voet { display: none !important; }
   body { background: #fff; color: #000; }

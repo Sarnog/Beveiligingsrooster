@@ -1,0 +1,263 @@
+"""Weekrooster, kalender, overzichten, zoeken, logboek en deellink (fase 2)."""
+
+from datetime import date
+
+import pytest
+
+from app.extensions import db
+from app.models import Contracturen, Dagopmerking, Dienst, Gebruiker, Logboek, Medewerker, Vakantie
+from app.services import instellingen
+from app.services.voorbeeldpakket import laad_voorbeeldpakket
+
+MAANDAG = date(2026, 3, 2)  # week 10 van 2026
+ZATERDAG = date(2026, 3, 7)
+
+
+@pytest.fixture
+def rooster(klaar):
+    """Voorbeeldpakket + twee fictieve medewerkers."""
+    laad_voorbeeldpakket()
+    a = Medewerker(naam="Medewerker A", initialen="TSA", volgorde=1)
+    b = Medewerker(naam="Medewerker B", initialen="TSB", volgorde=2)
+    db.session.add_all([a, b])
+    db.session.commit()
+    return {"a": a, "b": b}
+
+
+def cel(client, mw, datum, veld, waarde, versie=None):
+    wijziging = {"mw": mw.id, "datum": datum.isoformat(), "veld": veld, "waarde": waarde}
+    if versie is not None:
+        wijziging["versie"] = versie
+    return client.post("/api/cellen", json={"wijzigingen": [wijziging]})
+
+
+def dienst(mw, datum):
+    db.session.expire_all()
+    return Dienst.query.filter_by(medewerker_id=mw.id, datum=datum).first()
+
+
+def test_code_invoeren_zet_naam_tijden_en_uren(als_beheerder, rooster):
+    antwoord = cel(als_beheerder, rooster["a"], MAANDAG, "code", "4")
+    assert antwoord.status_code == 200
+    gegevens = antwoord.json["bijgewerkt"][f"{rooster['a'].id}|{MAANDAG.isoformat()}"]
+    assert gegevens["dienstnaam"] == "VW Vroeg"
+    assert (gegevens["begin"], gegevens["eind"], gegevens["uren"]) == ("07:15", "15:45", "8,00")
+    assert gegevens["weektotaal"] == "8,00"
+    assert "background:#FF0000" in gegevens["dienst_stijl"]
+    assert Logboek.query.filter_by(actie="Rooster gewijzigd").count() == 1
+
+
+def test_zaterdag_krijgt_toeslag(als_beheerder, rooster):
+    cel(als_beheerder, rooster["a"], ZATERDAG, "code", "4")
+    assert dienst(rooster["a"], ZATERDAG).uren_berekend == 12.0
+
+
+def test_onbekende_code_geeft_fout_en_wordt_niet_opgeslagen(als_beheerder, rooster):
+    antwoord = cel(als_beheerder, rooster["a"], MAANDAG, "code", "99")
+    assert antwoord.json["fouten"][0]["melding"] == "Onbekende dienstcode: 99"
+    assert dienst(rooster["a"], MAANDAG) is None
+    antwoord = cel(als_beheerder, rooster["a"], MAANDAG, "code", "abc")
+    assert antwoord.json["fouten"]
+
+
+def test_blanco_code_en_lege_cel_betekenen_geen_dienst(als_beheerder, rooster):
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "4")
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "15")
+    assert dienst(rooster["a"], MAANDAG) is None  # lege regel wordt opgeruimd
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "4")
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "")
+    assert dienst(rooster["a"], MAANDAG) is None
+
+
+def test_handmatige_tijd_en_terug_naar_standaard(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    antwoord = cel(als_beheerder, a, MAANDAG, "eind", "1600")  # 16:00 i.p.v. 15:45
+    gegevens = antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]
+    assert gegevens["eind"] == "16:00" and gegevens["handmatig"] and gegevens["uren"] == "8,25"
+    # Code opnieuw invoeren: standaardtijden komen terug
+    cel(als_beheerder, a, MAANDAG, "code", "5")
+    d = dienst(a, MAANDAG)
+    assert (d.begin, d.eind, d.tijden_handmatig, d.uren_berekend) == ("07:15", "16:45", False, 9.0)
+
+
+def test_ongeldige_tijd(als_beheerder, rooster):
+    antwoord = cel(als_beheerder, rooster["a"], MAANDAG, "begin", "25:99")
+    assert "Ongeldige tijd" in antwoord.json["fouten"][0]["melding"]
+
+
+def test_dienst_zonder_tijden_geeft_geen_uren(als_beheerder, rooster):
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "10")  # Bapo
+    d = dienst(rooster["a"], MAANDAG)
+    assert d.dienstnaam == "Bapo" and d.uren_berekend is None
+
+
+def test_optimistic_locking(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4", versie=0)
+    # Een tweede beheerder met een verouderde versie (0) krijgt een melding
+    antwoord = cel(als_beheerder, a, MAANDAG, "code", "5", versie=0)
+    assert antwoord.json["fouten"][0]["conflict"] is True
+    assert dienst(a, MAANDAG).dienstcode.nummer == 4
+    # Met de juiste versie lukt het wel
+    cel(als_beheerder, a, MAANDAG, "code", "5", versie=1)
+    assert dienst(a, MAANDAG).dienstcode.nummer == 5
+
+
+def test_plakken_meerdere_cellen_in_een_verzoek(als_beheerder, rooster):
+    a, b = rooster["a"], rooster["b"]
+    wijzigingen = [
+        {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "4", "versie": 0},
+        {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "opmerking", "waarde": "BHV", "versie": None},
+        {"mw": b.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": "7", "versie": 0},
+    ]
+    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": wijzigingen})
+    assert antwoord.json["fouten"] == []
+    assert dienst(a, MAANDAG).opmerking_tekst == "BHV"
+    assert dienst(b, MAANDAG).dienstnaam == "OB Vroeg"
+
+
+def test_opmerkingtijden_tellen_standaard_niet_mee(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "opmerking", "BV")
+    cel(als_beheerder, a, MAANDAG, "opm_begin", "13:30")
+    cel(als_beheerder, a, MAANDAG, "opm_eind", "15:45")
+    assert dienst(a, MAANDAG).uren_berekend is None
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    db.session.commit()
+    cel(als_beheerder, a, MAANDAG, "opm_eind", "16:00")
+    assert dienst(a, MAANDAG).uren_berekend == 2.5
+
+
+def test_dagopmerking_automatisch_en_handmatig(als_beheerder, rooster):
+    db.session.add(Vakantie(naam="Meivakantie", datum_van=date(2026, 4, 27), datum_tot=date(2026, 5, 3)))
+    db.session.commit()
+    pagina = als_beheerder.get("/week/2026/18").data.decode()
+    assert "Koningsdag" in pagina  # feestdag gaat voor vakantie op 27-04
+    assert "Meivakantie" in pagina  # overige werkdagen
+
+    dag = date(2026, 4, 28)
+    antwoord = als_beheerder.post("/api/dagopmerking",
+                                  json={"datum": dag.isoformat(), "tekst": "Extra inzet"})
+    assert antwoord.json == {"datum": dag.isoformat(), "tekst": "Extra inzet", "handmatig": True}
+    # Wissen: automatische tekst komt terug
+    antwoord = als_beheerder.post("/api/dagopmerking", json={"datum": dag.isoformat(), "tekst": ""})
+    assert antwoord.json["tekst"] == "Meivakantie" and not antwoord.json["handmatig"]
+    # Nogmaals wissen: automatische tekst wordt verborgen
+    antwoord = als_beheerder.post("/api/dagopmerking", json={"datum": dag.isoformat(), "tekst": ""})
+    assert antwoord.json["tekst"] == "" and antwoord.json["handmatig"]
+    assert Dagopmerking.query.count() == 1
+
+
+def test_weekpagina_beheerder_ziet_code_raster(als_beheerder, rooster):
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "4")
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert 'data-raster="codes"' in pagina and "data-api-cellen" in pagina
+    assert "VW Vroeg" in pagina and "Medewerker A" in pagina and "ma 02-03-26" in pagina
+
+
+def test_weekpagina_gebruiker_ziet_alleen_het_rooster(als_gebruiker, rooster):
+    pagina = als_gebruiker.get("/week/2026/10").data.decode()
+    assert "Medewerker A" in pagina
+    assert 'data-raster="codes"' not in pagina and "data-api-cellen" not in pagina
+    assert 'class="cel' not in pagina
+
+
+def test_week_53_alleen_als_die_bestaat(als_beheerder, rooster):
+    assert als_beheerder.get("/week/2026/53").status_code == 200
+    assert als_beheerder.get("/week/2027/53").status_code == 404
+    antwoord = als_beheerder.get("/week?dag=2025-12-30")
+    assert "/week/2026/1" in antwoord.headers["Location"]
+
+
+def test_gearchiveerde_medewerker_verdwijnt_uit_nieuwe_weken(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    a = db.session.get(Medewerker, a.id)
+    a.gearchiveerd_vanaf = date(2026, 3, 9)
+    db.session.commit()
+    assert "Medewerker A" in als_beheerder.get("/week/2026/10").data.decode()  # historie blijft
+    assert "Medewerker A" not in als_beheerder.get("/week/2026/11").data.decode()
+
+
+def test_week_kopieren(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    cel(als_beheerder, a, MAANDAG, "eind", "16:00")
+    als_beheerder.post("/week/2026/10/kopieer", data={"naar": "2026-W12", "medewerker_id": ""})
+    kopie = dienst(a, date(2026, 3, 16))
+    assert kopie.dienstnaam == "VW Vroeg" and kopie.eind == "16:00" and kopie.tijden_handmatig
+    assert kopie.uren_berekend == 8.25
+
+
+def test_kalender_en_overzicht(als_beheerder, rooster):
+    a = rooster["a"]
+    db.session.get(Medewerker, a.id).contracturen.append(Contracturen(jaar=2026, uren=1659))
+    db.session.commit()
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    cel(als_beheerder, a, ZATERDAG, "code", "4")
+    pagina = als_beheerder.get("/kalender/?jaar=2026").data.decode()
+    assert "Hemelvaartsdag" in pagina and "Koningsdag" in pagina
+    assert "20,00" in pagina  # gewerkt: 8 + 12
+    assert "-1639,00" in pagina and "negatief" in pagina
+    # Urenoverzicht: week 10 = 20,00
+    overzicht = als_beheerder.get("/overzicht/uren?jaar=2026").data.decode()
+    assert "20.00" in overzicht and "W53" in overzicht
+    csv = als_beheerder.get("/overzicht/uren.csv?jaar=2026").data.decode("utf-8-sig")
+    assert "Medewerker A;TSA" in csv
+
+
+def test_zoek_datum(als_beheerder, rooster):
+    antwoord = als_beheerder.get("/kalender/zoek?datum=05-04&jaar=2026")
+    assert antwoord.headers["Location"].endswith("/week/2026/14?dag=2026-04-05")
+    antwoord = als_beheerder.get("/kalender/zoek?datum=onzin")
+    assert "/kalender" in antwoord.headers["Location"]
+
+
+def test_zoeken(als_gebruiker, rooster):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(rooster["a"].id, MAANDAG, "code", "4"),
+                   Wijziging(rooster["a"].id, MAANDAG, "eind", "16:00"),
+                   Wijziging(rooster["b"].id, MAANDAG, "code", "7")])
+    # Te korte naam zonder code
+    assert "minimaal" in als_gebruiker.get("/zoeken/?naam=me").data.decode()
+    pagina = als_gebruiker.get("/zoeken/?naam=tsa").data.decode()
+    assert "Aantal diensten: 1" in pagina and "afwijkend" in pagina
+    pagina = als_gebruiker.get("/zoeken/?code=7").data.decode()
+    assert "Aantal diensten: 1" in pagina and "OB Vroeg" in pagina
+    pagina = als_gebruiker.get("/zoeken/?naam=medewerker&van=2026-03-03").data.decode()
+    assert "Aantal diensten: 0" in pagina
+    csv = als_gebruiker.get("/zoeken/export.csv?naam=medewerker").data.decode("utf-8-sig")
+    assert csv.count("\n") == 3 and "02-03-2026;10;TSA" in csv
+
+
+def test_mijn_rooster_en_startpagina(client, rooster, klaar):
+    from .conftest import login
+
+    gebruiker = db.session.get(Gebruiker, klaar["gebruiker"].id)
+    gebruiker.medewerker_id = rooster["a"].id
+    db.session.commit()
+    login(client, "collega")
+    assert client.get("/").headers["Location"].endswith("/mijn")
+    assert client.get("/mijn").status_code == 200
+
+
+def test_logboek_scherm(als_beheerder, rooster):
+    cel(als_beheerder, rooster["a"], MAANDAG, "code", "4")
+    pagina = als_beheerder.get("/beheer/logboek?actie=Rooster+gewijzigd").data.decode()
+    assert "Rooster gewijzigd" in pagina and "2026-W10" in pagina and "dienstcode" in pagina
+
+
+def test_deellink(client, rooster, klaar):
+    assert client.get("/deel/geheim/").status_code == 404
+    instellingen.schrijf("deellink_actief", "1")
+    instellingen.schrijf("deellink_token", "geheim-token")
+    db.session.commit()
+    assert client.get("/deel/fout/").status_code == 404
+    pagina = client.get("/deel/geheim-token/?jaar=2026")
+    assert pagina.status_code == 200 and "Overzicht 2026" not in pagina.data.decode()
+    week = client.get("/deel/geheim-token/week/2026/10").data.decode()
+    assert "Medewerker A" in week and "data-api-cellen" not in week
+    # Via de deellink kan niets gewijzigd worden
+    assert client.post("/api/cellen", json={"wijzigingen": []}).status_code == 401

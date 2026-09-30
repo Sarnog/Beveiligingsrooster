@@ -33,8 +33,8 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 | **Setup-wizard** | Eerste beheerder, instellingen, dienstcodes en medewerkers invoeren | ✅ |
 | **Beheer** | Medewerkers (met contracturen per jaar), dienstcodes met kleuren, vakanties, feestdagen, accounts en instellingen | ✅ |
 | **Urenberekening** | Precies zoals de oude Excel-VBA: pauze-aftrek, toeslag voor zaterdag en zondag, afronding op kwartieren | ✅ |
-| **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf | fase 2 |
-| **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | fase 2 |
+| **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf | ✅ |
+| **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | fase 3 |
 | **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen; back-ups downloaden en terugzetten | fase 4 |
 
@@ -278,7 +278,7 @@ Structuur:
 
 ```
 app/                 Flask-app
-  blueprints/        routes: auth, setup, beheer, algemeen (later: rooster, kalender, ...)
+  blueprints/        routes: auth, setup, beheer, rooster, kalender, overzicht, zoeken, deel
   services/          logica: urenberekening, kalender (ISO-weken/Pasen/feestdagen), ...
   templates/ static/ HTML, CSS, JavaScript (HTMX lokaal meegeleverd, geen CDN)
   models.py          datamodel (SQLAlchemy)
@@ -286,10 +286,16 @@ migrations/          databasemigraties (Alembic via Flask-Migrate)
 docker/              entrypoint en Gunicorn-configuratie
 tests/               pytest (alle testdata is fictief)
 scripts/             proxmox-maak-lxc.sh
-docs/                handleidingen
+docs/                handleidingen (planner, collega, Proxmox)
 ```
 
 Een nieuwe databasemigratie maak je na een wijziging in `models.py` met `flask --app wsgi:app db migrate -m "omschrijving"`.
+
+## Handleidingen
+
+- [Handleiding voor de planner](docs/handleiding-planner.md): een week invullen met het code-raster, toetsen, tijden, opmerkingen, beheer.
+- [Handleiding voor collega's](docs/handleiding-collega.md): inloggen, rooster bekijken, printen, agenda.
+- [Installatie op Proxmox](docs/proxmox-lxc.md): LXC aanmaken, Docker, HTTPS.
 
 ## Licentie
 

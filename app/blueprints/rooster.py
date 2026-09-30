@@ -1,0 +1,160 @@
+"""Weekrooster: bekijken (iedereen) en invullen (beheerder), plus 'Mijn rooster'."""
+
+from datetime import date, timedelta
+
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
+from ..extensions import db
+from ..models import Dienstcode, Medewerker
+from ..services import instellingen, klok
+from ..services.kalender import aantal_weken, maandag_van_week, week_van
+from ..services.weekrooster import (
+    VELDEN,
+    VersieConflict,
+    Wijziging,
+    komende_diensten,
+    kopieer_week,
+    week_gegevens,
+    wijzig_cellen,
+    wijzig_dagopmerking,
+)
+from .hulp import beheerder_vereist
+
+bp = Blueprint("rooster", __name__)
+
+
+def geldige_week(jaar: int, week: int) -> bool:
+    return 1900 < jaar < 2200 and 1 <= week <= aantal_weken(jaar)
+
+
+@bp.route("/week")
+@login_required
+def week():
+    """Zonder jaar/week: de huidige week (of de week van ?dag=jjjj-mm-dd)."""
+    dag = request.args.get("dag")
+    try:
+        datum = date.fromisoformat(dag) if dag else klok.vandaag()
+    except ValueError:
+        datum = klok.vandaag()
+    jaar, weeknr = week_van(datum)
+    return redirect(url_for("rooster.week_tonen", jaar=jaar, week=weeknr, dag=dag))
+
+
+@bp.route("/week/<int:jaar>/<int:week>")
+@login_required
+def week_tonen(jaar: int, week: int):
+    if not geldige_week(jaar, week):
+        abort(404)
+    gegevens = week_gegevens(jaar, week)
+    codes = Dienstcode.query.filter_by(actief=True).order_by(Dienstcode.nummer).all()
+    return render_template(
+        "rooster/week.html",
+        **gegevens,
+        codes=codes,
+        bewerken=current_user.is_beheerder,
+        markeer_dag=request.args.get("dag", ""),
+        blanco=instellingen.blanco_code(),
+        **navigatie(jaar, week),
+    )
+
+
+def navigatie(jaar: int, week: int) -> dict:
+    """Vorige/volgende week (ook over de jaargrens) en de huidige week."""
+    maandag = maandag_van_week(jaar, week)
+    vorige = week_van(maandag - timedelta(days=7))
+    volgende = week_van(maandag + timedelta(days=7))
+    return {
+        "vorige": vorige,
+        "volgende": volgende,
+        "huidig": week_van(klok.vandaag()),
+        "aantal": aantal_weken(jaar),
+    }
+
+
+@bp.route("/mijn")
+@login_required
+def mijn():
+    """'Mijn rooster': de komende diensten van de gekoppelde medewerker."""
+    medewerker = current_user.medewerker
+    if medewerker is None:
+        flash("Je account is niet gekoppeld aan een medewerker. Vraag dit aan de beheerder.", "info")
+        return redirect(url_for("kalender.jaar"))
+    diensten = komende_diensten(medewerker, weken=8)
+    return render_template("rooster/mijn.html", medewerker=medewerker, diensten=diensten,
+                           vandaag=klok.vandaag())
+
+
+# ---------------------------------------------------------------------------
+# API voor het raster (alleen beheerder). Antwoorden altijd in JSON.
+# ---------------------------------------------------------------------------
+
+@bp.route("/api/cellen", methods=["POST"])
+@beheerder_vereist
+def api_cellen():
+    """Een of meer cellen opslaan. Body: {"wijzigingen": [{mw, datum, veld, waarde, versie}]}"""
+    gegevens = request.get_json(silent=True) or {}
+    ruwe = gegevens.get("wijzigingen")
+    if not isinstance(ruwe, list) or not ruwe or len(ruwe) > 2000:
+        return jsonify(fout="Geen (geldige) wijzigingen ontvangen."), 400
+
+    wijzigingen = []
+    for item in ruwe:
+        try:
+            veld = str(item["veld"])
+            if veld not in VELDEN:
+                raise ValueError
+            versie = item.get("versie")
+            wijzigingen.append(Wijziging(
+                medewerker_id=int(item["mw"]),
+                datum=date.fromisoformat(str(item["datum"])),
+                veld=veld,
+                waarde="" if item.get("waarde") is None else str(item["waarde"]),
+                versie=None if versie is None else int(versie),
+            ))
+        except (KeyError, TypeError, ValueError):
+            return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
+
+    try:
+        bijgewerkt, fouten = wijzig_cellen(wijzigingen)
+    except VersieConflict as fout:
+        return jsonify(fout=str(fout)), 409
+    return jsonify(bijgewerkt=bijgewerkt, fouten=fouten)
+
+
+@bp.route("/api/dagopmerking", methods=["POST"])
+@beheerder_vereist
+def api_dagopmerking():
+    gegevens = request.get_json(silent=True) or {}
+    try:
+        datum = date.fromisoformat(str(gegevens.get("datum")))
+    except ValueError:
+        return jsonify(fout="Ongeldige datum."), 400
+    resultaat = wijzig_dagopmerking(datum, str(gegevens.get("tekst") or ""))
+    return jsonify(datum=datum.isoformat(), **resultaat)
+
+
+@bp.route("/week/<int:jaar>/<int:week>/kopieer", methods=["POST"])
+@beheerder_vereist
+def week_kopieren(jaar: int, week: int):
+    """'Week kopiëren naar…': hele week of één medewerker naar een andere week."""
+    if not geldige_week(jaar, week):
+        abort(404)
+    doel = request.form.get("naar", "")  # formaat van <input type="week">: 2026-W14
+    try:
+        doel_jaar, doel_week = doel.split("-W")
+        doel_jaar, doel_week = int(doel_jaar), int(doel_week)
+    except ValueError:
+        flash("Kies een geldige doelweek.", "fout")
+        return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
+    if not geldige_week(doel_jaar, doel_week) or (doel_jaar, doel_week) == (jaar, week):
+        flash("Kies een andere, geldige doelweek.", "fout")
+        return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
+
+    medewerker_id = request.form.get("medewerker_id", type=int) or None
+    if medewerker_id and db.session.get(Medewerker, medewerker_id) is None:
+        abort(404)
+    aantal = kopieer_week(maandag_van_week(jaar, week), maandag_van_week(doel_jaar, doel_week),
+                          medewerker_id)
+    flash(f"Week {week} gekopieerd naar week {doel_week} ({aantal} dagen bijgewerkt).", "succes")
+    return redirect(url_for("rooster.week_tonen", jaar=doel_jaar, week=doel_week))

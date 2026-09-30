@@ -38,6 +38,18 @@
       });
     });
 
+    // Keuzelijst die naar een andere pagina gaat (bijv. weekkiezer)
+    document.querySelectorAll("[data-navigeer]").forEach(function (lijst) {
+      lijst.addEventListener("change", function () {
+        if (lijst.value) window.location.href = lijst.value;
+      });
+    });
+
+    // Printknop
+    document.querySelectorAll("[data-print]").forEach(function (knop) {
+      knop.addEventListener("click", function () { window.print(); });
+    });
+
     // Live kleurvoorbeeld in het dienstcode-formulier
     var formulier = document.querySelector("[data-kleur-voorbeeld]");
     if (formulier) {

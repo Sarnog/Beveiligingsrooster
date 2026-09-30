@@ -1,8 +1,0 @@
-{% extends "base.html" %}
-{% block inhoud %}
-<section class="kaart">
-  <h1>Welkom, {{ current_user.weergavenaam }}</h1>
-  <p>Het rooster zelf (kalender, weekrooster, overzichten) volgt in de volgende fase.</p>
-  {% if current_user.is_beheerder %}<p><a class="knop" href="{{ url_for('beheer.index') }}">Naar beheer</a></p>{% endif %}
-</section>
-{% endblock %}

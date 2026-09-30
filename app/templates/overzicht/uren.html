@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titel %}Urenoverzicht {{ jaar }}{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<div class="kop-rij geen-print">
+  <h1>Urenoverzicht {{ jaar }}</h1>
+  <span class="knoppen">
+    <a class="knop" href="{{ url_for('overzicht.uren', jaar=jaar - 1) }}">◀ {{ jaar - 1 }}</a>
+    <a class="knop" href="{{ url_for('overzicht.uren', jaar=jaar + 1) }}">{{ jaar + 1 }} ▶</a>
+    <a class="knop" href="{{ url_for('overzicht.uren_csv', jaar=jaar) }}">Exporteren (CSV)</a>
+    <button class="knop" type="button" data-print>Printen</button>
+  </span>
+</div>
+<h1 class="alleen-print">Urenoverzicht {{ jaar }}</h1>
+<div class="tabel-schuif uren-houder">
+<table class="urenmatrix">
+  <thead><tr><th class="vast">Naam</th>
+    {% for w in weken %}<th class="{{ 'huidig' if (jaar, w) == huidige_week }}"><a href="{{ url_for('rooster.week_tonen', jaar=jaar, week=w) }}">W{{ w }}</a></th>{% endfor %}
+    <th>Totaal</th></tr></thead>
+  <tbody>
+  {% for r in rijen %}
+    <tr><th class="vast">{{ r.medewerker.naam }}</th>
+      {% for w in weken %}
+      <td class="{{ 'huidig' if (jaar, w) == huidige_week }}">{% if w in r.per_week %}<a href="{{ url_for('rooster.week_tonen', jaar=jaar, week=w) }}">{{ '%.2f'|format(r.per_week[w]) }}</a>{% endif %}</td>
+      {% endfor %}
+      <td class="totaal">{{ '%.2f'|format(r.gewerkt) if r.per_week }}</td></tr>
+  {% else %}
+    <tr><td colspan="{{ weken|length + 2 }}">Geen gegevens.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

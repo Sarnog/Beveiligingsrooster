@@ -1,0 +1,9 @@
+{# URL-hulpjes die ook in de alleen-lezen deellink werken. Importeren met: {% import "_urls.html" as u with context %} #}
+{% macro week_url(jaar, week, dag='') -%}
+{%- if deel_token -%}{{ url_for('deel.week', token=deel_token, jaar=jaar, week=week, dag=(dag or None)) }}
+{%- else -%}{{ url_for('rooster.week_tonen', jaar=jaar, week=week, dag=(dag or None)) }}{%- endif -%}
+{%- endmacro %}
+{% macro kalender_url(jaar) -%}
+{%- if deel_token -%}{{ url_for('deel.kalender', token=deel_token, jaar=jaar) }}
+{%- else -%}{{ url_for('kalender.jaar', jaar=jaar) }}{%- endif -%}
+{%- endmacro %}

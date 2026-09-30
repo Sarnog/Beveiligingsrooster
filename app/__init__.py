@@ -17,13 +17,14 @@ from .extensions import csrf, db, login_manager, migrate
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
 SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen"}
 
+# Deze endpoints zijn openbaar (geen login nodig); ze controleren zelf een geheim token
+OPENBAAR = {"static", "algemeen.health"}
+
 # Schrijvende endpoints die een gewone gebruiker WEL mag gebruiken
 GEBRUIKER_MAG_SCHRIJVEN = {
     "auth.login",
     "auth.uitloggen",
     "auth.wachtwoord_wijzigen",
-    "zoeken.zoek",  # zoeken is een POST maar wijzigt niets
-    "zoeken.export_csv",
 }
 
 
@@ -83,12 +84,10 @@ def _lees_of_maak_geheime_sleutel(data_map: str) -> str:
 
 
 def _registreer_blueprints(app: Flask) -> None:
-    from .blueprints import algemeen, auth, beheer, setup
+    from .blueprints import algemeen, auth, beheer, deel, kalender, overzicht, rooster, setup, zoeken
 
-    app.register_blueprint(algemeen.bp)
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(setup.bp)
-    app.register_blueprint(beheer.bp)
+    for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel):
+        app.register_blueprint(module.bp)
 
 
 def _registreer_controles(app: Flask) -> None:
@@ -109,7 +108,7 @@ def _registreer_controles(app: Flask) -> None:
                 return None
             return redirect(url_for("setup.start"))
 
-        if endpoint in ("static", "algemeen.health"):
+        if endpoint in OPENBAAR or endpoint.startswith(("deel.", "ics.")):
             return None
 
         # 2. Wachtwoord moet gewijzigd worden: eerst dat

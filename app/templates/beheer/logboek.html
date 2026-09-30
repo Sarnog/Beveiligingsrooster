@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titel %}Logboek{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<h1>Logboek</h1>
+<form method="get" class="rij-formulier kaart">
+  <label class="veld"><span>Gebruiker</span>
+    <select name="gebruiker"><option value="">Alle</option>{% for g in gebruikers %}<option{% if args.gebruiker == g %} selected{% endif %}>{{ g }}</option>{% endfor %}</select></label>
+  <label class="veld"><span>Actie</span>
+    <select name="actie"><option value="">Alle</option>{% for a in acties %}<option{% if args.actie == a %} selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+  <label class="veld"><span>Van</span><input type="date" name="van" value="{{ args.van }}"></label>
+  <label class="veld"><span>Tot en met</span><input type="date" name="tot" value="{{ args.tot }}"></label>
+  <button class="knop primair" type="submit">Filteren</button>
+  <a class="knop" href="{{ url_for('beheer.logboek') }}">Wissen</a>
+</form>
+<p class="hulp">{{ pagina.total }} regels. Regels ouder dan de bewaartermijn (Instellingen) worden dagelijks verwijderd.</p>
+<div class="tabel-schuif">
+<table class="tabel logboek">
+  <thead><tr><th>Tijdstempel</th><th>Gebruiker</th><th>Rol</th><th>Actie</th><th>Details</th><th>Week</th><th>Medewerker</th><th>Dag</th><th>Veld</th><th>Oud</th><th>Nieuw</th></tr></thead>
+  <tbody>
+  {% for r in pagina.items %}
+    <tr><td class="nowrap">{{ r.tijdstempel.strftime('%d-%m-%Y %H:%M:%S') }}</td><td>{{ r.gebruiker }}</td><td>{{ r.rol }}</td>
+      <td>{{ r.actie }}</td><td>{{ r.details }}</td><td class="nowrap">{{ r.week }}</td><td>{{ r.medewerker }}</td>
+      <td class="nowrap">{{ r.dag }}</td><td>{{ r.veld }}</td><td>{{ r.oude_waarde }}</td><td>{{ r.nieuwe_waarde }}</td></tr>
+  {% else %}<tr><td colspan="11">Geen regels gevonden.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if pagina.pages > 1 %}
+{% set basis = args.to_dict() %}
+<nav class="knoppen paginering">
+  {% if pagina.has_prev %}{% set _ = basis.update({'pagina': pagina.prev_num}) %}<a class="knop" href="{{ url_for('beheer.logboek', **basis) }}">◀ Nieuwer</a>{% endif %}
+  <span>Pagina {{ pagina.page }} van {{ pagina.pages }}</span>
+  {% if pagina.has_next %}{% set _ = basis.update({'pagina': pagina.next_num}) %}<a class="knop" href="{{ url_for('beheer.logboek', **basis) }}">Ouder ▶</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

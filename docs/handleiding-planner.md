@@ -1,0 +1,112 @@
+# Handleiding voor de planner (beheerder)
+
+Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
+
+<!-- Screenshot: weekrooster met code-raster (placeholder) -->
+
+## 1. Een week invullen met het code-raster
+
+Open **Weekrooster** (of klik in de **Kalender** op een weeknummer). Rechts van het rooster staat het **code-raster**: per medewerker één rij (initialen) en zeven kolommen MA t/m ZO. Op een smal scherm staat het code-raster onder het rooster.
+
+1. Klik op een cel in het code-raster.
+2. Typ het **nummer van de dienstcode**, bijvoorbeeld `4`, en druk op **Tab** (volgende dag) of **Enter** (volgende medewerker).
+3. Direct gebeurt het volgende:
+   - de dienstnaam verschijnt in het rooster, in de kleur van de code;
+   - de standaard begin- en eindtijd van die code worden ingevuld;
+   - de uren van die dag en het weektotaal worden berekend.
+
+Elke cel wordt meteen opgeslagen. Boven het code-raster zie je "Opgeslagen ✓".
+
+| Wat je typt | Betekenis |
+|---|---|
+| een codenummer (`1`, `4`, `17`, …) | die dienst |
+| niets (cel leeg maken met **Delete**) | geen dienst |
+| de blanco-code (standaard `15`) | ook: geen dienst (voor wie gewend is aan Excel) |
+| een onbekend nummer | rode cel met de melding "Onbekende dienstcode"; er wordt niets opgeslagen |
+
+### Toetsen (zoals in Excel)
+
+| Toets | Wat gebeurt er |
+|---|---|
+| Pijltjes, Tab / Shift+Tab, Enter / Shift+Enter | verplaatsen |
+| Direct typen | cel overschrijven |
+| F2 of dubbelklik | bestaande waarde bewerken |
+| Esc | bewerken annuleren |
+| Delete / Backspace | geselecteerde cellen leegmaken |
+| Shift + pijltjes of Shift + klik | een blok cellen selecteren |
+| Ctrl+C / Ctrl+V | kopiëren en plakken, ook een blok dat je in Excel hebt gekopieerd |
+| Ctrl+Z | de laatste wijziging(en) ongedaan maken (zolang je de pagina niet verlaat) |
+
+Plakken van één waarde terwijl een blok geselecteerd is, vult het hele blok (handig om een hele rij `4` te geven).
+
+## 2. Tijden handmatig aanpassen
+
+Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op de begin- of eindtijd (onderste regel van het blok) en typ de nieuwe tijd. Tijden mag je invoeren als `715`, `7:15`, `07.15` of `0715`; ze worden altijd `07:15`.
+
+- De uren worden opnieuw berekend.
+- Een handmatige tijd is **rood gestippeld onderstreept** met een klein rood hoekje. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
+
+## 3. Opmerkingen
+
+Elk medewerkerblok heeft vier regels per dag:
+
+| Regel | Inhoud | Telt mee in uren? |
+|---|---|---|
+| a | opmerking (bijvoorbeeld "BV", "BHV", "Later op dienst") | nee |
+| b | begin- en eindtijd bij de opmerking (bijvoorbeeld BV 13:30–15:45) | nee (instelbaar bij Instellingen) |
+| c | dienstnaam (komt van de dienstcode) | – |
+| d | begin, eind en uren van de dienst | **ja** |
+
+Een opmerking die precies overeenkomt met een **kleurregel** (bijvoorbeeld een locatienaam) krijgt automatisch de kleur van die regel (*Beheer → Dienstcodes → Opmerking-kleurregels*).
+
+**Dagopmerking** (de balk onder de datums): wordt automatisch gevuld met feestdagen en vakanties. Een feestdag gaat voor een vakantie, en vakanties staan alleen op werkdagen. Je kunt de tekst overschrijven:
+
+- **Typen**: eigen tekst.
+- **Delete** op een eigen tekst: de automatische tekst komt terug.
+- **Delete** op een automatische tekst: de dagopmerking wordt verborgen.
+
+## 4. Week kopiëren
+
+Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of één medewerker wilt kopiëren. De doelweek wordt **gelijk gemaakt** aan deze week: daar bestaande diensten worden overschreven.
+
+## 5. Printen
+
+Klik op **Printen**. De week komt liggend op één A4, zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
+
+## 6. Kalender, overzichten en zoeken
+
+- **Kalender** is de jaarkalender. Klik op een weeknummer of dag om die week te openen. Met "Zoek datum" (`dd-mm` of `dd-mm-jjjj`) spring je naar een dag; die dag wordt geel gemarkeerd. Rechts staan het **overzicht** (contracturen, gewerkte uren, verschil) en de **roostervrije dagen**.
+- **Urenoverzicht**: alle weektotalen van het jaar per medewerker. De huidige week is groen. Klik op een getal om die week te openen. Exporteren als CSV kan ook.
+- **Zoeken**: zoek op naam of initialen (minimaal 3 tekens) of op dienstcode, eventueel binnen een periode. Diensten met afwijkende tijden krijgen de markering *afwijkend*.
+
+Het **jaartotaal** telt de ISO-weken W1 t/m W52/W53 van dat jaar, net als in Excel. Week 1 van 2026 begint dus op maandag 29-12-2025.
+
+## 7. Beheer
+
+| Scherm | Wat |
+|---|---|
+| Medewerkers | toevoegen, initialen (worden voorgesteld), contracturen per jaar, functie, e-mail, volgorde (▲▼), archiveren of verwijderen |
+| Dienstcodes | nummer, omschrijving, standaardtijden, kleuren (met live voorbeeld), agenda-instellingen; voorbeeldpakket; kleurregels voor opmerkingen |
+| Vakanties | naam, van en tot; het aantal werkdagen wordt berekend |
+| Feestdagen | per jaar automatisch; aan of uit zetten; eigen roostervrije dagen toevoegen |
+| Gebruikers | accounts, rollen, koppeling met een medewerker, wachtwoord resetten |
+| Instellingen | teamnaam, toeslagen, blanco-code, logboek-bewaartermijn, alleen-lezen deellink |
+| Logboek | elke wijziging met wie, wanneer, oud en nieuw; te filteren |
+| Uren herberekenen | na het wijzigen van toeslagfactoren of feestdagen |
+
+### Archiveren of verwijderen?
+
+- **Archiveren** (aanbevolen bij vertrek): de medewerker verdwijnt uit de weken vanaf de gekozen datum. Oude diensten en uren blijven bewaard en zichtbaar in oude weken.
+- **Verwijderen**: alleen zonder diensten, of na een expliciete bevestiging dat alle diensten ook verdwijnen.
+
+### Standaardtijden van een code wijzigen
+
+Een nieuwe standaardtijd geldt alleen voor **nieuwe invoer**. Wil je ook de toekomstige diensten aanpassen? Gebruik dan bij de code **Tijden toepassen…**. Je ziet eerst hoeveel diensten er veranderen.
+
+### Toeslagen wijzigen
+
+Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag of zondag gewijzigd, gebruik dan **Uren herberekenen**. Let op: dat verandert ook historische totalen.
+
+## 8. Twee planners tegelijk
+
+Werken twee beheerders tegelijk aan dezelfde cel, dan krijgt de tweede een melding en wordt de pagina ververst met de nieuwste gegevens. Er gaat niets stilletjes verloren.

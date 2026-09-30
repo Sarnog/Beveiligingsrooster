@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "_urls.html" as u with context %}
+{% block titel %}Kalender {{ jaar }} – {{ teamnaam }}{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<div class="kalender-kop geen-print">
+  <form method="get" class="rij-formulier" action="{{ u.kalender_url(jaar) }}">
+    <a class="knop" href="{{ u.kalender_url(jaar - 1) }}" title="Vorig jaar">◀</a>
+    <label class="veld"><span>Jaar</span><input type="number" name="jaar" value="{{ jaar }}" min="1950" max="2150" class="jaarveld"></label>
+    <a class="knop" href="{{ u.kalender_url(jaar + 1) }}" title="Volgend jaar">▶</a>
+    <button class="knop" type="submit">Toon</button>
+  </form>
+  <label class="veld"><span>Kies weeknummer</span>
+    <select data-navigeer>
+      <option value="">–</option>
+      {% for w in weken %}<option value="{{ u.week_url(jaar, w) }}">W{{ w }}</option>{% endfor %}
+    </select></label>
+  {% if not deel_token %}
+  <form method="get" action="{{ url_for('kalender.zoek_datum') }}" class="rij-formulier">
+    <input type="hidden" name="jaar" value="{{ jaar }}">
+    <label class="veld"><span>Zoek datum</span><input name="datum" placeholder="dd-mm of dd-mm-jjjj" size="12" required></label>
+    <button class="knop" type="submit">Zoek</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="kalender-opmaak">
+  <div class="jaarkalender">
+    <h1>{{ jaar }}</h1>
+    <div class="maanden">
+    {% for m in maanden %}
+      <table class="maand">
+        <caption>{{ m.naam|capitalize }}</caption>
+        <thead><tr><th class="wk">W</th><th>M</th><th>D</th><th>W</th><th>D</th><th>V</th><th>Z</th><th>Z</th></tr></thead>
+        <tbody>
+        {% for w in m.weken %}
+          <tr>
+            <th class="wk"><a href="{{ u.week_url(w.iso_jaar, w.week) }}"{% if (w.iso_jaar, w.week) == huidige_week %} class="huidige"{% endif %}>{{ w.week }}</a></th>
+            {% for d in w.dagen %}
+              {% if d %}<td class="{{ d.klasse }}"{% if d.titel %} title="{{ d.titel }}"{% endif %}><a href="{{ u.week_url(w.iso_jaar, w.week, d.datum.isoformat()) }}">{{ d.datum.day }}</a></td>
+              {% else %}<td></td>{% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+    </div>
+    <ul class="legenda">
+      <li><span class="blokje vandaag"></span>Vandaag</li>
+      <li><span class="blokje feestdag"></span>Feestdag</li>
+      <li><span class="blokje vakantie"></span>Vakantie</li>
+      <li><span class="blokje weekend"></span>Weekend</li>
+    </ul>
+  </div>
+
+  <div class="zijpanelen">
+    {% if overzicht is not none %}
+    <section class="kaart">
+      <h2>Overzicht {{ jaar }}</h2>
+      <table class="tabel compact">
+        <thead><tr><th>Naam</th><th class="getal">Contract</th><th class="getal">Gewerkt</th><th class="getal">Verschil</th></tr></thead>
+        <tbody>
+        {% for r in overzicht %}
+          {% set v = r.verschil %}
+          <tr><td>{{ r.medewerker.naam }}</td>
+            <td class="getal">{{ r.contracturen|uren }}</td>
+            <td class="getal">{{ r.gewerkt|uren }}</td>
+            <td class="getal {% if v is none %}{% elif v < 0 %}negatief{% elif v > 0 %}positief{% else %}nul{% endif %}">{{ v|uren }}</td></tr>
+        {% else %}<tr><td colspan="4">Nog geen medewerkers.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+    <section class="kaart">
+      <h2>Roostervrije dagen {{ jaar }}</h2>
+      <table class="tabel compact">
+        <thead><tr><th>Naam</th><th>Datum</th><th class="getal">Week</th></tr></thead>
+        <tbody>
+        {% for f in feestdagen %}<tr><td>{{ f.naam }}</td><td>{{ f.datum|datum_nl }}</td><td class="getal">{{ f.datum.isocalendar()[1] }}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% if laatst_bijgewerkt %}<p class="hulp">Laatst bijgewerkt: {{ laatst_bijgewerkt }}</p>{% endif %}
+  </div>
+</div>
+{% endblock %}
