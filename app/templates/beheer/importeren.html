@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, post_knop %}
+{% block titel %}Importeren uit Excel{% endblock %}
+{% block inhoud %}
+<h1>Importeren uit Excel (.xlsm)</h1>
+{% if not plan %}
+<section class="kaart">
+  <p>Lees het oude roosterbestand in: medewerkers, contracturen, dienstcodes, toeslagen, vakanties en alle weken W1–W53 (diensten, tijden, opmerkingen, dagopmerkingen).</p>
+  <ul class="hulp">
+    <li>Eerst krijg je een <strong>voorbeeld</strong>; er wordt dan nog niets opgeslagen.</li>
+    <li>Wachtwoorden en rechten uit het Excel-bestand worden <strong>niet</strong> overgenomen.</li>
+    <li>Bestaande medewerkers (zelfde naam of initialen) en dienstcodes (zelfde nummer) worden hergebruikt. Diensten in de geïmporteerde weken worden overschreven.</li>
+    <li>Het bestand wordt na de import (of bij annuleren) direct verwijderd.</li>
+  </ul>
+  <form method="post" enctype="multipart/form-data" class="rij-formulier">
+    {{ csrf() }}
+    <label class="veld"><span>Excel-bestand</span><input type="file" name="bestand" accept=".xlsm,.xlsx" required></label>
+    <button class="knop primair" type="submit">Uploaden en controleren</button>
+  </form>
+</section>
+{% else %}
+<section class="kaart">
+  <h2>Voorbeeld (droogloop) – jaar {{ plan.jaar }}</h2>
+  <ul>
+    <li><strong>{{ plan.medewerkers|length }}</strong> medewerkers, <strong>{{ plan.codes|length }}</strong> dienstcodes, <strong>{{ plan.vakanties|length }}</strong> vakanties</li>
+    <li><strong>{{ plan.diensten|length }}</strong> diensten in <strong>{{ plan.weken|length }}</strong> weken, waarvan <strong>{{ plan.afwijkend }}</strong> met afwijkende (handmatige) tijden</li>
+    <li>Toeslagen: zaterdag {{ plan.toeslag_zaterdag or '–' }}, zondag {{ plan.toeslag_zondag or '–' }}</li>
+  </ul>
+  {% if plan.waarschuwingen %}
+  <h3>Waarschuwingen</h3>
+  <ul class="hulp">{% for w in plan.waarschuwingen %}<li>{{ w }}</li>{% endfor %}</ul>
+  {% endif %}
+  <h3>Controle weektotalen (Excel kolom Z)</h3>
+  {% if week_verschillen %}
+  <p class="hulp">Hier wijkt de nieuwe berekening af van Excel. Meestal komt dat doordat Excel de uren niet had bijgewerkt na een tijdwijziging; de nieuwe waarde volgt de tijden.</p>
+  <ul>{% for v in week_verschillen %}<li>{{ v }}</li>{% endfor %}</ul>
+  {% if uren_verschillen %}<details><summary>Per dienst ({{ uren_verschillen|length }})</summary><ul class="hulp">{% for v in uren_verschillen %}<li>{{ v }}</li>{% endfor %}</ul></details>{% endif %}
+  {% else %}
+  <p>✅ Alle weektotalen komen overeen met Excel.</p>
+  {% endif %}
+
+  <table class="tabel compact">
+    <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th></tr></thead>
+    <tbody>{% for m in plan.medewerkers %}<tr><td>{{ m.naam }}</td><td>{{ m.initialen }}</td><td class="getal">{{ m.contracturen|uren }}</td></tr>{% endfor %}</tbody>
+  </table>
+
+  <form method="post" class="knoppen">
+    {{ csrf() }}
+    <label class="vink"><input type="checkbox" name="bevestig" value="1" required><span>Ik wil definitief importeren (er wordt eerst automatisch een back-up gemaakt)</span></label>
+    <button class="knop primair" type="submit">Definitief importeren</button>
+  </form>
+  {{ post_knop(url_for('beheer.excel_import_annuleren'), 'Annuleren', 'knop') }}
+</section>
+{% endif %}
+{% endblock %}

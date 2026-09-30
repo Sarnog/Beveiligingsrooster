@@ -5,6 +5,7 @@ terwijl de app gewoon in gebruik is. Back-ups staan in <datamap>/backups.
 """
 
 import os
+import re
 import sqlite3
 
 from flask import current_app
@@ -70,3 +71,59 @@ def ruim_oude_op() -> int:
         os.remove(os.path.join(backup_map(), oud["naam"]))
         verwijderd += 1
     return verwijderd
+
+
+GELDIGE_NAAM = re.compile(r"^rooster-[0-9]{8}-[0-9]{6}(-[a-z0-9-]+)?\.db$")
+
+
+def pad_van(naam: str) -> str | None:
+    """Veilig pad van een back-up (alleen namen die wij zelf maken)."""
+    if not GELDIGE_NAAM.match(naam or ""):
+        return None
+    pad = os.path.join(backup_map(), naam)
+    return pad if os.path.exists(pad) else None
+
+
+def controleer_backupbestand(pad: str) -> None:
+    """Is dit een database van deze app? Anders ValueError."""
+    try:
+        verbinding = sqlite3.connect(f"file:{pad}?mode=ro", uri=True)
+        try:
+            tabellen = {r[0] for r in verbinding.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            verbinding.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            verbinding.close()
+    except sqlite3.DatabaseError as fout:
+        raise ValueError("Dit is geen geldige database-back-up.") from fout
+    if not {"medewerker", "dienst", "alembic_version"} <= tabellen:
+        raise ValueError("Dit bestand is geen back-up van het Beveiligingsrooster.")
+
+
+def zet_terug(pad: str) -> str:
+    """Zet een back-up terug. Maakt eerst zelf een back-up van de huidige stand.
+
+    De inhoud wordt met de backup-API in de draaiende database gekopieerd, zodat
+    andere processen (web, worker) gewoon doorwerken. Daarna worden eventuele
+    databasemigraties uitgevoerd (voor een back-up van een oudere versie).
+    Geeft de naam van de veiligheidsback-up terug.
+    """
+    from flask_migrate import upgrade
+
+    from ..extensions import db
+
+    controleer_backupbestand(pad)
+    veiligheid = maak_backup("voor-terugzetten")
+    db.session.remove()
+    db.engine.dispose()
+    bron = sqlite3.connect(pad)
+    doel = sqlite3.connect(database_pad())
+    try:
+        with doel:
+            bron.backup(doel)
+    finally:
+        bron.close()
+        doel.close()
+    db.engine.dispose()
+    upgrade(directory=os.path.join(os.path.dirname(current_app.root_path), "migrations"))
+    return os.path.basename(veiligheid)

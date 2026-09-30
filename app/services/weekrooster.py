@@ -22,10 +22,11 @@ from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
 from .tijden import OngeldigeTijd, normaliseer_tijd
 from .urenberekening import formatteer_uren
 
-VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind")
+VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "dienstnaam", "uren")
 VELD_NAMEN = {
     "code": "dienstcode", "begin": "begintijd", "eind": "eindtijd", "opmerking": "opmerking",
     "opm_begin": "opmerking begin", "opm_eind": "opmerking eind",
+    "dienstnaam": "dienstnaam", "uren": "uren",
 }
 MAX_OPMERKING = 120
 
@@ -33,7 +34,7 @@ MAX_OPMERKING = 120
 LEGE_DIENST = {
     "dienstcode_id": None, "dienstnaam_override": "", "begin": None, "eind": None,
     "tijden_handmatig": False, "opmerking_tekst": "", "opmerking_begin": None,
-    "opmerking_eind": None,
+    "opmerking_eind": None, "uren_handmatig": None,
 }
 
 
@@ -81,7 +82,7 @@ def dienst_naar_dict(dienst: Dienst | None, regels: dict | None = None) -> dict:
     regels = regels if regels is not None else kleurregels()
     if dienst is None:
         return {"code": "", "dienstnaam": "", "begin": "", "eind": "", "uren": "",
-                "handmatig": False, "opmerking": "", "opm_begin": "", "opm_eind": "",
+                "handmatig": False, "uren_handmatig": False, "opmerking": "", "opm_begin": "", "opm_eind": "",
                 "versie": 0, "dienst_stijl": "", "opmerking_stijl": ""}
     return {
         "code": str(dienst.dienstcode.nummer) if dienst.dienstcode else "",
@@ -90,6 +91,7 @@ def dienst_naar_dict(dienst: Dienst | None, regels: dict | None = None) -> dict:
         "eind": dienst.eind or "",
         "uren": formatteer_uren(dienst.uren_berekend),
         "handmatig": bool(dienst.tijden_handmatig),
+        "uren_handmatig": dienst.uren_handmatig is not None,
         "opmerking": dienst.opmerking_tekst or "",
         "opm_begin": dienst.opmerking_begin or "",
         "opm_eind": dienst.opmerking_eind or "",
@@ -256,6 +258,7 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
         dienst.begin = code.std_begin if code else None
         dienst.eind = code.std_eind if code else None
         dienst.tijden_handmatig = False
+        dienst.uren_handmatig = None  # zelf ingevulde uren vervallen bij een nieuwe code
         return oud, str(code.nummer) if code else ""
 
     if veld in ("begin", "eind"):
@@ -278,6 +281,34 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
         oud = getattr(dienst, kolom) or ""
         setattr(dienst, kolom, _tijd(waarde))
         return oud, getattr(dienst, kolom) or ""
+
+    if veld == "dienstnaam":
+        # Vrije dienstnaam (zonder code), bijvoorbeeld een cursus of 'Controleronde'
+        oud = dienst.dienstnaam
+        tekst = (waarde or "").strip()[:60]
+        if dienst.dienstcode is not None and tekst == dienst.dienstcode.omschrijving:
+            return oud, oud  # niets veranderd
+        dienst.dienstcode = None
+        dienst.dienstcode_id = None
+        dienst.dienstnaam_override = tekst
+        dienst.tijden_handmatig = bool(dienst.begin or dienst.eind)
+        return oud, tekst
+
+    if veld == "uren":
+        # Zelf uren invullen (gaat voor de berekening); leeg = weer automatisch berekenen
+        oud = "" if dienst.uren_handmatig is None else formatteer_uren(dienst.uren_handmatig)
+        tekst = (waarde or "").strip().replace(",", ".")
+        if tekst == "":
+            dienst.uren_handmatig = None
+            return oud, ""
+        try:
+            uren = float(tekst)
+        except ValueError as fout:
+            raise CelFout(f"'{waarde}' is geen aantal uren (bijvoorbeeld 8 of 7,5).") from fout
+        if not 0 <= uren <= 24:
+            raise CelFout("Uren moeten tussen 0 en 24 liggen.")
+        dienst.uren_handmatig = uren
+        return oud, formatteer_uren(uren)
 
     raise CelFout(f"Onbekend veld: {veld}")
 

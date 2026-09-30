@@ -21,8 +21,10 @@ def index():
 # Routes uit de losse modules registreren (import na het aanmaken van bp)
 from . import (  # noqa: E402,F401
     agenda,
+    backups,
     dienstcodes,
     gebruikers,
+    importeren,
     instellingen,
     kalender,
     logboek,

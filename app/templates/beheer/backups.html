@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, post_knop %}
+{% block titel %}Back-ups{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Back-ups</h1>
+  {{ post_knop(url_for('beheer.backup_maken'), 'Nu een back-up maken', 'knop primair') }}
+</div>
+<p class="hulp">Elke nacht na 02:00 maakt de worker automatisch een back-up (aantal bewaren: zie Instellingen). Back-ups met een label (bijv. <em>voor-update</em>) blijven altijd staan.
+  Een back-up bevat de hele database (alle roosterdata en accounts, wachtwoorden versleuteld), maar <strong>niet</strong> het Google-sleutelbestand. Bewaar gedownloade back-ups veilig.</p>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Back-up</th><th>Tijdstip</th><th class="getal">Grootte</th><th></th></tr></thead>
+  <tbody>
+  {% for b in backups %}
+    <tr><td><code>{{ b.naam }}</code></td>
+      <td>{{ b.naam[8:12] }}-{{ b.naam[12:14] }}-{{ b.naam[14:16] }} {{ b.naam[17:19] }}:{{ b.naam[19:21] }}</td>
+      <td class="getal">{{ (b.grootte / 1024)|round(0)|int }} kB</td>
+      <td class="nowrap">
+        <a class="knop klein" href="{{ url_for('beheer.backup_download', naam=b.naam) }}">Downloaden</a>
+        <form method="post" action="{{ url_for('beheer.backup_terugzetten') }}" class="inline"
+              data-bevestig="Back-up {{ b.naam }} terugzetten? De huidige gegevens worden vervangen (er wordt eerst een veiligheidsback-up gemaakt).">
+          {{ csrf() }}<input type="hidden" name="naam" value="{{ b.naam }}"><input type="hidden" name="bevestig" value="1">
+          <button class="knop klein gevaar" type="submit">Terugzetten</button>
+        </form>
+      </td></tr>
+  {% else %}<tr><td colspan="4">Nog geen back-ups.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<h2>Back-upbestand uploaden en terugzetten</h2>
+<form method="post" action="{{ url_for('beheer.backup_terugzetten') }}" enctype="multipart/form-data" class="kaart">
+  {{ csrf() }}
+  <label class="veld"><span>Back-upbestand (.db)</span><input type="file" name="bestand" accept=".db" required></label>
+  <label class="vink"><input type="checkbox" name="bevestig" value="1" required><span>Ik begrijp dat de huidige gegevens worden vervangen (er wordt eerst een veiligheidsback-up gemaakt)</span></label>
+  <button class="knop gevaar" type="submit">Uploaden en terugzetten</button>
+</form>
+{% endblock %}

@@ -159,6 +159,8 @@ class Dienst(db.Model):
     eind = db.Column(db.String(5), nullable=True)
     tijden_handmatig = db.Column(db.Boolean, nullable=False, default=False)
     uren_berekend = db.Column(db.Float, nullable=True)
+    # Zelf ingevulde uren (bijv. een cursus zonder tijden); gaat voor de berekening
+    uren_handmatig = db.Column(db.Float, nullable=True)
     opmerking_tekst = db.Column(db.String(120), nullable=False, default="")
     opmerking_begin = db.Column(db.String(5), nullable=True)
     opmerking_eind = db.Column(db.String(5), nullable=True)
@@ -190,6 +192,7 @@ class Dienst(db.Model):
             and not self.opmerking_tekst
             and not self.opmerking_begin
             and not self.opmerking_eind
+            and self.uren_handmatig is None
         )
 
 

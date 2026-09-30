@@ -212,7 +212,7 @@ tr.gearchiveerd td { opacity: .55; }
 .rooster .opmtijd { font-size: 11px; color: #444; }
 .rooster .uren { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; background: #fafafa; }
 .rooster .dienstnaam { text-align: center; font-weight: 700; }
-.rooster td.handmatig { text-decoration: underline dotted #b3261e; text-underline-offset: 3px; background-image: linear-gradient(135deg, #b3261e 5px, transparent 5px); }
+.rooster td.handmatig, .rooster td.uren.handmatig { text-decoration: underline dotted #b3261e; text-underline-offset: 3px; background-image: linear-gradient(135deg, #b3261e 5px, transparent 5px); }
 .rooster .gemarkeerd, .rooster .dagkop.gemarkeerd { background: #FFFF00 !important; color: #000 !important; }
 
 /* Code-raster (alleen beheerder) */

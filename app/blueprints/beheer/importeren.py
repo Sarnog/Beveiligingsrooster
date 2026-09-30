@@ -1,0 +1,94 @@
+"""Beheer: importeren uit het oude Excel-bestand (.xlsm).
+
+Stap 1: bestand uploaden -> droogloop met voorbeeld (er wordt nog niets opgeslagen).
+Stap 2: bevestigen -> definitief importeren. Het bestand wordt daarna verwijderd.
+"""
+
+import os
+import secrets
+
+from flask import current_app, flash, redirect, render_template, request, session, url_for
+
+from ...services import backup
+from ...services.excel_import import ImportFout, importeer, lees_bestand
+from ..hulp import beheerder_vereist, vinkje
+from . import bp
+
+TOEGESTAAN = (".xlsm", ".xlsx")
+
+
+def _import_map() -> str:
+    pad = os.path.join(current_app.config["DATA_MAP"], "import")
+    os.makedirs(pad, mode=0o700, exist_ok=True)
+    return pad
+
+
+def _opgeslagen_pad() -> str | None:
+    naam = session.get("import_bestand", "")
+    if not naam or "/" in naam or "\\" in naam:
+        return None
+    pad = os.path.join(_import_map(), naam)
+    return pad if os.path.exists(pad) else None
+
+
+def _ruim_op() -> None:
+    pad = _opgeslagen_pad()
+    if pad:
+        os.remove(pad)
+    session.pop("import_bestand", None)
+
+
+@bp.route("/importeren", methods=["GET", "POST"])
+@beheerder_vereist
+def excel_import():
+    if request.method == "POST":
+        bestand = request.files.get("bestand")
+        if not bestand or not bestand.filename.lower().endswith(TOEGESTAAN):
+            flash("Kies een Excel-bestand (.xlsm of .xlsx).", "fout")
+            return redirect(url_for("beheer.excel_import"))
+        _ruim_op()
+        naam = secrets.token_hex(8) + ".xlsm"
+        pad = os.path.join(_import_map(), naam)
+        bestand.save(pad)
+        os.chmod(pad, 0o600)
+        session["import_bestand"] = naam
+        return redirect(url_for("beheer.excel_import_voorbeeld"))
+    return render_template("beheer/importeren.html", plan=None)
+
+
+@bp.route("/importeren/voorbeeld", methods=["GET", "POST"])
+@beheerder_vereist
+def excel_import_voorbeeld():
+    pad = _opgeslagen_pad()
+    if pad is None:
+        flash("Upload eerst een bestand.", "info")
+        return redirect(url_for("beheer.excel_import"))
+    try:
+        plan = lees_bestand(pad)
+    except ImportFout as fout:
+        _ruim_op()
+        flash(str(fout), "fout")
+        return redirect(url_for("beheer.excel_import"))
+
+    if request.method == "POST":
+        if not vinkje(request.form, "bevestig"):
+            flash("Vink eerst de bevestiging aan.", "fout")
+        else:
+            backup.maak_backup("voor-import")  # altijd eerst een back-up
+            resultaat = importeer(plan)
+            _ruim_op()
+            flash("Import klaar: " + ", ".join(f"{v} {k}" for k, v in resultaat.items())
+                  + ". Er is vooraf een back-up gemaakt.", "succes")
+            return redirect(url_for("kalender.jaar", jaar=plan.jaar))
+
+    return render_template("beheer/importeren.html", plan=plan,
+                           uren_verschillen=plan.uren_verschillen(),
+                           week_verschillen=plan.weektotaal_verschillen())
+
+
+@bp.route("/importeren/annuleren", methods=["POST"])
+@beheerder_vereist
+def excel_import_annuleren():
+    _ruim_op()
+    flash("Import geannuleerd; het bestand is verwijderd.", "info")
+    return redirect(url_for("beheer.excel_import"))

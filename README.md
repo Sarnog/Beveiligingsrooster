@@ -36,7 +36,7 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 | **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf | ✅ |
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
-| **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen; back-ups downloaden en terugzetten | fase 4 |
+| **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen (met droogloop en controle van de weektotalen); back-ups downloaden en terugzetten | ✅ |
 
 ## Hoe werkt het?
 
@@ -191,6 +191,18 @@ Daarna is `/setup` niet meer bereikbaar en is de code ongeldig.
 
 **Accounts voor collega's** maak je aan via *Beheer → Gebruikers*. Er is geen openbare registratie. Bij de eerste login kiest de collega zelf een nieuw wachtwoord. Koppel het account aan een medewerker, dan ziet die collega direct zijn of haar eigen rooster.
 
+## Het oude Excel-rooster overzetten
+
+*Beheer → Excel-import* leest het oude `Rooster_2026.xlsm` in. Dat zijn:
+- medewerkers en contracturen;
+- dienstcodes en toeslagen;
+- vakanties;
+- alle weken met diensten, tijden, opmerkingen en dagopmerkingen.
+
+Je krijgt eerst een **droogloop** met een voorbeeld en een controle van alle weektotalen tegen kolom Z in Excel. Pas na bevestiging wordt er iets opgeslagen, en de app maakt daarvóór automatisch een back-up.
+
+Wachtwoorden en rechten uit het Excel-bestand worden **niet** overgenomen. Het geüploade bestand wordt na afloop direct verwijderd.
+
 ## Dagelijks gebruik en beheer-commando's
 
 Voer deze commando's uit in de map met `docker-compose.yml`:
@@ -227,7 +239,8 @@ Zonder script kan het ook met de hand: `docker compose pull && docker compose up
 
 - **Automatisch:** de worker maakt elke nacht na 02:00 een back-up in `data/backups/`. Het aantal dat bewaard blijft stel je in bij Instellingen (standaard 30).
 - **Handmatig:** `docker compose exec -u rooster web flask backup`.
-- **Terugzetten** (vanaf fase 4 kan dat ook in de webinterface):
+- **Downloaden en terugzetten in de webinterface:** *Beheer → Back-ups*. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`).
+- **Terugzetten via de command line** (als de webinterface niet meer werkt):
   ```sh
   docker compose down
   cp data/backups/rooster-JJJJMMDD-HHMMSS.db data/rooster.db

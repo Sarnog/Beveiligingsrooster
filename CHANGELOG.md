@@ -2,6 +2,12 @@
 
 ## [Onuitgebracht]
 
+### Fase 4 – afronding
+- Excel-import (.xlsm) met droogloop, controle van de weektotalen (kolom Z) en automatische back-up vooraf.
+- Zelf ingevulde uren en vrije dienstnamen (zoals in Excel bij bijvoorbeeld een cursus zonder tijden);
+  migratie 0003.
+- Back-ups maken, downloaden en terugzetten in de webinterface (met veiligheidsback-up en migraties).
+
 ### Fase 3 – agenda
 - Google Agenda-koppeling via een service-account: modus A (app maakt en deelt een agenda) en
   modus B (gedeelde bestaande agenda); test, volledige synchronisatie en ontkoppelen.

@@ -32,7 +32,13 @@ class UrenContext:
 
 
 def uren_voor(dienst: Dienst, context: UrenContext) -> float | None:
-    """Uren van één dienst: de tijdenregel, plus eventueel de opmerkingtijden."""
+    """Uren van één dienst: de tijdenregel, plus eventueel de opmerkingtijden.
+
+    Zelf ingevulde uren (uren_handmatig) gaan altijd voor, zonder toeslagfactor:
+    zo werkte het ook in Excel als je een getal in de urenkolom typte.
+    """
+    if dienst.uren_handmatig is not None:
+        return dienst.uren_handmatig
     factor = context.factor(dienst.datum)
     uren = bereken_uren(dienst.begin, dienst.eind, factor)
     if context.opmerkingtijden_meetellen:

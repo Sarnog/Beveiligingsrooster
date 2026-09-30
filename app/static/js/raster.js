@@ -338,9 +338,11 @@
         el.setAttribute("data-versie", g.versie);
       } else if (toon === "uren") {
         el.textContent = g.uren;
+        el.classList.toggle("handmatig", !!g.uren_handmatig);
       }
       if (veld) { el.classList.remove("fout"); el.removeAttribute("title"); }
       if (veld === "begin" || veld === "eind") el.title = g.handmatig ? "Handmatig aangepast" : "";
+      if (veld === "uren" && g.uren_handmatig) el.title = "Zelf ingevulde uren";
     });
     var totaal = document.querySelector('[data-totaal="' + mw + '"]');
     if (totaal) totaal.textContent = g.weektotaal;

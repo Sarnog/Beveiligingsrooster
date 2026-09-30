@@ -46,6 +46,18 @@ Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op 
 - De uren worden opnieuw berekend.
 - Een handmatige tijd is **rood gestippeld onderstreept** met een klein rood hoekje. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
 
+### Vrije dienst en eigen uren
+
+Niet elke dienst heeft een code. Bijvoorbeeld een cursus of een extra ronde.
+
+- Typ in het rooster op de **dienstnaamregel** (regel c) een eigen naam. Een eventuele code vervalt dan.
+- Typ in de **urencel** (rechts van de eindtijd) zelf het aantal uren, bijvoorbeeld `8` of `7,5`. Zelf ingevulde uren:
+  - gaan voor de berekening;
+  - krijgen geen weekendtoeslag;
+  - hebben dezelfde rode markering.
+- **Delete** op de urencel zet de uren weer op automatisch.
+- Een nieuwe dienstcode invoeren maakt de uren ook weer automatisch.
+
 ## 3. Opmerkingen
 
 Elk medewerkerblok heeft vier regels per dag:
@@ -107,6 +119,21 @@ Een nieuwe standaardtijd geldt alleen voor **nieuwe invoer**. Wil je ook de toek
 
 Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag of zondag gewijzigd, gebruik dan **Uren herberekenen**. Let op: dat verandert ook historische totalen.
 
-## 8. Twee planners tegelijk
+## 8. Het oude Excel-bestand overzetten
+
+1. Ga naar *Beheer → Excel-import* en upload `Rooster_2026.xlsm`.
+2. Je ziet een voorbeeld:
+   - aantallen medewerkers, codes, vakanties en diensten;
+   - diensten met afwijkende tijden;
+   - de controle van alle weektotalen tegen Excel.
+
+   Kleine verschillen komen meestal doordat Excel de uren niet had bijgewerkt na een tijdwijziging. De nieuwe waarde volgt dan de tijden.
+3. Vink de bevestiging aan en klik op **Definitief importeren**. Er wordt eerst automatisch een back-up gemaakt.
+
+## 9. Back-ups
+
+*Beheer → Back-ups*: nu een back-up maken, downloaden of terugzetten. Bij het terugzetten wordt de huidige stand eerst bewaard als veiligheidsback-up. Elke nacht maakt de app zelf ook een back-up.
+
+## 10. Twee planners tegelijk
 
 Werken twee beheerders tegelijk aan dezelfde cel, dan krijgt de tweede een melding en wordt de pagina ververst met de nieuwste gegevens. Er gaat niets stilletjes verloren.
