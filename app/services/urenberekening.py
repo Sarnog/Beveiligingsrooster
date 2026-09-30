@@ -19,8 +19,9 @@ zodat eventuele afrondingsverschillen van kommagetallen identiek zijn. Dat is
 belangrijk bij weekenddiensten: 1:15 uur x 1,5 x 4 = precies 7,5 op papier, maar
 als kommagetal soms 7,4999... of 7,5000...1. Excel rondt dan af naar 7 of 8, en
 wij dus ook, exact hetzelfde. Gecontroleerd tegen 1899 diensten uit het oude
-Excel-bestand: alle uitkomsten gelijk (op 5 cellen na waarvan Excel de uren
-niet had bijgewerkt na een tijdwijziging).
+Excel-bestand: alle uitkomsten gelijk (op 5 cellen na waarin de planner de uren
+met de hand had aangepast; die worden bij de import als 'zelf ingevulde uren'
+overgenomen).
 
 Zomer-/wintertijd: we rekenen met wandkloktijd, net als Excel. Een nachtdienst
 22:00-06:30 telt dus altijd 8,00 uur, ook in de nacht dat de klok verzet wordt.

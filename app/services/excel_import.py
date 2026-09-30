@@ -101,10 +101,30 @@ def _datum(waarde) -> date | None:
     return None
 
 
-def _nieuwe_uren(d, za: float, zo: float) -> float | None:
-    """Uren zoals de webapp ze gaat berekenen (zelf getypte uren zonder tijden tellen mee)."""
-    if not d.begin and not d.eind and d.excel_uren:
+def _handmatige_uren(d, za: float, zo: float) -> float | None:
+    """Uren die in Excel met de hand in de urenkolom zijn gezet, of None.
+
+    Dat zijn:
+    - uren bij een dienst zonder tijden (bijv. een cursus of 'TW');
+    - uren die afwijken van wat de tijden opleveren. Voorbeeld: dienst 07:15-13:00
+      met daarna een training 13:00-17:00 op de opmerkingregel; de planner typte
+      dan de uren van de hele dag (9,25). Die nemen we over, precies zoals in Excel.
+    """
+    if d.excel_uren is None:
+        return None
+    if not d.begin and not d.eind:
+        return d.excel_uren or None
+    berekend = bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
+    if berekend is not None and abs(berekend - d.excel_uren) > 0.001:
         return d.excel_uren
+    return None
+
+
+def _nieuwe_uren(d, za: float, zo: float) -> float | None:
+    """Uren zoals de webapp ze na de import heeft (handmatige uren gaan voor)."""
+    handmatig = _handmatige_uren(d, za, zo)
+    if handmatig is not None:
+        return handmatig
     return bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
 
 
@@ -166,18 +186,24 @@ class ImportPlan:
         return sum(1 for d in self.diensten
                    if d.code in standaard and (d.begin, d.eind) != standaard[d.code])
 
-    def uren_verschillen(self) -> list[str]:
-        """Diensten waarbij Excel andere uren had dan de (juiste) nieuwe berekening."""
+    def handmatige_uren(self) -> list[str]:
+        """Diensten waarvan de uren in Excel met de hand afwijken van de tijden.
+
+        Die worden als 'zelf ingevulde uren' overgenomen (zie _handmatige_uren).
+        """
         za = self.toeslag_zaterdag or 1.5
         zo = self.toeslag_zondag or 2.0
-        verschillen = []
+        regels = []
         for d in self.diensten:
-            nieuw = _nieuwe_uren(d, za, zo)
-            oud = d.excel_uren
-            if nieuw is not None and oud is not None and abs(nieuw - oud) > 0.001:
-                verschillen.append(f"{d.datum:%d-%m-%Y} {d.naam}: {d.begin}-{d.eind} "
-                                   f"Excel {oud:.2f}, nieuw {nieuw:.2f}")
-        return verschillen
+            if not (d.begin or d.eind):
+                continue
+            handmatig = _handmatige_uren(d, za, zo)
+            if handmatig is not None:
+                berekend = bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
+                extra = f", opmerking '{d.opmerking}'" if d.opmerking else ""
+                regels.append(f"{d.datum:%d-%m-%Y} {d.naam}: {d.begin}-{d.eind}{extra} – "
+                              f"tijden geven {berekend:.2f}, Excel {handmatig:.2f} (overgenomen)")
+        return regels
 
     def weektotaal_verschillen(self) -> list[str]:
         za = self.toeslag_zaterdag or 1.5
@@ -398,6 +424,8 @@ def importeer(plan: ImportPlan) -> dict:
     else:
         context = None
 
+    za = plan.toeslag_zaterdag or 1.5
+    zo = plan.toeslag_zondag or 2.0
     for d in plan.diensten:
         medewerker = medewerkers.get(d.naam)
         if medewerker is None:
@@ -415,8 +443,8 @@ def importeer(plan: ImportPlan) -> dict:
             tijden_handmatig=bool(code and (d.begin, d.eind) != (code.std_begin, code.std_eind)),
             opmerking_tekst=d.opmerking[:120], opmerking_begin=d.opm_begin,
             opmerking_eind=d.opm_eind, versie=1,
-            # Zelf getypte uren zonder tijden (bijv. een cursus) overnemen zoals in Excel
-            uren_handmatig=d.excel_uren if (not d.begin and not d.eind and d.excel_uren) else None,
+            # Met de hand getypte uren uit Excel overnemen (zie _handmatige_uren)
+            uren_handmatig=_handmatige_uren(d, za, zo),
         )
         dienst.uren_berekend = uren_voor(dienst, context)
         db.session.add(dienst)

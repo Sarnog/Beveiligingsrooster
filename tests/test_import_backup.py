@@ -74,10 +74,19 @@ def maak_testbestand(pad: str) -> None:
     # wo: vrije dienst zonder code en tijden, met zelf getypte uren
     week.cell(6, 10, "Cursus extern")
     week.cell(7, 12, 8)
+    # do: dienst tot 13:00, daarna training 13:00-17:00; uren van de hele dag met de hand getypt
+    week.cell(6, 32, 4)
+    week.cell(6, 13, "VW Vroeg")
+    week.cell(7, 13, time(7, 15))
+    week.cell(7, 14, time(13, 0))
+    week.cell(7, 15, 9.25)
+    week.cell(4, 13, "Training")
+    week.cell(5, 13, time(13, 0))
+    week.cell(5, 14, time(17, 0))
     # za: blanco-code 15 (als datum 1900-01-15) = leeg
     week.cell(6, 34, datetime(1900, 1, 15))
     week.cell(6, 19, datetime(1900, 1, 15))
-    week["Z6"] = 24.25
+    week["Z6"] = 33.5
     # Blok 1: medewerker B met een code die nog niet bestaat
     week["B8"], week["AB8"] = "Medewerker Vijf B", "MVB"
     week.cell(8, 29, 42)
@@ -107,15 +116,17 @@ def test_droogloop(app, klaar, bestand):
     assert plan.jaar == 2026 and plan.weken == [10]
     assert [m.naam for m in plan.medewerkers] == ["Medewerker Vijf A", "Medewerker Vijf B"]
     assert [c.nummer for c in plan.codes] == [4, 10, 42]  # 15 = blanco
-    assert len(plan.diensten) == 4 and plan.afwijkend == 1
+    assert len(plan.diensten) == 5 and plan.afwijkend == 2
+    # Alleen het bewust foute weektotaal wijkt af; de met de hand getypte 9,25 telt mee
     assert plan.weektotaal_verschillen() == ["W10 Medewerker Vijf B: Excel 99.00, nieuw 7.50"]
+    assert len(plan.handmatige_uren()) == 1 and "9.25 (overgenomen)" in plan.handmatige_uren()[0]
     assert Dienst.query.count() == 0  # droogloop schrijft niets
 
 
 def test_definitief_importeren(app, klaar, bestand):
     laad_voorbeeldpakket()  # code 4 en 10 bestaan al; 42 komt erbij
     resultaat = importeer(lees_bestand(bestand))
-    assert resultaat["medewerkers"] == 2 and resultaat["codes"] == 1 and resultaat["diensten"] == 4
+    assert resultaat["medewerkers"] == 2 and resultaat["codes"] == 1 and resultaat["diensten"] == 5
     a = Medewerker.query.filter_by(initialen="MVA").one()
     assert a.contracturen_voor(2026) == 1659
 
@@ -127,6 +138,9 @@ def test_definitief_importeren(app, klaar, bestand):
     assert (ma.opmerking_tekst, ma.opmerking_begin, ma.opmerking_eind) == ("BV", "13:30", "15:45")
     assert (di.eind, di.tijden_handmatig, di.uren_berekend) == ("16:00", True, 8.25)
     assert (wo.dienstnaam, wo.uren_handmatig, wo.uren_berekend) == ("Cursus extern", 8.0, 8.0)
+    do = dag(5)
+    assert (do.eind, do.uren_handmatig, do.uren_berekend) == ("13:00", 9.25, 9.25)
+    assert ma.uren_handmatig is None and di.uren_handmatig is None  # gewoon berekend
     assert Dienst.query.filter_by(medewerker_id=a.id, datum=date(2026, 3, 7)).first() is None
     assert Dienstcode.query.filter_by(nummer=42).one().std_begin == "09:00"
     assert Vakantie.query.count() == 1
@@ -134,7 +148,7 @@ def test_definitief_importeren(app, klaar, bestand):
     assert instellingen.lees_float("toeslag_zaterdag") == 1.5
     # Nogmaals importeren overschrijft de week (geen dubbele diensten)
     importeer(lees_bestand(bestand))
-    assert Dienst.query.count() == 4
+    assert Dienst.query.count() == 5
 
 
 def test_import_via_scherm(app, als_beheerder, bestand):
@@ -146,7 +160,7 @@ def test_import_via_scherm(app, als_beheerder, bestand):
     pagina = als_beheerder.get("/beheer/importeren/voorbeeld").data.decode()
     assert "Voorbeeld (droogloop)" in pagina and "Excel 99.00" in pagina
     als_beheerder.post("/beheer/importeren/voorbeeld", data={"bevestig": "1"})
-    assert Dienst.query.count() == 4
+    assert Dienst.query.count() == 5
     # Het geüploade bestand is weer weg, en er is vooraf een back-up gemaakt
     assert os.listdir(os.path.join(app.config["DATA_MAP"], "import")) == []
     assert any("voor-import" in b["naam"] for b in backup.lijst_backups())

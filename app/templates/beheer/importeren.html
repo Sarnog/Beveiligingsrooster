@@ -32,11 +32,16 @@
   {% endif %}
   <h3>Controle weektotalen (Excel kolom Z)</h3>
   {% if week_verschillen %}
-  <p class="hulp">Hier wijkt de nieuwe berekening af van Excel. Meestal komt dat doordat Excel de uren niet had bijgewerkt na een tijdwijziging; de nieuwe waarde volgt de tijden.</p>
+  <p class="hulp">Hier wijkt het weektotaal na de import af van kolom Z in Excel. Controleer deze weken na de import.</p>
   <ul>{% for v in week_verschillen %}<li>{{ v }}</li>{% endfor %}</ul>
-  {% if uren_verschillen %}<details><summary>Per dienst ({{ uren_verschillen|length }})</summary><ul class="hulp">{% for v in uren_verschillen %}<li>{{ v }}</li>{% endfor %}</ul></details>{% endif %}
   {% else %}
   <p>✅ Alle weektotalen komen overeen met Excel.</p>
+  {% endif %}
+  {% if handmatige_uren %}
+  <details><summary>Met de hand ingevulde uren uit Excel ({{ handmatige_uren|length }})</summary>
+    <p class="hulp">Bij deze diensten wijken de uren in Excel af van de tijden (bijvoorbeeld omdat er na de dienst nog een training was). Ze worden overgenomen als <em>zelf ingevulde uren</em>, precies zoals in Excel, en zijn in het rooster rood gemarkeerd.</p>
+    <ul class="hulp">{% for v in handmatige_uren %}<li>{{ v }}</li>{% endfor %}</ul>
+  </details>
   {% endif %}
 
   <table class="tabel compact">

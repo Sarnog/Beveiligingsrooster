@@ -82,7 +82,7 @@ def excel_import_voorbeeld():
             return redirect(url_for("kalender.jaar", jaar=plan.jaar))
 
     return render_template("beheer/importeren.html", plan=plan,
-                           uren_verschillen=plan.uren_verschillen(),
+                           handmatige_uren=plan.handmatige_uren(),
                            week_verschillen=plan.weektotaal_verschillen())
 
 

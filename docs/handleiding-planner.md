@@ -127,7 +127,7 @@ Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag o
    - diensten met afwijkende tijden;
    - de controle van alle weektotalen tegen Excel.
 
-   Kleine verschillen komen meestal doordat Excel de uren niet had bijgewerkt na een tijdwijziging. De nieuwe waarde volgt dan de tijden.
+   Uren die in Excel met de hand zijn aangepast (bijvoorbeeld een dienst tot 13:00 met daarna een training, waarbij de uren van de hele dag zijn getypt), worden overgenomen als *zelf ingevulde uren*. Zo komen alle totalen precies overeen met Excel.
 3. Vink de bevestiging aan en klik op **Definitief importeren**. Er wordt eerst automatisch een back-up gemaakt.
 
 ## 9. Back-ups

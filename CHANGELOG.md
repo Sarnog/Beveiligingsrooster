@@ -2,6 +2,16 @@
 
 ## [Onuitgebracht]
 
+## [1.0.1] – 2026-09-30
+
+### Opgelost
+- Excel-import: uren die in Excel met de hand waren aangepast (bijvoorbeeld een dienst tot 13:00
+  met daarna een training 13:00–17:00, met de uren van de hele dag in de urenkolom) werden opnieuw
+  uit de tijden berekend. Daardoor kwamen de gewerkte uren van enkele medewerkers 3,5 tot 4 uur
+  lager uit dan in Excel. Deze uren worden nu overgenomen als *zelf ingevulde uren*; alle totalen
+  komen overeen met het Excel-overzicht.
+- Het importvoorbeeld toont deze diensten apart.
+
 ## [1.0.0] – 2026-09-30
 
 Eerste volledige versie: vervangt het Excel-rooster met macro's.
