@@ -251,3 +251,49 @@ def test_m1_worker_overschrijft_nieuwer_event_id_niet(app, gekoppeld, nep, monke
     db.session.expire_all()
     dienst = Dienst.query.one()
     assert dienst.eind == "18:00" and dienst.versie == 2
+
+
+# ---------------------------------------------------------------------------
+# M2 · Een vrije dienstnaam van dienst 2 verdwijnt via het coderaster
+# ---------------------------------------------------------------------------
+
+def _dag(mw_id):
+    from app.services.weekrooster import diensten_van_dag
+
+    db.session.expire_all()
+    return diensten_van_dag(mw_id, MAANDAG)
+
+
+def test_m2_vrije_tweede_dienst_blijft_bij_andere_eerste_code(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/3")])
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "dienstnaam", "Cursus", volgnummer=2)])
+    d1, d2 = _dag(mw.id)
+    from app.services.weekrooster import matrix_code
+
+    assert matrix_code(d1, d2) == "4/"  # het raster toont de vrije naam niet als code
+    bijgewerkt, fouten = wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "5/")])
+    assert fouten == []
+    d1, d2 = _dag(mw.id)
+    assert d1.dienstcode.nummer == 5 and d2 is not None and d2.dienstnaam == "Cursus"
+    assert bijgewerkt[f"{mw.id}|{MAANDAG.isoformat()}"]["code"] == "5/"
+
+
+def test_m2_zonder_tweede_deel_verdwijnt_dienst2_wel(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/3")])
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "dienstnaam", "Cursus", volgnummer=2)])
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "5")])
+    d1, d2 = _dag(mw.id)
+    assert d1.dienstcode.nummer == 5 and d2 is None
+
+
+def test_m2_lege_tweede_code_wist_een_tweede_dienst_met_code(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/3")])
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/")])
+    d1, d2 = _dag(mw.id)
+    assert d1.dienstcode.nummer == 4 and d2 is None

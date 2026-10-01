@@ -368,9 +368,16 @@ def begint_met_dienstnaam(tekst: str, omschrijving: str) -> bool:
     return rest == "" or not rest[0].isalnum()
 
 
-def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
-    """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst."""
+def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str, behoud_vrij: bool = False) -> tuple[str, str]:
+    """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst.
+
+    behoud_vrij: een lege tweede code uit '5/' laat een dienst 2 zónder code (vrije
+    dienstnaam) staan; het raster toont die immers als '4/' (zie matrix_code).
+    """
     if veld == "code" and dienst.volgnummer == 2 and _lees_code(waarde) is None:
+        if behoud_vrij and dienst.dienstcode is None:
+            oud = dienst.dienstnaam
+            return oud, oud
         # Dienst 2 wissen: alles weg (ook een vrije dienstnaam en eigen tijden of uren)
         oud = code_tekst(dienst) or dienst.dienstnaam
         for kolom, leeg in LEGE_DIENST.items():
@@ -458,6 +465,8 @@ class Wijziging:
     volgnummer: int = 1  # 1 = eerste dienst van de dag, 2 = tweede dienst
     # Alleen bij veld 'code' (code-raster): versie van dienst 2 (None = niet controleren)
     versie2: int | None = None
+    # Lege tweede code uit '5/': een dienst 2 met een vrije dienstnaam blijft staan
+    behoud_vrij: bool = False
 
 
 def _veldnaam(w: Wijziging) -> str:
@@ -474,8 +483,10 @@ def _fout(w: Wijziging, melding: str, **extra) -> dict:
 def _splits_wijzigingen(wijzigingen: list[Wijziging]) -> tuple[list[Wijziging], list[dict]]:
     """Codes uit het code-raster ('4/7') worden twee wijzigingen: dienst 1 en dienst 2.
 
-    Eén code zet dienst 1 en wist dienst 2; leeg wist beide. Een ongeldige invoer
-    (onbekende code, meer dan twee codes) wordt helemaal niet uitgevoerd.
+    Eén code zet dienst 1 en wist dienst 2; leeg wist beide. '5/' (met scheidingsteken,
+    maar zonder tweede code) wist dienst 2 alleen als die een code had: een tweede dienst
+    met een vrije dienstnaam staat in het raster als '4/' en blijft dan staan.
+    Een ongeldige invoer (onbekende code, meer dan twee codes) wordt niet uitgevoerd.
     """
     resultaat, fouten = [], []
     for w in wijzigingen:
@@ -487,9 +498,11 @@ def _splits_wijzigingen(wijzigingen: list[Wijziging]) -> tuple[list[Wijziging], 
         except CelFout as fout:
             fouten.append(_fout(w, str(fout)))
             continue
+        behoud_vrij = len(delen) == MAX_DIENSTEN_PER_DAG and delen[1] == ""
         delen += [""] * (MAX_DIENSTEN_PER_DAG - len(delen))
         resultaat.append(Wijziging(w.medewerker_id, w.datum, "code", delen[0], w.versie, 1))
-        resultaat.append(Wijziging(w.medewerker_id, w.datum, "code", delen[1], w.versie2, 2))
+        resultaat.append(Wijziging(w.medewerker_id, w.datum, "code", delen[1], w.versie2, 2,
+                                   behoud_vrij=behoud_vrij))
     return resultaat, fouten
 
 
@@ -553,7 +566,7 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
                             tijden_handmatig=False)
         try:
             with db.session.no_autoflush:
-                oud, nieuw = _pas_veld_toe(dienst, w.veld, w.waarde)
+                oud, nieuw = _pas_veld_toe(dienst, w.veld, w.waarde, w.behoud_vrij)
         except CelFout as fout:
             fouten.append(_fout(w, str(fout)))
             continue
