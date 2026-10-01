@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "macros.html" import post_knop %}
+{% block titel %}Statistieken{% endblock %}
+{% block main_klasse %}inhoud inhoud-breed{% endblock %}
+{% block inhoud %}
+<h1>Statistieken</h1>
+<p class="hulp">Alleen-lezen overzicht. Stand van {{ s.rooster.jaar }}, week {{ s.rooster.week }}.</p>
+{% for m in s.meldingen %}<p class="melding fout" data-statistiek-melding>{{ m }}</p>{% endfor %}
+
+<section class="kaart" data-blok="agenda">
+  <h2>Google Agenda</h2>
+  <p>Wachtrij: <strong>{{ s.agenda.wachtrij.wacht }}</strong> wachtend, <strong>{{ s.agenda.wachtrij.bezig }}</strong> bezig, <strong>{{ s.agenda.wachtrij.fout }}</strong> mislukt.
+    {% if s.agenda.oudste_wachtend %}Oudste wachtende taak: {{ s.agenda.oudste_wachtend.aangemaakt_op.strftime('%d-%m-%Y %H:%M') }}.{% endif %}</p>
+  {% if s.agenda.fouten %}
+  <div class="tabel-schuif">
+  <table class="tabel">
+    <thead><tr><th>Medewerker</th><th>Melding</th><th>Laatst gesynchroniseerd</th></tr></thead>
+    <tbody>{% for m in s.agenda.fouten %}<tr><td>{{ m.naam }}</td><td>{{ m.agenda_laatste_fout }}</td><td>{{ m.agenda_laatst_gesync.strftime('%d-%m-%Y %H:%M') if m.agenda_laatst_gesync else '–' }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% else %}<p>✅ Geen medewerkers met een mislukte synchronisatie.</p>{% endif %}
+  <div class="knoppen">
+    <a class="knop" href="{{ url_for('beheer.agenda') }}">Naar Beheer → Google Agenda</a>
+    {% if s.agenda.wachtrij.fout %}{{ post_knop(url_for('beheer.agenda_opnieuw'), 'Mislukte opnieuw proberen', 'knop') }}{% endif %}
+  </div>
+</section>
+
+<section class="kaart" data-blok="backups">
+  <h2>Back-ups</h2>
+  <ul>
+    <li>Laatste automatische back-up: {% if s.backups.laatste_automatisch %}<strong>{{ s.backups.tijdstip_automatisch.strftime('%d-%m-%Y %H:%M') }}</strong> ({{ grootte(s.backups.laatste_automatisch.grootte) }}){% else %}<strong>Er is nog geen automatische back-up.</strong>{% endif %}</li>
+    <li>Laatste back-up met label: {% if s.backups.laatste_label %}{{ s.backups.tijdstip_label.strftime('%d-%m-%Y %H:%M') if s.backups.tijdstip_label }} <code>{{ s.backups.laatste_label.naam }}</code>{% else %}–{% endif %}</li>
+    <li>{{ s.backups.aantal }} back-ups, samen {{ grootte(s.backups.totale_grootte) }}.</li>
+    {% if s.backups.laatste_mislukt %}<li>Laatste mislukte back-up: {{ s.backups.laatste_mislukt.tijdstempel.strftime('%d-%m-%Y %H:%M') }} – {{ s.backups.laatste_mislukt.details }}</li>{% endif %}
+  </ul>
+  {% if s.backups.te_oud %}<p class="melding fout">De laatste automatische back-up is ouder dan {{ max_dagen }} dagen (of ontbreekt). De worker maakt elke nacht een back-up; controleer of die draait.</p>{% endif %}
+  <a class="knop" href="{{ url_for('beheer.backups') }}">Naar Beheer → Back-ups</a>
+</section>
+
+<section class="kaart" data-blok="rooster">
+  <h2>Rooster</h2>
+  <p><strong>{{ s.rooster.aantal_diensten }}</strong> diensten in {{ s.rooster.jaar }}.</p>
+  <h3>Uren tot en met week {{ s.rooster.week }}</h3>
+  <p class="hulp">Gewerkt = de uren t/m deze week; contracturen naar rato van de weken. Gepland = het hele jaar.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact" data-uren>
+    <thead><tr><th>Medewerker</th><th class="getal">Gewerkt</th><th class="getal">Contract t/m nu</th><th class="getal">Verschil</th><th class="getal">Gepland {{ s.rooster.jaar }}</th><th class="getal">Contract {{ s.rooster.jaar }}</th></tr></thead>
+    <tbody>{% for r in s.rooster.uren %}<tr><td>{{ r.medewerker.naam }}</td><td class="getal">{{ r.gewerkt|uren }}</td><td class="getal">{{ r.contract_tot_nu|uren or '–' }}</td><td class="getal">{{ r.verschil|uren or '–' }}</td><td class="getal">{{ r.gepland|uren }}</td><td class="getal">{{ r.contracturen|uren or '–' }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% macro dienstenlijst(titel, diensten, totaal, uitleg) %}
+  <h3>{{ titel }} ({{ totaal }})</h3>
+  {% if diensten %}
+  <p class="hulp">{{ uitleg }}{% if totaal > diensten|length %} De eerste {{ diensten|length }} staan hieronder.{% endif %}</p>
+  <ul class="hulp">{% for d in diensten %}<li><a href="{{ url_for('rooster.week_tonen', jaar=d.datum.isocalendar()[0], week=d.datum.isocalendar()[1]) }}">{{ d.datum|datum_nl }}</a> {{ d.medewerker.naam }}{% if d.volgnummer == 2 %} (dienst 2){% endif %}: {{ d.dienstnaam }} {{ d.begin or '' }}{% if d.eind %}-{{ d.eind }}{% endif %}{% if d.uren_handmatig is not none %} · {{ d.uren_handmatig|uren }} uur zelf ingevuld{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="hulp">Geen.</p>{% endif %}
+  {% endmacro %}
+  {{ dienstenlijst('Diensten met zelf ingevulde uren', s.rooster.handmatige_uren, s.rooster.aantal_handmatig, 'Deze uren gaan voor de berekening (rood in het rooster).') }}
+  {{ dienstenlijst('Diensten met afwijkende tijden', s.rooster.afwijkende_tijden, s.rooster.aantal_afwijkend, 'Tijden die afwijken van de standaardtijden van de code.') }}
+  {% if s.rooster.mogelijk_dubbel %}
+  {{ dienstenlijst('Mogelijk dubbel geteld', s.rooster.mogelijk_dubbel, s.rooster.mogelijk_dubbel|length, 'Dienst 1 heeft zelf ingevulde uren (vaak het totaal van de dag, uit de oude Excel) én er is een tweede dienst. Haal de uren bij dienst 1 weg als dienst 2 hetzelfde deel is.') }}
+  {% endif %}
+</section>
+
+<section class="kaart" data-blok="beveiliging">
+  <h2>Beveiliging</h2>
+  <p>Laatste 24 uur: <strong>{{ s.beveiliging.mislukte_pogingen }}</strong> mislukte inlogpogingen, <strong>{{ s.beveiliging.blokkades|length }}</strong> blokkades.</p>
+  {% if s.beveiliging.per_bron %}
+  <div class="tabel-schuif">
+  <table class="tabel compact">
+    <thead><tr><th>Gebruikersnaam</th><th>IP-adres</th><th class="getal">Mislukt</th></tr></thead>
+    <tbody>{% for naam, ip, aantal in s.beveiliging.per_bron %}<tr><td>{{ naam }}</td><td>{{ ip }}</td><td class="getal">{{ aantal }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% endif %}
+  {% if s.beveiliging.blokkades %}<ul class="hulp">{% for r in s.beveiliging.blokkades %}<li>{{ r.tijdstempel.strftime('%d-%m-%Y %H:%M') }} {{ r.gebruiker }}: {{ r.details }}</li>{% endfor %}</ul>{% endif %}
+  <h3>Actieve API-tokens ({{ s.beveiliging.actieve_tokens|length }})</h3>
+  {% if s.beveiliging.actieve_tokens %}
+  <ul class="hulp">{% for t in s.beveiliging.actieve_tokens %}<li>{{ t.gebruiker.gebruikersnaam }}: {{ t.naam }} (<code>{{ t.prefix }}…</code>), verloopt {{ t.verloopt_op.strftime('%d-%m-%Y') }}{% if t.laatst_gebruikt %}, laatst gebruikt {{ t.laatst_gebruikt.strftime('%d-%m-%Y') }}{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="hulp">Geen.</p>{% endif %}
+  <a class="knop" href="{{ url_for('beheer.logboek') }}">Naar het logboek</a>
+</section>
+{% endblock %}

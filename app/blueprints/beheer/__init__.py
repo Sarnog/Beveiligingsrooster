@@ -15,7 +15,10 @@ bp = Blueprint("beheer", __name__, url_prefix="/beheer")
 @bp.route("/")
 @beheerder_vereist
 def index():
-    return render_template("beheer/index.html")
+    from ...services.statistieken import meldingen
+
+    # Korte melding bij syncfouten of een te oude back-up (details: Statistieken)
+    return render_template("beheer/index.html", meldingen=meldingen())
 
 
 # Routes uit de losse modules registreren (import na het aanmaken van bp)
@@ -31,4 +34,5 @@ from . import (  # noqa: E402,F401
     kalender,
     logboek,
     medewerkers,
+    statistieken,
 )

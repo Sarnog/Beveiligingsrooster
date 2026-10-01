@@ -3,6 +3,12 @@
 {% block inhoud %}
 <h1>Beheer</h1>
 <p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
+{% if meldingen %}
+<div class="melding fout" data-beheer-melding>
+  {% for m in meldingen %}<p>{{ m }}</p>{% endfor %}
+  <p><a href="{{ url_for('beheer.statistieken_scherm') }}">Bekijk de statistieken</a></p>
+</div>
+{% endif %}
 <div class="tegels">
   <a class="tegel" href="{{ url_for('beheer.medewerkers') }}"><strong>Medewerkers</strong><span>Toevoegen, volgorde, contracturen, archiveren</span></a>
   <a class="tegel" href="{{ url_for('beheer.dienstcodes') }}"><strong>Dienstcodes</strong><span>Codes, tijden, kleuren en kleurregels</span></a>
@@ -20,6 +26,7 @@
     <a class="tegel" href="{{ url_for(endpoint) }}"><strong>{{ titel }}</strong><span>{{ uitleg }}</span></a>
     {% endif %}
   {% endfor %}
+  <a class="tegel" href="{{ url_for('beheer.statistieken_scherm') }}"><strong>Statistieken</strong><span>Agenda, back-ups, uren en beveiliging in één oogopslag</span></a>
   <a class="tegel" href="{{ url_for('beheer.herberekenen') }}"><strong>Uren herberekenen</strong><span>Na wijziging van toeslagen</span></a>
 </div>
 <p class="hulp">Beveiligingsrooster versie {{ versie }}</p>

@@ -30,6 +30,7 @@ PAGINAS_BEHEERDER = [
     "/beheer/gebruikers", "/beheer/gebruikers/nieuw", "/beheer/instellingen",
     "/beheer/vakanties", "/beheer/feestdagen", "/beheer/logboek", "/beheer/backups",
     "/beheer/agenda", "/beheer/importeren", "/beheer/debuglog", "/beheer/herberekenen",
+    "/beheer/statistieken",
 ]
 
 # Controle in de pagina: wat steekt er buiten beeld?
