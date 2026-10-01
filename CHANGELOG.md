@@ -2,10 +2,18 @@
 
 ## [Onuitgebracht]
 
-## [1.2.0] – 2026-10-01
+## [1.3.0] – 2026-10-01
+
+> Versie 1.2.0 is per ongeluk als tussenstand uitgebracht; gebruik 1.3.0.
 
 Onderhouds- en beveiligingsversie na een audit van 1.1.2: veel kleine en een paar
 belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen.
+
+**Bijwerken vanaf 1.1.x:**
+1. Maak eerst een back-up (`update.sh` doet dat vanzelf).
+2. Iedereen moet na de update één keer opnieuw inloggen.
+3. Gebruik je Google Agenda? Klik daarna in *Beheer → Google Agenda* per medewerker één keer
+   op *Volledig synchroniseren*.
 
 ### Opgelost
 - **Back-ups:** een mislukte nachtelijke back-up (bijvoorbeeld een volle schijf) liet een leeg
@@ -76,6 +84,10 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   foutpagina.
 
 ### Gewijzigd
+- **Uitbrengen:** alleen een push naar `main` maakt nog een versie-tag, een GitHub-release en
+  een image (`<versie>` en `latest`). Een zijbranch of pull request test alleen. Daardoor kan er
+  niet meer per ongeluk een halve versie uitkomen, zoals bij 1.2.0. De GitHub Actions zijn
+  bijgewerkt naar de nieuwste hoofdversies en vastgezet op een vaste commit.
 - Wachttijden van de agenda-wachtrij en de loginblokkade rekenen in UTC; het dubbele uur bij de
   overgang naar wintertijd heeft er geen invloed meer op.
 - Back-ups met een label (handmatig, voor-update, voor-import, voor-terugzetten, upload) worden

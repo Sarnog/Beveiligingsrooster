@@ -841,7 +841,7 @@ def test_m7_reset_en_deactiveren_loggen_gebruiker_uit(app, klaar):
 def test_m7_oud_sessieformaat_is_ongeldig(app, klaar):
     client = app.test_client()
     with client.session_transaction() as sessie:
-        sessie["_user_id"] = str(klaar["beheerder"].id)  # zoals vóór 1.2.0
+        sessie["_user_id"] = str(klaar["beheerder"].id)  # zoals vóór 1.3.0
         sessie["_fresh"] = True
     assert _uitgelogd(client)
 

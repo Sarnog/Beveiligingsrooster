@@ -186,7 +186,14 @@ services:
 docker compose -f docker-compose.yml -f docker-compose.bouwen.yml up -d --build
 ```
 
-> **Voor de eigenaar van de repository:** GitHub Actions publiceert de image bij elke push naar `main` op `ghcr.io/sarnog/beveiligingsrooster`. Een nieuw pakket is op GitHub eerst **privé**. Zet het één keer op openbaar: *GitHub → je profiel → Packages → beveiligingsrooster → Package settings → Change visibility → Public*. Lukt het downloaden niet, dan bouwt `install.sh` de image automatisch zelf.
+> **Voor de eigenaar van de repository: alleen `main` maakt releases.**
+> - Een push naar een andere branch, of een pull request, draait alleen de controles (lint, tests, databasemigraties, een proefbouw van de image). Er wordt dan **niets** gepubliceerd.
+> - Een push naar `main` (in de praktijk: een pull request mergen) publiceert de image `latest` op `ghcr.io/sarnog/beveiligingsrooster`.
+> - Staat er in `app/__init__.py` een `VERSIE` waarvoor nog geen tag `v<VERSIE>` bestaat, dan maakt de workflow op `main` ook de image `<VERSIE>`, de tag en een GitHub-release met de tekst uit `CHANGELOG.md`.
+> - Een release maken is dus: in een branch `VERSIE` ophogen (ook `SCRIPT_VERSIE` in `app/static/js/raster.js`), `CHANGELOG.md` bijwerken, pull request maken en mergen.
+> - Is de app-code op `main` gewijzigd zonder dat `VERSIE` omhoog ging, dan faalt de workflow met een duidelijke melding.
+>
+> Een nieuw pakket is op GitHub eerst **privé**. Zet het één keer op openbaar: *GitHub → je profiel → Packages → beveiligingsrooster → Package settings → Change visibility → Public*. Lukt het downloaden niet, dan bouwt `install.sh` de image automatisch zelf.
 
 ## Eerste setup
 
@@ -340,7 +347,7 @@ Met `LOG_NIVEAU=DEBUG` komen dezelfde details ook in `docker compose logs`.
 | "Te veel mislukte pogingen" | Wacht 15 minuten, of reset het wachtwoord met het commando hierboven. Overkomt het het hele team tegelijk? Zie [Inlogblokkade en reverse proxy](#inlogblokkade-en-reverse-proxy). |
 | Tijden kloppen niet | Controleer *Beheer → Instellingen → Tijdzone* (bijv. `Europe/Amsterdam`). Leeg = `TZ` uit docker-compose. |
 | "Geen toegang tot /data/…" bij de start | Er is een commando zonder `-u rooster` uitgevoerd. Herstel met `docker compose run --rm -u root web chown -R 1000:1000 /data`. |
-| Na de update naar 1.2.0 moet iedereen opnieuw inloggen | Klopt: sessies zijn veiliger gemaakt. Eén keer opnieuw inloggen is genoeg. |
+| Na de update naar 1.3.0 moet iedereen opnieuw inloggen | Klopt: sessies zijn veiliger gemaakt. Eén keer opnieuw inloggen is genoeg. |
 
 ## Ontwikkelen
 

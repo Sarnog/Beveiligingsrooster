@@ -15,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
-VERSIE = "1.2.0"
+VERSIE = "1.3.0"
 verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
@@ -127,7 +127,7 @@ def _registreer_controles(app: Flask) -> None:
         """Gebruiker uit de sessie, alleen als die sessie nog geldig is (zie Gebruiker.get_id).
 
         Ongeldig na wachtwoord wijzigen/resetten, deactiveren of terugzetten van een
-        back-up; ook het oude formaat (alleen het ID, vóór 1.2.0) is ongeldig.
+        back-up; ook het oude formaat (alleen het ID, vóór 1.3.0) is ongeldig.
         """
         delen = (sessiesleutel or "").split(":")
         if len(delen) != 3 or not delen[0].isascii() or not delen[0].isdecimal():
