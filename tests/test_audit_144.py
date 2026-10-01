@@ -1083,3 +1083,36 @@ def test_htmx_is_weg(app, als_gebruiker):
     assert "htmx" not in als_gebruiker.get("/sw.js").data.decode()
     with open(os.path.join(js, "app.js"), encoding="utf-8") as f:
         assert "htmx" not in f.read()
+
+
+# ---------------------------------------------------------------------------
+# Opruimen · feestdagen_in_periode() deed een verborgen commit
+# ---------------------------------------------------------------------------
+
+def test_feestdagen_in_periode_commit_niet(app, klaar, monkeypatch):
+    from app.models import Feestdag
+    from app.services.feestdagen import feestdagen_in_periode
+
+    Feestdag.query.delete()
+    db.session.commit()
+    db.session.add(Medewerker(naam="Nog niet opgeslagen", initialen="NNO"))
+
+    def geen_commit():
+        raise AssertionError("feestdagen_in_periode mag niet committen")
+
+    monkeypatch.setattr(db.session, "commit", geen_commit)
+    dagen = feestdagen_in_periode(date(2027, 1, 1), date(2027, 12, 31))
+    assert dagen[date(2027, 1, 1)] == "Nieuwjaarsdag" and dagen[date(2027, 12, 26)] == "2e Kerstdag"
+    monkeypatch.undo()
+    db.session.rollback()
+    assert Medewerker.query.filter_by(initialen="NNO").first() is None
+
+
+def test_feestdagen_in_periode_volgt_uitgezette_dag(app, klaar):
+    from app.models import Feestdag
+    from app.services.feestdagen import feestdagen_in_periode, zorg_voor_jaar
+
+    zorg_voor_jaar(2027)
+    Feestdag.query.filter_by(jaar=2027, sleutel="bevrijdingsdag").one().actief = False
+    db.session.commit()
+    assert date(2027, 5, 5) not in feestdagen_in_periode(date(2027, 5, 1), date(2027, 5, 31))
