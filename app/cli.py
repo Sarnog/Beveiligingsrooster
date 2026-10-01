@@ -6,6 +6,7 @@ Aanroepen in Docker, vanuit de map met docker-compose.yml. Gebruik altijd
     docker compose exec -u rooster web flask maak-beheerder
     docker compose exec -u rooster web flask setup-code
     docker compose exec -u rooster web flask backup
+    docker compose exec -u rooster web flask terugzetten <naam-van-de-back-up>
     docker compose exec -u rooster web flask herbereken-uren
 """
 
@@ -104,6 +105,29 @@ def registreer_commando_s(app: Flask) -> None:
         from .services import backup
 
         click.echo(f"Back-up gemaakt: {backup.maak_backup(label)}")
+
+    @app.cli.command("terugzetten")
+    @click.argument("naam")
+    @click.confirmation_option(prompt="De huidige stand wordt vervangen door deze back-up. Doorgaan?")
+    def terugzetten(naam: str):
+        """Zet een back-up uit <datamap>/backups terug (noodgeval, als de website niet werkt).
+
+        Maakt eerst zelf een veiligheidsback-up; daarna moet iedereen opnieuw inloggen.
+        """
+        from .services import backup
+
+        pad = backup.pad_van(naam)
+        if pad is None:
+            raise click.ClickException(f"Onbekende back-up '{naam}'. Kies een naam uit Beheer → Back-ups "
+                                       "of uit de map backups.")
+        try:
+            veiligheid = backup.zet_terug(pad)
+        except ValueError as fout:
+            raise click.ClickException(str(fout)) from fout
+        logboek.log("Back-up teruggezet", f"{naam} (via command line)", gebruiker="cli", oud=veiligheid)
+        db.session.commit()
+        click.echo(f"Back-up {naam} is teruggezet. De vorige stand is bewaard als {veiligheid}. "
+                   "Iedereen moet opnieuw inloggen.")
 
     @app.cli.command("logboek-opschonen")
     def logboek_opschonen():

@@ -239,6 +239,7 @@ Voer deze commando's uit in de map met `docker-compose.yml`:
 | **Wachtwoord vergeten** | `docker compose exec -u rooster web flask reset-wachtwoord <gebruikersnaam>` |
 | **Buitengesloten: nieuwe beheerder** | `docker compose exec -u rooster web flask maak-beheerder` |
 | Nu een back-up maken | `docker compose exec -u rooster web flask backup` |
+| Back-up terugzetten (noodgeval) | `docker compose exec -u rooster web flask terugzetten rooster-JJJJMMDD-HHMMSS.db` |
 | Alle uren herberekenen | `docker compose exec -u rooster web flask herbereken-uren` |
 
 Gebruik altijd `-u rooster`. Dan zijn nieuwe bestanden in `./data` van de app-gebruiker en niet van root.
@@ -282,7 +283,13 @@ Wijzigingen die ná de update zijn gedaan, zitten niet in die back-up.
 - **Back-ups met een label** (`handmatig`, `voor-update`, `voor-import`, `voor-terugzetten`, `upload`) tellen daar niet bij. Ze blijven 90 dagen staan; de nieuwste 10 blijven altijd bewaard.
 - **Handmatig:** `docker compose exec -u rooster web flask backup`.
 - **Downloaden en terugzetten in de webinterface:** *Beheer → Back-ups*. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`). Een beschadigde back-up, of een back-up van een nieuwere versie van de app, wordt geweigerd. Lukt het bijwerken van een oude back-up niet, dan zet de app automatisch de vorige stand terug.
-- **Terugzetten via de command line** (als de webinterface niet meer werkt):
+- **Terugzetten via de command line** (als de webinterface niet werkt, maar de container nog wel draait):
+  ```sh
+  ls data/backups/
+  docker compose exec -u rooster web flask terugzetten rooster-JJJJMMDD-HHMMSS.db
+  ```
+  Dit doet hetzelfde als de knop in de webinterface: eerst een veiligheidsback-up, dan terugzetten, en iedereen moet opnieuw inloggen.
+- **Terugzetten met de hand** (als de container niet meer start):
   ```sh
   docker compose down
   cp data/backups/rooster-JJJJMMDD-HHMMSS.db data/rooster.db

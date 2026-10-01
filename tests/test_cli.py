@@ -118,3 +118,29 @@ def test_logboek_opschonen(runner, klaar):
     db.session.add(Logboek(actie="Oud", tijdstempel=datetime(2000, 1, 1)))
     db.session.commit()
     assert "1 regels verwijderd" in runner.invoke(args=["logboek-opschonen"]).output
+
+
+def test_terugzetten(runner, gemigreerd):
+    resultaat = runner.invoke(args=["backup", "--label", "handmatig"])
+    naam = os.path.basename(resultaat.output.strip().split(": ")[1])
+    db.session.add(Medewerker(naam="Na de back-up", initialen="NB"))
+    db.session.commit()
+    assert runner.invoke(args=["terugzetten", naam], input="n\n").exit_code != 0  # zonder bevestiging
+    assert Medewerker.query.filter_by(naam="Na de back-up").count() == 1
+    resultaat = runner.invoke(args=["terugzetten", naam, "--yes"])
+    assert resultaat.exit_code == 0 and "teruggezet" in resultaat.output
+    db.session.remove()
+    assert Medewerker.query.filter_by(naam="Na de back-up").count() == 0
+    assert Logboek.query.filter_by(actie="Back-up teruggezet", gebruiker="cli").count() == 1
+    assert any(b["naam"].endswith("-voor-terugzetten.db") for b in backup.lijst_backups())
+
+
+def test_terugzetten_onbekend_of_kapot(runner, klaar):
+    resultaat = runner.invoke(args=["terugzetten", "rooster-20000101-000000.db", "--yes"])
+    assert resultaat.exit_code != 0 and "Onbekende back-up" in resultaat.output
+    pad = os.path.join(backup.backup_map(), "rooster-20000101-000000.db")
+    os.makedirs(backup.backup_map(), exist_ok=True)
+    with open(pad, "wb") as bestand:
+        bestand.write(b"geen database")
+    resultaat = runner.invoke(args=["terugzetten", "rooster-20000101-000000.db", "--yes"])
+    assert resultaat.exit_code != 0 and "geen geldige" in resultaat.output

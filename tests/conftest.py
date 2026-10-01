@@ -46,6 +46,20 @@ def app(tmp_path):
 
 
 @pytest.fixture
+def gemigreerd(app):
+    """Database via de echte migraties (zoals in productie), setup afgerond."""
+    import os
+
+    from flask_migrate import upgrade
+
+    db.drop_all()
+    upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
+    instellingen.schrijf("setup_voltooid", "1")
+    db.session.commit()
+    return app
+
+
+@pytest.fixture
 def client(app):
     return app.test_client()
 

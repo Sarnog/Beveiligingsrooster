@@ -532,16 +532,6 @@ def test_h5_alleen_initialen_gelijk_geeft_nieuwe_medewerker(app, klaar, tmp_path
 # M6 · Uitkomst van integrity_check werd genegeerd
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def gemigreerd(app):
-    from flask_migrate import upgrade
-
-    db.drop_all()
-    upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
-    instellingen.schrijf("setup_voltooid", "1")
-    db.session.commit()
-    return app
-
 
 def _revisie() -> str:
     with db.engine.connect() as verbinding:
