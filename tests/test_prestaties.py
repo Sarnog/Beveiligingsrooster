@@ -5,6 +5,7 @@ het aantal medewerkers (geen N+1).
 """
 
 import time
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 import pytest
@@ -133,6 +134,27 @@ def test_urenoverzicht_geen_n_plus_1(app, klaar):
 MAX_EXPORT_S = 5  # 'binnen een paar seconden'
 
 
+@contextmanager
+def zonder_coverage():
+    """Meet de app, niet de coverage-meting van CI (die maakt Python ruim twee keer zo traag).
+
+    De export zelf wordt elders in de suite wel onder coverage getest.
+    """
+    try:
+        import coverage
+
+        actief = coverage.Coverage.current()
+    except ImportError:  # coverage niet geïnstalleerd
+        actief = None
+    if actief is not None:
+        actief.stop()
+    try:
+        yield
+    finally:
+        if actief is not None:
+            actief.start()
+
+
 def test_excel_export_15_medewerkers_vol_jaar(app, klaar):
     """Excel-export van een jaar met 15 medewerkers (5475 diensten) binnen een paar seconden."""
     from .conftest import login
@@ -140,9 +162,10 @@ def test_excel_export_15_medewerkers_vol_jaar(app, klaar):
     _vul(15)
     client = app.test_client()
     login(client, "collega")
-    start = time.perf_counter()
-    antwoord = client.get("/export/rooster.xlsx?jaar=2026")
-    duur = time.perf_counter() - start
+    with zonder_coverage():
+        start = time.perf_counter()
+        antwoord = client.get("/export/rooster.xlsx?jaar=2026")
+        duur = time.perf_counter() - start
     assert antwoord.status_code == 200 and len(antwoord.data) > 10_000
     print(f"\nExcel-export (15 medewerkers, 5475 diensten): {duur:.2f} s")
     assert duur < MAX_EXPORT_S, f"export duurt {duur:.1f} s (eis: < {MAX_EXPORT_S} s)"
