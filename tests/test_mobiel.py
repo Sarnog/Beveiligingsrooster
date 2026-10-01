@@ -21,7 +21,7 @@ pytestmark = pytest.mark.browser
 # Pagina's per rol (de beheerder ziet ook alle beheerschermen)
 PAGINAS_COLLEGA = [
     "/kalender/", "/week", "/mijn", "/mijn/agenda", "/overzicht/uren",
-    "/zoeken/?naam=Anna", "/account/wachtwoord", "/account/tokens", "/export/",
+    "/zoeken/?naam=Anna", "/account/wachtwoord", "/account/tokens",
 ]
 PAGINAS_BEHEERDER = [
     "/week", "/kalender/", "/overzicht/uren", "/zoeken/?code=4", "/beheer/",

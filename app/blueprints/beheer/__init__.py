@@ -24,6 +24,7 @@ from . import (  # noqa: E402,F401
     backups,
     debuglog,
     dienstcodes,
+    exporteren,
     gebruikers,
     importeren,
     instellingen,

@@ -14,7 +14,7 @@
       ('beheer.logboek', 'Logboek', 'Alle wijzigingen en logins'),
       ('beheer.agenda', 'Google Agenda', 'Koppeling en synchronisatie'),
       ('beheer.backups', "Back-ups", 'Downloaden, terugzetten en verwijderen'),
-      ('beheer.excel_import', 'Excel-import', 'Oud rooster (.xlsm) inlezen'),
+      ('beheer.excel_import', 'Excel import/export', 'Rooster inlezen (.xlsm/.xlsx) of naar Excel exporteren'),
       ('beheer.debuglog_scherm', 'Debuglog', 'Logniveau en technische log bij problemen')] %}
     {% if heeft_route(endpoint) %}
     <a class="tegel" href="{{ url_for(endpoint) }}"><strong>{{ titel }}</strong><span>{{ uitleg }}</span></a>

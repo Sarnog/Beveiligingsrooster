@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% from "macros.html" import csrf, post_knop %}
-{% block titel %}Importeren uit Excel{% endblock %}
+{% block titel %}Excel import/export{% endblock %}
 {% block inhoud %}
-<h1>Importeren uit Excel</h1>
+<h1>Excel import/export</h1>
+<p class="hulp"><a href="#importeren">Importeren</a> · <a href="#exporteren">Exporteren</a></p>
+<h2 id="importeren">Importeren</h2>
 {% if stap == "upload" %}
 <section class="kaart">
   <p>Lees een roosterbestand in: het oude Excel-rooster (.xlsm) of een export uit deze app (.xlsx). Medewerkers, contracturen, dienstcodes, toeslagen, vakanties en de weken W1–W53 (diensten, tijden, opmerkingen, dagopmerkingen).</p>
@@ -138,4 +140,35 @@
 </form>
 {{ post_knop(url_for('beheer.excel_import_annuleren'), 'Annuleren', 'knop') }}
 {% endif %}
+
+<h2 id="exporteren">Exporteren</h2>
+{% set e = export %}
+<section class="kaart" data-export>
+  <p>Je krijgt een Excel-bestand (.xlsx, zonder macro's) dat werkt zoals de app: per week een blad zoals het weekrooster (W1…W53), met de kleuren van de dienstcodes, plus <em>Lijsten</em> (medewerkers, dienstcodes en de instellingen voor de uren), <em>Feestdagen</em>, <em>Urenoverzicht</em>, <em>Vakanties</em> en <em>Kalender</em>.</p>
+  <ul class="hulp">
+    <li>Uren, weektotalen en het urenoverzicht zijn <strong>formules</strong>: wijzig je in Excel een tijd of een code, dan rekent Excel de uren opnieuw uit met dezelfde regels als de app (toeslagen, feestdagen, pauze, opmerkingtijden).</li>
+    <li>Zelf ingevulde uren blijven een vaste waarde (rood, met een opmerking in de cel).</li>
+    <li>Het bestand kan hierboven weer ingelezen worden. Kleuren van dienstcodes, e-mailadressen, archiefdatums en agendakoppelingen komen dan niet mee terug.</li>
+  </ul>
+  <form method="get" action="{{ url_for('beheer.excel_export') }}" class="export-keuzes" data-export-formulier>
+    <fieldset>
+      <legend>Wat wil je exporteren?</legend>
+      {% for waarde, tekst in export_soorten.items() %}
+      <label class="vink"><input type="radio" name="soort" value="{{ waarde }}"{% if e.soort == waarde %} checked{% endif %} required><span>{{ tekst }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <div class="rij-formulier">
+      <label class="veld"><span>Jaar <small>(week, jaar, persoon)</small></span><input type="number" name="jaar" value="{{ e.jaar }}" min="{{ min_jaar }}" max="{{ max_jaar }}" inputmode="numeric" class="klein"></label>
+      <label class="veld"><span>Week <small>(1 t/m 52/53)</small></span><input type="number" name="week" value="{{ e.week }}" min="1" max="53" inputmode="numeric" class="klein"></label>
+      <label class="veld"><span>Periode van</span><input type="date" name="van" value="{{ e.van }}"></label>
+      <label class="veld"><span>t/m</span><input type="date" name="tot" value="{{ e.tot }}"></label>
+      <label class="veld"><span>Medewerker <small>(verplicht bij persoon)</small></span>
+        <select name="medewerker"><option value="">Iedereen</option>
+          {% for m in export_medewerkers %}<option value="{{ m.id }}"{% if e.medewerker == m.id|string %} selected{% endif %}>{{ m.naam }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <p class="hulp">Een periode moet binnen één roosterjaar (ISO-weken) vallen: het bestand heeft één blad per weeknummer en blijft zo weer in te lezen.</p>
+    <button class="knop primair" type="submit">Exporteren (Excel)</button>
+  </form>
+</section>
 {% endblock %}

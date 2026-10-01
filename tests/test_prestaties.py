@@ -161,10 +161,10 @@ def test_excel_export_15_medewerkers_vol_jaar(app, klaar):
 
     _vul(15)
     client = app.test_client()
-    login(client, "collega")
+    login(client, "beheerder")  # sinds 1.6.0 alleen voor de beheerder, mét formules
     with zonder_coverage():
         start = time.perf_counter()
-        antwoord = client.get("/export/rooster.xlsx?jaar=2026")
+        antwoord = client.get("/beheer/exporteren/rooster.xlsx?soort=jaar&jaar=2026")
         duur = time.perf_counter() - start
     assert antwoord.status_code == 200 and len(antwoord.data) > 10_000
     print(f"\nExcel-export (15 medewerkers, 5475 diensten): {duur:.2f} s")

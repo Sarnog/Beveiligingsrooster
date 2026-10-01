@@ -133,7 +133,6 @@ def _registreer_blueprints(app: Flask) -> None:
         auth,
         beheer,
         deel,
-        export,
         ics,
         kalender,
         overzicht,
@@ -144,7 +143,7 @@ def _registreer_blueprints(app: Flask) -> None:
     )
 
     for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics,
-                   pwa, account, api_v1, export):
+                   pwa, account, api_v1):
         app.register_blueprint(module.bp)
     # De API controleert CSRF zelf: wel bij een sessie, niet bij een API-token (zie controleer_toegang)
     csrf.exempt(api_v1.bp)
