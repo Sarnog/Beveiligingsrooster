@@ -88,6 +88,12 @@ def bestandsnaam(jaar: int, van: date, tot: date, medewerker: Medewerker | None)
 # De cache hoort bij het werkboek (de stijlnummers verwijzen naar diens lijsten).
 
 
+def _zet_als(blad, rij: int, kolom: int, waarde, stijl: dict | None = None) -> None:
+    """Als _zet, maar een lege waarde slaan we over (geen lege, opgemaakte cel: scheelt tijd)."""
+    if waarde is not None and waarde != "":
+        _zet(blad, rij, kolom, waarde, stijl)
+
+
 def _zet(blad, rij: int, kolom: int, waarde, stijl: dict | None = None):
     """Schrijf een waarde; tekst die als formule gelezen kan worden blijft tekst."""
     cel = blad.cell(rij, kolom)
@@ -226,9 +232,8 @@ def _weekblad(blad, jaar, week, van, tot, medewerkers, per_dag, opmerkingen, sti
         heeft = False
         for i, dag in enumerate(dagen):
             kolom, k2 = DAG_KOLOMMEN[i], TWEEDE_KOLOMMEN[i]
-            for rij in range(basis, basis + 4):
-                for k in (kolom, kolom + 1, kolom + 2):
-                    _zet(blad, rij, k, None, {"border": RAND})
+            # Alleen cellen met inhoud krijgen een rand: lege cellen opmaken kostte het
+            # grootste deel van de tijd (en maakt het bestand flink groter)
             if not van <= dag <= tot:
                 continue
             per_vn = per_dag.get((medewerker.id, dag), {})
@@ -244,9 +249,9 @@ def _weekblad(blad, jaar, week, van, tot, medewerkers, per_dag, opmerkingen, sti
                      {"alignment": MIDDEN, **stijlen.raster(dienst1, dienst2)})
             if dienst1 is not None:
                 opmerking = dienst1.opmerking_tekst
-                _zet(blad, basis, kolom, opmerking or None, {**stijlen.opmerking(opmerking), "border": RAND})
-                _zet(blad, basis + 1, kolom, _tijd(dienst1.opmerking_begin), TIJD)
-                _zet(blad, basis + 1, kolom + 1, _tijd(dienst1.opmerking_eind), TIJD)
+                _zet_als(blad, basis, kolom, opmerking, {**stijlen.opmerking(opmerking), "border": RAND})
+                _zet_als(blad, basis + 1, kolom, _tijd(dienst1.opmerking_begin), TIJD)
+                _zet_als(blad, basis + 1, kolom + 1, _tijd(dienst1.opmerking_eind), TIJD)
                 totaal += _dienst(blad, basis, kolom, dienst1, stijlen)
             if dienst2 is not None:
                 totaal += _dienst(blad, basis, k2, dienst2, stijlen)
@@ -261,9 +266,9 @@ def _dienst(blad, basis: int, kolom: int, dienst: Dienst, stijlen: _Stijlen) -> 
     _zet(blad, basis + 2, kolom, dienst.dienstnaam or None, {**stijl, "alignment": OVER_DRIE, "border": RAND})
     for k in (kolom + 1, kolom + 2):  # kleur over de hele breedte van de dag
         _zet(blad, basis + 2, k, None, {**stijl, "alignment": OVER_DRIE, "border": RAND})
-    _zet(blad, basis + 3, kolom, _tijd(dienst.begin), TIJD)
-    _zet(blad, basis + 3, kolom + 1, _tijd(dienst.eind), TIJD)
-    _zet(blad, basis + 3, kolom + 2, dienst.uren_berekend, UREN)
+    _zet_als(blad, basis + 3, kolom, _tijd(dienst.begin), TIJD)
+    _zet_als(blad, basis + 3, kolom + 1, _tijd(dienst.eind), TIJD)
+    _zet_als(blad, basis + 3, kolom + 2, dienst.uren_berekend, UREN)
     return dienst.uren_berekend or 0.0
 
 
