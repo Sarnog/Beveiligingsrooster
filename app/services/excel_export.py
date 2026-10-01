@@ -23,6 +23,8 @@ Het bestand werkt in MS Excel zoals de app, zonder macro's (sinds 1.6.0). Formul
 - weektotaal (Z) = SUM van de urencellen van dienst 1 en dienst 2; urenoverzicht verwijst naar Z;
 - dienstnaam en standaardtijden zoeken de code uit het code-raster op in Lijsten, als de dienst
   de standaard van zijn code volgt (of de dag leeg is); anders zijn het vaste waarden;
+- het blok van de tweede dienst heeft alleen formules op dagen met een tweede dienst (snelheid:
+  een jaar met 15 medewerkers moet binnen een paar seconden klaar zijn);
 - werkdagen per vakantie = NETWORKDAYS, zoals in het oude bestand.
 Zelf ingevulde uren blijven een vaste waarde (rood, met een opmerking), net als in de app.
 Datums in rij 2 zijn waarden (geen keten naar het vorige blad): zo klopt ook een losse week.
@@ -46,6 +48,7 @@ from fractions import Fraction
 from functools import lru_cache
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import Cell
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, GradientFill, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -81,6 +84,19 @@ MIDDEN = Alignment(horizontal="center", vertical="center")
 OVER_DRIE = Alignment(horizontal="centerContinuous", vertical="center")
 TIJD = {"number_format": "hh:mm", "border": RAND}
 UREN = {"number_format": "0.00", "border": RAND}
+GEEN: dict = {}
+# Vaste stijlen (de stijlcache werkt per dict-object, zie _stijl)
+VET_STIJL = {"font": VET}
+TITEL = {"font": Font(bold=True, size=13)}
+KOPCEL = {"font": VET, "fill": KOP}
+RASTERKOP = {"font": VET, "alignment": MIDDEN}
+DAGOPMERKING = {"alignment": OVER_DRIE}
+WEEKTOTAAL = {"font": VET, "number_format": "0.00"}
+DAGKOP = {weekend: {"naam": {"font": VET, "alignment": OVER_DRIE, "fill": vulling},
+                    "vulling": {"fill": vulling},
+                    "datum": {"number_format": "dd-mm-yy", "font": VET, "alignment": OVER_DRIE,
+                              "fill": vulling}}
+          for weekend, vulling in ((False, KOP), (True, WEEKEND))}
 # Zelf ingevulde uren: rood, net als in het rooster (met een opmerking in de cel)
 HANDMATIG = {"number_format": "0.00", "border": RAND, "font": Font(color="C00000", bold=True)}
 
@@ -200,24 +216,33 @@ def _zet_als(blad, rij: int, kolom: int, waarde, stijl: dict | None = None) -> N
 
 def _zet(blad, rij: int, kolom: int, waarde, stijl: dict | None = None):
     """Schrijf een waarde; tekst die als formule gelezen kan worden blijft tekst."""
+    if waarde is None and stijl:  # alleen opmaak (bijv. de kleur naast de dienstnaam): snel pad
+        return _nieuwe_cel(blad, rij, kolom, None, "n", stijl)
     cel = blad.cell(rij, kolom)
     cel.value = waarde
     formule = isinstance(waarde, str) and waarde.startswith(FORMULE_TEKENS)
     if formule:
         cel.data_type = "s"  # openpyxl maakt anders een formule van '=...'
     if stijl or formule:
-        cache = blad.parent.__dict__.setdefault("_rooster_stijlen", {})
-        sleutel = (formule,) + tuple((k, id(v)) for k, v in (stijl or {}).items())
-        if sleutel in cache:
-            cel._style = copy(cache[sleutel][0])
-        else:
-            for naam, stijlwaarde in (stijl or {}).items():
-                setattr(cel, naam, stijlwaarde)
-            if formule:
-                cel.quotePrefix = True  # Excel toont het als tekst
-            # De stijlobjecten zelf ook bewaren: zo blijft hun id() uniek zolang de cache bestaat
-            cache[sleutel] = (copy(cel._style), tuple((stijl or {}).values()))
+        cel._style = copy(_stijl(blad, cel, stijl or {}, formule))
     return cel
+
+
+def _stijl(blad, cel, stijl: dict, als_tekst: bool = False):
+    """De opgemaakte stijl (StyleArray) voor deze stijl-dict, één keer per werkboek opgebouwd.
+
+    Sleutel: het dict-object zelf (de vaste stijlen zijn constanten of komen uit _Stijlen); de
+    dicts blijven in de cache bewaard, zodat hun id() uniek blijft.
+    """
+    cache = blad.parent.__dict__.setdefault("_rooster_stijlen", {})
+    sleutel = (id(stijl), als_tekst)
+    if sleutel not in cache:
+        for naam, stijlwaarde in stijl.items():
+            setattr(cel, naam, stijlwaarde)
+        if als_tekst:
+            cel.quotePrefix = True  # Excel toont het als tekst
+        cache[sleutel] = (copy(cel._style), stijl)
+    return cache[sleutel][0]
 
 
 def _tijd(tekst: str | None) -> time | None:
@@ -229,6 +254,9 @@ class _Stijlen:
 
     def __init__(self) -> None:
         self.codes: dict[int, dict] = {}
+        self.namen: dict[int | None, dict] = {}
+        self.opmerkingen: dict[str, dict] = {}
+        self.rastercellen: dict[tuple, dict] = {}
         self.regels = {}
         for sleutel, regel in kleurregels().items():
             if regel.kleur_achtergrond2:
@@ -240,7 +268,7 @@ class _Stijlen:
 
     def code(self, code: Dienstcode | None) -> dict:
         if code is None:
-            return {}
+            return GEEN
         if code.id not in self.codes:
             self.codes[code.id] = {
                 "fill": PatternFill("solid", fgColor=_kleur(code.kleur_achtergrond)),
@@ -249,15 +277,33 @@ class _Stijlen:
         return self.codes[code.id]
 
     def raster(self, dienst1: Dienst | None, dienst2: Dienst | None) -> dict:
-        """Code-cel: kleur van de code; bij twee diensten links/rechts (verloop)."""
-        if dienst2 is None:
-            return self.code(dienst1.dienstcode if dienst1 else None)
-        kleuren = [_kleur(d.dienstcode.kleur_achtergrond) if d is not None and d.dienstcode else "FFFFFF"
-                   for d in (dienst1, dienst2)]
-        return {"fill": GradientFill(stop=tuple(kleuren)), "font": VET}
+        """Code-cel: kleur van de code; bij twee diensten links/rechts (verloop). Eén dict per combinatie."""
+        codes = tuple(d.dienstcode if d is not None else None for d in (dienst1, dienst2))
+        sleutel = tuple(code.id if code is not None else None for code in codes) + (dienst2 is None,)
+        if sleutel not in self.rastercellen:
+            if dienst2 is None:
+                stijl = {**self.code(codes[0]), "alignment": MIDDEN}
+            else:
+                kleuren = [_kleur(code.kleur_achtergrond) if code is not None else "FFFFFF" for code in codes]
+                stijl = {"fill": GradientFill(stop=tuple(kleuren)), "font": VET, "alignment": MIDDEN}
+            self.rastercellen[sleutel] = stijl
+        return self.rastercellen[sleutel]
 
     def opmerking(self, tekst: str) -> dict:
-        return self.regels.get((tekst or "").strip().casefold(), {})
+        return self.regels.get((tekst or "").strip().casefold(), GEEN)
+
+    def naam(self, code: Dienstcode | None) -> dict:
+        """Dienstnaam: kleur van de code, gecentreerd over de dag, met rand (één dict per code)."""
+        sleutel = code.id if code is not None else None
+        if sleutel not in self.namen:
+            self.namen[sleutel] = {**self.code(code), "alignment": OVER_DRIE, "border": RAND}
+        return self.namen[sleutel]
+
+    def opmerkingcel(self, tekst: str) -> dict:
+        sleutel = (tekst or "").strip().casefold()
+        if sleutel not in self.opmerkingen:
+            self.opmerkingen[sleutel] = {**self.opmerking(tekst), "border": RAND}
+        return self.opmerkingen[sleutel]
 
 
 def _kleur(waarde: str | None) -> str:
@@ -275,7 +321,7 @@ CEL_OPMERKINGTIJDEN, CEL_PAUZE_AAN = "Lijsten!$N$5", "Lijsten!$N$6"
 PAUZE_EERSTE_RIJ = 9  # N9:N13 = grens ('meer dan ... uur'), O9:O13 = pauze eraf
 CEL_CORRECTIES_GELDIG = "Rekenhulp!$D$1"
 # Rekenhulp per dag (verborgen kolommen rechts van de tweede dienst), per dag 5 kolommen:
-# X dienst 1, X dienst 2 en, alleen als de opmerkingtijden meetellen: uren dienst 1,
+# X dienst 1, X dienst 2 (alleen bij een tweede dienst) en, als de opmerkingtijden meetellen: uren dienst 1,
 # X opmerkingtijden, uren opmerkingtijden (zo blijft het bestand klein en snel)
 HULP_EERSTE = 60  # kolom BH
 HULP_BREEDTE = 5
@@ -500,32 +546,31 @@ class _WeekContext:
 def _weekblad(blad, week: int, c: _WeekContext) -> None:
     maandag = date.fromisocalendar(c.jaar, week, 1)
     dagen = [maandag + timedelta(days=i) for i in range(7)]
-    _zet(blad, 1, 2, f"Week {week} ({c.jaar})", {"font": Font(bold=True, size=13)})
-    _zet(blad, 2, 2, "Naam", {"font": VET})
-    _zet(blad, 2, 26, "Uren", {"font": VET})
-    _zet(blad, 1, 28, "Code-raster", {"font": VET})
-    _zet(blad, 3, TWEEDE_KOLOMMEN[0], "2e dienst van de dag (bij twee diensten)", {"font": VET})
-    _zet(blad, 1, HULP_EERSTE, "Rekenhulp voor de uren (niet wijzigen); rij 2 = toeslagfactor", {"font": VET})
+    _zet(blad, 1, 2, f"Week {week} ({c.jaar})", TITEL)
+    _zet(blad, 2, 2, "Naam", VET_STIJL)
+    _zet(blad, 2, 26, "Uren", VET_STIJL)
+    _zet(blad, 1, 28, "Code-raster", VET_STIJL)
+    _zet(blad, 3, TWEEDE_KOLOMMEN[0], "2e dienst van de dag (bij twee diensten)", VET_STIJL)
+    _zet(blad, 1, HULP_EERSTE, "Rekenhulp voor de uren (niet wijzigen); rij 2 = toeslagfactor", VET_STIJL)
     for i, dag in enumerate(dagen):
-        weekend = {"fill": WEEKEND} if dag.weekday() >= 5 else {"fill": KOP}
+        kop = DAGKOP[dag.weekday() >= 5]
         for kolom in (DAG_KOLOMMEN[i], TWEEDE_KOLOMMEN[i]):
-            _zet(blad, 1, kolom, DAGNAMEN_KORT[i], {"font": VET, "alignment": OVER_DRIE, **weekend})
+            _zet(blad, 1, kolom, DAGNAMEN_KORT[i], kop["naam"])
             for k in (kolom + 1, kolom + 2):
-                _zet(blad, 1, k, None, weekend)
-                _zet(blad, 2, k, None, weekend)
-            _zet(blad, 2, kolom, datetime.combine(dag, time()),
-                 {"number_format": "dd-mm-yy", "font": VET, "alignment": OVER_DRIE, **weekend})
-        _zet(blad, 2, CODE_KOLOMMEN[i], DAGNAMEN_KORT[i].upper(), {"font": VET, "alignment": MIDDEN})
+                _zet(blad, 1, k, None, kop["vulling"])
+                _zet(blad, 2, k, None, kop["vulling"])
+            _zet(blad, 2, kolom, datetime.combine(dag, time()), kop["datum"])
+        _zet(blad, 2, CODE_KOLOMMEN[i], DAGNAMEN_KORT[i].upper(), RASTERKOP)
         if c.van <= dag <= c.tot:
             opm = c.opmerkingen.get(dag, {}).get("tekst", "")
-            _zet(blad, 3, DAG_KOLOMMEN[i], opm or None, {"alignment": OVER_DRIE})
+            _zet(blad, 3, DAG_KOLOMMEN[i], opm or None, DAGOPMERKING)
             datum = _cel(2, DAG_KOLOMMEN[i], True)
             _formule(blad, 2, _hulpkolom(i, 0), c.formules.factor(datum, c.feestdagen))
 
     for n, medewerker in enumerate(c.medewerkers):
         basis = 4 + 4 * n
-        _zet(blad, basis, 2, medewerker.naam, {"font": VET})
-        _zet(blad, 6 + 2 * n, 28, medewerker.initialen, {"font": VET})
+        _zet(blad, basis, 2, medewerker.naam, VET_STIJL)
+        _zet(blad, 6 + 2 * n, 28, medewerker.initialen, VET_STIJL)
         _zet(blad, basis, 26, medewerker.contracturen_voor(c.jaar))
         urencellen = []
         for i, dag in enumerate(dagen):
@@ -533,7 +578,7 @@ def _weekblad(blad, week: int, c: _WeekContext) -> None:
             if c.van <= dag <= c.tot:
                 _dag(blad, basis, 6 + 2 * n, i, c.per_dag.get((medewerker.id, dag), {}), c)
         # Weektotaal: alle urencellen van dienst 1 en dienst 2 (lege cellen tellen niet)
-        _formule(blad, basis + 2, 26, f"SUM({','.join(urencellen)})", {"font": VET, "number_format": "0.00"})
+        _formule(blad, basis + 2, 26, f"SUM({','.join(urencellen)})", WEEKTOTAAL)
     _opmaak_weekblad(blad)
 
 
@@ -547,10 +592,10 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
         code = matrix_code(dienst1, dienst2)
         if code:
             _zet(blad, rasterrij, CODE_KOLOMMEN[i], int(code) if code.isdigit() else code,
-                 {"alignment": MIDDEN, **c.stijlen.raster(dienst1, dienst2)})
+                 c.stijlen.raster(dienst1, dienst2))
     if dienst1 is not None:
         opmerking = dienst1.opmerking_tekst
-        _zet_als(blad, basis, kolom, opmerking, {**c.stijlen.opmerking(opmerking), "border": RAND})
+        _zet_als(blad, basis, kolom, opmerking, c.stijlen.opmerkingcel(opmerking))
         _zet_als(blad, basis + 1, kolom, _tijd(dienst1.opmerking_begin), TIJD)
         _zet_als(blad, basis + 1, kolom + 1, _tijd(dienst1.opmerking_eind), TIJD)
 
@@ -562,7 +607,6 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
     b1, e1, b2, e2 = _cel(rij, kolom), _cel(rij, kolom + 1), _cel(rij, k2), _cel(rij, k2 + 1)
     x1, x2 = _cel(rij, _hulpkolom(i, 0)), _cel(rij, _hulpkolom(i, 1))
     _formule(blad, rij, _hulpkolom(i, 0), f.kwartieren_ruw(b1, e1, factor))
-    _formule(blad, rij, _hulpkolom(i, 1), f.kwartieren_ruw(b2, e2, factor))
     uren1 = f.uren(x1, b1, e1, factor)
     if f.opmerkingtijden:
         bo, eo = _cel(basis + 1, kolom), _cel(basis + 1, kolom + 1)
@@ -570,10 +614,12 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
         _formule(blad, rij, _hulpkolom(i, 3), f.kwartieren_ruw(bo, eo, factor))
         _formule(blad, rij, _hulpkolom(i, 4), f.uren(_cel(rij, _hulpkolom(i, 3)), bo, eo, factor))
         uren1 = f.dagtotaal(_cel(rij, _hulpkolom(i, 2)), _cel(rij, _hulpkolom(i, 4)))
-    uren2 = f.uren(x2, b2, e2, factor)
     _dienst(blad, basis, kolom, dienst1, f.code(raster, 1), uren1, c)
-    # Een lege tweede dienst: wel uren als je tijden typt, maar geen opzoekformules (bestandsgrootte)
-    _dienst(blad, basis, k2, dienst2, f.code(raster, 2) if dienst2 is not None else None, uren2, c)
+    # Formules voor dienst 2 alleen als die er is: het blok staat bijna altijd leeg, en elke
+    # cel kost tijd en ruimte (een jaar moet binnen een paar seconden klaar zijn)
+    if dienst2 is not None:
+        _formule(blad, rij, _hulpkolom(i, 1), f.kwartieren_ruw(b2, e2, factor))
+        _dienst(blad, basis, k2, dienst2, f.code(raster, 2), f.uren(x2, b2, e2, factor), c)
 
 
 def _volgt_standaard(dienst: Dienst) -> bool:
@@ -583,7 +629,7 @@ def _volgt_standaard(dienst: Dienst) -> bool:
             and (dienst.begin, dienst.eind) == (code.std_begin, code.std_eind))
 
 
-def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str | None, uren: str,
+def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str, uren: str,
             c: _WeekContext) -> None:
     """Dienstnaam (regel c) en begin/eind/uren (regel d) van één dienst.
 
@@ -592,11 +638,8 @@ def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str | Non
     Een afwijkende tijd, een vrije dienstnaam of een aanvulling achter de naam blijft een waarde.
     Zelf ingevulde uren blijven een vaste waarde (rood, met een opmerking), net als in de app.
     """
-    stijl = c.stijlen.code(dienst.dienstcode if dienst is not None else None)
-    naam = {**stijl, "alignment": OVER_DRIE, "border": RAND}
-    if code is None:
-        pass  # lege tweede dienst: niets opzoeken
-    elif dienst is None or _volgt_standaard(dienst):
+    naam = c.stijlen.naam(dienst.dienstcode if dienst is not None else None)
+    if dienst is None or _volgt_standaard(dienst):
         _formule(blad, basis + 2, kolom, c.formules.opzoeken(code, 2, c.codes), naam)
         _formule(blad, basis + 3, kolom, c.formules.opzoeken(code, 6, c.codes), TIJD)
         _formule(blad, basis + 3, kolom + 1, c.formules.opzoeken(code, 7, c.codes), TIJD)
@@ -617,17 +660,18 @@ def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str | Non
 def _formule(blad, rij: int, kolom: int, formule: str, stijl: dict | None = None):
     """Een formule die de export zelf opbouwt (alleen eigen celverwijzingen, nooit tekst uit de
     database). _zet() maakt van tekst die met '=' begint juist géén formule."""
-    cel = blad.cell(rij, kolom)
-    cel.value = "=" + formule
+    return _nieuwe_cel(blad, rij, kolom, "=" + formule, "f", stijl)
+
+
+def _nieuwe_cel(blad, rij: int, kolom: int, waarde, soort: str, stijl: dict | None):
+    """Rechtstreeks een cel maken, zonder de algemene waardecontrole van openpyxl (die kost bij
+    tienduizenden cellen merkbaar tijd). Alleen voor formules van de export zelf en lege cellen."""
+    cel = Cell(blad, row=rij, column=kolom)
+    cel._value = waarde
+    cel.data_type = soort
+    blad._cells[(rij, kolom)] = cel
     if stijl:
-        cache = blad.parent.__dict__.setdefault("_rooster_stijlen", {})
-        sleutel = ("f",) + tuple((k, id(v)) for k, v in stijl.items())
-        if sleutel in cache:
-            cel._style = copy(cache[sleutel][0])
-        else:
-            for naam, waarde in stijl.items():
-                setattr(cel, naam, waarde)
-            cache[sleutel] = (copy(cel._style), tuple(stijl.values()))
+        cel._style = copy(_stijl(blad, cel, stijl))
     return cel
 
 
@@ -650,7 +694,7 @@ def _lijsten(blad, jaar: int, medewerkers: list[Medewerker], codes: list[Dienstc
     for kolom, kop in ((2, "Initialen"), (3, "Personeel"), (4, f"Contract {jaar}"), (6, "Dienst"),
                        (7, "Omschrijving"), (8, "Van"), (9, "Tot"), (10, "Uren"), (13, "Instelling"),
                        (14, "Waarde")):
-        _zet(blad, 1, kolom, kop, {"font": VET, "fill": KOP})
+        _zet(blad, 1, kolom, kop, KOPCEL)
     for rij, medewerker in enumerate(medewerkers, start=2):
         _zet(blad, rij, 2, medewerker.initialen)
         _zet(blad, rij, 3, medewerker.naam)
@@ -692,7 +736,7 @@ def _lijsten(blad, jaar: int, medewerkers: list[Medewerker], codes: list[Dienstc
 def _feestdagen(blad, feestdagen: dict[date, str]) -> None:
     """Feestdagen (en eigen roostervrije dagen) van het jaar, voor de feestdagtoeslag."""
     for kolom, kop in enumerate(("Datum", "Feestdag"), start=1):
-        _zet(blad, 1, kolom, kop, {"font": VET, "fill": KOP})
+        _zet(blad, 1, kolom, kop, KOPCEL)
     for rij, (dag, naam) in enumerate(sorted(feestdagen.items()), start=2):
         _zet(blad, rij, 1, datetime.combine(dag, time()), {"number_format": "dd-mm-yyyy"})
         _zet(blad, rij, 2, naam)
@@ -709,7 +753,7 @@ def _urenoverzicht(blad, jaar: int, medewerker: Medewerker | None, op_weekbladen
     weken = list(range(1, aantal_weken(jaar) + 1))
     koppen = ["Naam", "Initialen"] + [f"W{w}" for w in weken] + ["Totaal", "Contracturen", "Verschil"]
     for kolom, kop in enumerate(koppen, start=1):
-        _zet(blad, 1, kolom, kop, {"font": VET, "fill": KOP})
+        _zet(blad, 1, kolom, kop, KOPCEL)
     plek = {m.id: n for n, m in enumerate(op_weekbladen)}
     rijen = [r for r in uren_overzicht(jaar) if medewerker is None or r.medewerker.id == medewerker.id]
     getal = {"number_format": "0.00;-0.00;;@"}  # 0 als leeg tonen (een week zonder diensten)
@@ -735,7 +779,7 @@ def _urenoverzicht(blad, jaar: int, medewerker: Medewerker | None, op_weekbladen
 
 def _vakanties(blad, van: date, tot: date) -> None:
     for kolom, kop in enumerate(("Vakantie", "Datum van", "Datum tot", "Werkdagen"), start=1):
-        _zet(blad, 1, kolom, kop, {"font": VET, "fill": KOP})
+        _zet(blad, 1, kolom, kop, KOPCEL)
     vakanties = (Vakantie.query.filter(Vakantie.datum_tot >= van, Vakantie.datum_van <= tot)
                  .order_by(Vakantie.datum_van).all())
     for rij, vakantie in enumerate(vakanties, start=2):
