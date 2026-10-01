@@ -2,6 +2,29 @@
 
 ## [Onuitgebracht]
 
+## [1.2.0] – 2026-10-01
+
+Onderhouds- en beveiligingsversie na een audit van 1.1.2: veel kleine en een paar
+belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen.
+
+### Opgelost
+- **Back-ups:** een mislukte nachtelijke back-up (bijvoorbeeld een volle schijf) liet een leeg
+  bestand achter en werd elke 5 seconden opnieuw geprobeerd. Bij de eerstvolgende geslaagde
+  back-up ruimde de app dan alle échte back-ups op en bewaarde alleen de lege. Nu:
+  - een back-up wordt eerst als tijdelijk bestand geschreven en gecontroleerd, pas daarna krijgt
+    hij zijn echte naam; bij een fout wordt het tijdelijke bestand opgeruimd;
+  - na een mislukte back-up wacht de worker 30 minuten en zet een regel in het logboek
+    ("Back-up mislukt");
+  - het opruimen telt alleen geldige automatische back-ups.
+
+### Beveiliging
+- **Inloggen:** een bezoeker zonder account kon de database onbeperkt laten groeien met extreem
+  lange gebruikersnamen. De gebruikersnaam wordt nu op 64 tekens afgekapt, een blokkade komt
+  maar één keer in het logboek, alle logboekvelden zijn begrensd en loginpogingen ouder dan een
+  dag worden dagelijks opgeruimd.
+- Inloggen met een onbekende gebruikersnaam duurt even lang als met een bestaande (je kunt aan
+  de responstijd niet meer zien welke namen bestaan).
+
 ## [1.1.2] – 2026-10-01
 
 ### Opgelost
@@ -30,10 +53,6 @@
   - De server slaat alleen nog op bij een expliciete opdracht van de knop **Opslaan**; zonder die
     opdracht wordt alleen een voorbeeld berekend. Een oud script kan dus nooit meer iets opslaan.
   - De oude route die dagopmerkingen direct opsloeg, is verwijderd.
-
-## [1.1.1] – 2026-10-01
-
-### Opgelost
 - Google Agenda, modus A: de knop was uitgeschakeld (klikken deed niets) als de medewerker geen
   e-mailadres had, bijvoorbeeld na een Excel-import. Het e-mailadres kan nu direct bij de knop
   ingevuld worden en wordt bij de medewerker bewaard; zonder e-mailadres volgt een duidelijke melding.

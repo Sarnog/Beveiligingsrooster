@@ -7,9 +7,10 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from flask_login import current_user, login_required, login_user, logout_user
 
 from ..extensions import db
-from ..models import Gebruiker, LoginPoging
+from ..models import Gebruiker, Logboek, LoginPoging
 from ..services import klok, logboek
 from ..services.wachtwoorden import (
+    controleer_dummy,
     controleer_wachtwoord,
     hash_wachtwoord,
     moet_opnieuw_hashen,
@@ -20,15 +21,16 @@ bp = Blueprint("auth", __name__)
 
 MAX_POGINGEN = 5  # mislukte pogingen ...
 BLOKKADE_MINUTEN = 15  # ... per zoveel minuten, per gebruiker + IP
+MAX_NAAM = 64  # langer kan een gebruikersnaam niet zijn (zie beheer/gebruikers.py)
 
 
 def _client_ip() -> str:
-    return request.remote_addr or "onbekend"
+    return (request.remote_addr or "onbekend")[:64]
 
 
 def _is_geblokkeerd(gebruikersnaam: str, ip: str) -> bool:
     """True als er te veel mislukte pogingen waren (per gebruiker + IP, en per IP)."""
-    grens = klok.nu() - timedelta(minutes=BLOKKADE_MINUTEN)
+    grens = klok.utc_nu() - timedelta(minutes=BLOKKADE_MINUTEN)
     basis = LoginPoging.query.filter(
         LoginPoging.gelukt.is_(False), LoginPoging.tijdstip >= grens
     )
@@ -38,6 +40,15 @@ def _is_geblokkeerd(gebruikersnaam: str, ip: str) -> bool:
     # Extra rem tegen het uitproberen van veel gebruikersnamen vanaf één IP
     per_ip = basis.filter(LoginPoging.ip == ip).count()
     return per_gebruiker >= MAX_POGINGEN or per_ip >= MAX_POGINGEN * 4
+
+
+def _blokkade_al_gelogd(gebruikersnaam: str, ip: str) -> bool:
+    """Staat de blokkade van deze gebruiker + IP al in het logboek (binnen het venster)?"""
+    grens = klok.nu() - timedelta(minutes=BLOKKADE_MINUTEN)
+    return Logboek.query.filter(
+        Logboek.actie == "Login geblokkeerd", Logboek.gebruiker == gebruikersnaam,
+        Logboek.details == f"IP {ip}", Logboek.tijdstempel >= grens,
+    ).first() is not None
 
 
 def _veilige_volgende(volgende: str | None) -> str:
@@ -55,25 +66,30 @@ def login():
         return redirect(url_for("algemeen.index"))
 
     if request.method == "POST":
-        gebruikersnaam = request.form.get("gebruikersnaam", "").strip().lower()
+        ingevuld = request.form.get("gebruikersnaam", "").strip().lower()
+        # Afkappen vóór het opslaan of opzoeken; een langere naam kan niet bestaan
+        gebruikersnaam = ingevuld[:MAX_NAAM]
+        te_lang = len(ingevuld) > MAX_NAAM
         wachtwoord = request.form.get("wachtwoord", "")
         ip = _client_ip()
 
         if _is_geblokkeerd(gebruikersnaam, ip):
-            logboek.log("Login geblokkeerd", f"IP {ip}", gebruiker=gebruikersnaam, rol="")
-            db.session.commit()
+            # Eén regel per blokkade, niet bij elke poging (anders vult het logboek zich)
+            if not _blokkade_al_gelogd(gebruikersnaam, ip):
+                logboek.log("Login geblokkeerd", f"IP {ip}", gebruiker=gebruikersnaam, rol="")
+                db.session.commit()
             flash(
                 f"Te veel mislukte pogingen. Probeer het over {BLOKKADE_MINUTEN} minuten opnieuw.",
                 "fout",
             )
             return render_template("auth/login.html"), 429
 
-        gebruiker = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
-        klopt = (
-            gebruiker is not None
-            and gebruiker.actief
-            and controleer_wachtwoord(gebruiker.wachtwoord_hash, wachtwoord)
-        )
+        gebruiker = None if te_lang else \
+            Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
+        if gebruiker is None:
+            klopt = controleer_dummy(wachtwoord)  # zelfde rekentijd: niets verraden
+        else:
+            klopt = gebruiker.actief and controleer_wachtwoord(gebruiker.wachtwoord_hash, wachtwoord)
         db.session.add(LoginPoging(gebruikersnaam=gebruikersnaam, ip=ip, gelukt=klopt))
 
         if not klopt:

@@ -20,6 +20,23 @@ def controleer_wachtwoord(opgeslagen_hash: str, wachtwoord: str) -> bool:
         return False
 
 
+_dummy_hash: str | None = None
+
+
+def controleer_dummy(wachtwoord: str) -> bool:
+    """Controleer tegen een vaste nep-hash (altijd False).
+
+    Gebruikt bij een onbekende gebruiker: het inloggen duurt dan even lang als bij
+    een bestaande gebruiker, zodat je aan de responstijd niet kunt zien welke
+    gebruikersnamen bestaan.
+    """
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = _hasher.hash("geen-echt-wachtwoord")
+    controleer_wachtwoord(_dummy_hash, wachtwoord)
+    return False
+
+
 def moet_opnieuw_hashen(opgeslagen_hash: str) -> bool:
     """True als de hash met oudere instellingen gemaakt is (dan vernieuwen we hem)."""
     try:

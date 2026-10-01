@@ -18,9 +18,13 @@ gebeuren, daarna pas definitief importeren (importeer).
 Wachtwoorden en rechten uit de bladen 'Beveiliging' en 'Rechten' worden bewust NIET gelezen.
 """
 
+import os
 import re
+import time as _time
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
+
+from flask import current_app
 
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
@@ -35,10 +39,30 @@ EXCEL_BLANCO = 15
 DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
 CODE_KOLOMMEN = list(range(29, 36))  # AC..AI
 MAX_BLOKKEN = 30
+UPLOAD_BEWAREN_SECONDEN = 24 * 3600
 
 
 class ImportFout(Exception):
     """Het bestand is niet te lezen als oud rooster."""
+
+
+def import_map() -> str:
+    """Map voor geüploade Excel-bestanden (alleen tot de import klaar is)."""
+    pad = os.path.join(current_app.config["DATA_MAP"], "import")
+    os.makedirs(pad, mode=0o700, exist_ok=True)
+    return pad
+
+
+def ruim_oude_uploads_op(nu: float | None = None) -> int:
+    """Verwijder geüploade bestanden die er langer dan een dag staan (import afgebroken)."""
+    grens = (nu or _time.time()) - UPLOAD_BEWAREN_SECONDEN
+    verwijderd = 0
+    for naam in os.listdir(import_map()):
+        pad = os.path.join(import_map(), naam)
+        if os.path.isfile(pad) and os.path.getmtime(pad) < grens:
+            os.remove(pad)
+            verwijderd += 1
+    return verwijderd
 
 
 # ---------------------------------------------------------------------------

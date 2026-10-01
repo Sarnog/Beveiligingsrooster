@@ -7,27 +7,21 @@ Stap 2: bevestigen -> definitief importeren. Het bestand wordt daarna verwijderd
 import os
 import secrets
 
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 
 from ...services import backup
-from ...services.excel_import import ImportFout, importeer, lees_bestand
+from ...services.excel_import import ImportFout, import_map, importeer, lees_bestand
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
 TOEGESTAAN = (".xlsm", ".xlsx")
 
 
-def _import_map() -> str:
-    pad = os.path.join(current_app.config["DATA_MAP"], "import")
-    os.makedirs(pad, mode=0o700, exist_ok=True)
-    return pad
-
-
 def _opgeslagen_pad() -> str | None:
     naam = session.get("import_bestand", "")
     if not naam or "/" in naam or "\\" in naam:
         return None
-    pad = os.path.join(_import_map(), naam)
+    pad = os.path.join(import_map(), naam)
     return pad if os.path.exists(pad) else None
 
 
@@ -48,7 +42,7 @@ def excel_import():
             return redirect(url_for("beheer.excel_import"))
         _ruim_op()
         naam = secrets.token_hex(8) + ".xlsm"
-        pad = os.path.join(_import_map(), naam)
+        pad = os.path.join(import_map(), naam)
         bestand.save(pad)
         os.chmod(pad, 0o600)
         session["import_bestand"] = naam

@@ -7,6 +7,7 @@ terwijl de app gewoon in gebruik is. Back-ups staan in <datamap>/backups.
 import os
 import re
 import sqlite3
+from datetime import timedelta
 
 from flask import current_app
 
@@ -30,20 +31,52 @@ def database_pad() -> str:
     return uri.removeprefix("sqlite:///")
 
 
+# Automatische (nachtelijke) back-ups: zonder label, bijv. rooster-20260302-020000.db
+AUTOMATISCH = re.compile(r"^rooster-\d{8}-\d{6}\.db$")
+TIJDELIJK = ".tmp"  # valt buiten het patroon van lijst_backups()
+
+
+def _controleer_kopie(pad: str) -> None:
+    """Controleer een net gemaakte kopie. Niet in orde: sqlite3.DatabaseError."""
+    verbinding = sqlite3.connect(pad)
+    try:
+        uitkomst = verbinding.execute("PRAGMA integrity_check").fetchone()
+    finally:
+        verbinding.close()
+    if not uitkomst or uitkomst[0] != "ok":
+        raise sqlite3.DatabaseError(f"Back-up is niet in orde: {uitkomst}")
+
+
 def maak_backup(label: str = "") -> str:
-    """Maak een back-up en geef het pad terug. label bijv. 'voor-update'."""
+    """Maak een back-up en geef het pad terug. label bijv. 'voor-update'.
+
+    De kopie wordt eerst als tijdelijk bestand (.db.tmp) geschreven en gecontroleerd
+    (PRAGMA integrity_check). Pas daarna krijgt hij zijn echte naam. Mislukt er iets
+    (bijv. schijf vol), dan wordt het tijdelijke bestand opgeruimd: er blijft nooit
+    een lege of halve back-up staan.
+    """
     stempel = klok.nu().strftime("%Y%m%d-%H%M%S")
     naam = f"{VOORVOEGSEL}{stempel}{('-' + label) if label else ''}{ACHTERVOEGSEL}"
     doel = os.path.join(backup_map(), naam)
-    bron = sqlite3.connect(database_pad())
-    kopie = sqlite3.connect(doel)
+    tijdelijk = doel + TIJDELIJK
     try:
-        with kopie:
-            bron.backup(kopie)  # veilig tijdens gebruik
-    finally:
-        kopie.close()
-        bron.close()
-    os.chmod(doel, 0o600)
+        bron = sqlite3.connect(database_pad())
+        try:
+            kopie = sqlite3.connect(tijdelijk)
+            try:
+                with kopie:
+                    bron.backup(kopie)  # veilig tijdens gebruik
+            finally:
+                kopie.close()
+        finally:
+            bron.close()
+        os.chmod(tijdelijk, 0o600)
+        _controleer_kopie(tijdelijk)
+        os.replace(tijdelijk, doel)
+    except BaseException:
+        if os.path.exists(tijdelijk):
+            os.remove(tijdelijk)
+        raise
     return doel
 
 
@@ -62,14 +95,35 @@ def lijst_backups() -> list[dict]:
 def ruim_oude_op() -> int:
     """Bewaar alleen de nieuwste N automatische back-ups (instelling 'backup_bewaren').
 
-    Back-ups met een label (bijv. 'voor-update') tellen niet mee en blijven staan.
+    Alleen geldige (niet-lege) automatische back-ups tellen mee. Lege bestanden van
+    een oude, mislukte back-up worden altijd opgeruimd. Back-ups met een label
+    (bijv. 'voor-update') vallen hierbuiten; zie ruim_gelabelde_op().
     """
     bewaren = max(instellingen.lees_int("backup_bewaren", 30), 1)
-    automatisch = [b for b in lijst_backups() if b["naam"].count("-") == 2]
-    verwijderd = 0
-    for oud in automatisch[bewaren:]:
+    automatisch = [b for b in lijst_backups() if AUTOMATISCH.match(b["naam"])]
+    geldig = [b for b in automatisch if b["grootte"] > 0]
+    weg = [b for b in automatisch if b["grootte"] == 0] + geldig[bewaren:]
+    for oud in weg:
         os.remove(os.path.join(backup_map(), oud["naam"]))
-        verwijderd += 1
+    return len(weg)
+
+
+# Back-ups met een label (handmatig, voor-update, voor-import, voor-terugzetten, upload):
+# ze blijven GELABELD_DAGEN staan; de nieuwste GELABELD_MINIMAAL blijven altijd.
+GELABELD_DAGEN = 90
+GELABELD_MINIMAAL = 10
+STEMPEL = re.compile(r"^rooster-(\d{8})-\d{6}-[a-z0-9-]+\.db$")
+
+
+def ruim_gelabelde_op() -> int:
+    """Verwijder gelabelde back-ups ouder dan GELABELD_DAGEN (de nieuwste blijven altijd)."""
+    grens = (klok.nu() - timedelta(days=GELABELD_DAGEN)).strftime("%Y%m%d")
+    gelabeld = [b for b in lijst_backups() if STEMPEL.match(b["naam"])]
+    verwijderd = 0
+    for oud in gelabeld[GELABELD_MINIMAAL:]:
+        if STEMPEL.match(oud["naam"]).group(1) < grens:
+            os.remove(os.path.join(backup_map(), oud["naam"]))
+            verwijderd += 1
     return verwijderd
 
 

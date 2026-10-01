@@ -266,14 +266,18 @@ class Logboek(db.Model):
 
 
 class LoginPoging(db.Model):
-    """Inlogpogingen, voor de beperking van 5 pogingen per 15 minuten."""
+    """Inlogpogingen, voor de beperking van 5 pogingen per 15 minuten.
+
+    tijdstip is in UTC (klok.utc_nu), zodat de wintertijd de blokkade niet beïnvloedt.
+    De worker ruimt pogingen ouder dan één dag op.
+    """
 
     __tablename__ = "login_poging"
 
     id = db.Column(db.Integer, primary_key=True)
     gebruikersnaam = db.Column(db.String(64), nullable=False, index=True)
     ip = db.Column(db.String(64), nullable=False, index=True)
-    tijdstip = db.Column(db.DateTime, nullable=False, default=nu, index=True)
+    tijdstip = db.Column(db.DateTime, nullable=False, default=klok.utc_nu, index=True)
     gelukt = db.Column(db.Boolean, nullable=False, default=False)
 
 
