@@ -2,6 +2,61 @@
 
 ## [Onuitgebracht]
 
+## [1.6.0] – 2026-10-01
+
+### Toegevoegd
+- **Excel-export met echte formules** (gewone `.xlsx`, zonder macro's): uren per dienst
+  rekenen zoals de app (pauzestaffel, toeslag zaterdag/zondag/feestdag met de hoogste factor,
+  opmerkingtijden, afronding op kwartieren met bankiersafronding), het weektotaal is een `SUM`
+  van dienst 1 en dienst 2, het urenoverzicht verwijst naar de weektotalen (met jaartotaal,
+  contracturen en verschil), vakanties met `NETWORKDAYS`. Dienstnaam en standaardtijden zoeken
+  de code uit het code-raster op in *Lijsten* (ook `4/7`). Een verborgen blad *Rekenhulp* zorgt
+  dat Excel ook bij een half kwartier of precies op een pauzegrens precies zo afrondt als de app.
+  Zelf ingevulde uren blijven een vaste waarde (rood, met een opmerking). Nieuwe bladen
+  *Feestdagen* en *Rekenhulp*; in *Lijsten* de instellingen voor de uren.
+- **Exportkeuzes**: één week (`rooster-2026-W10.xlsx`), een vrije periode (binnen één
+  roosterjaar), een heel jaar of het jaarrooster van één persoon (`rooster-2026-ma.xlsx`); bij
+  week, periode en jaar optioneel één medewerker. Alles op de server gecontroleerd, met een
+  melding op het scherm.
+- **Pauzeaftrek instelbaar** in *Beheer → Instellingen → Pauze*: aan/uit en een staffel van
+  hooguit 5 regels (*meer dan X uur: Y uur eraf*, de hoogste regel telt). Standaard precies het
+  oude gedrag (meer dan 5,5 uur: 0,5). Logboekregel met oud en nieuw en de tip *Alle uren
+  herberekenen*. Geldt overal: rooster, herberekenen, import (controle met de regels uit het
+  bestand) en de Excel-export.
+- **Beheer → Statistieken**: mislukte Google-synchronisatie en de wachtrij, de laatste
+  geslaagde back-ups (waarschuwing na 2 dagen) en de laatste mislukte, het aantal diensten,
+  uren tegenover contracturen tot nu toe, diensten met zelf ingevulde uren of afwijkende tijden,
+  mislukte inlogpogingen en blokkades (24 uur) en actieve API-tokens. Korte melding op de
+  Beheer-startpagina bij syncfouten, een te oude back-up of mogelijk dubbel getelde uren.
+- **Beheer → Roosterpatronen**: een cyclus van 1 t/m 12 weken (standaard 8) met per dag een
+  code-cel als in het code-raster, of een sjabloon uit het rooster van één medewerker.
+  Uitrollen over meer medewerkers met een eigen startpositie in de cyclus, overschrijven of
+  alleen lege dagen, feestdagen invullen of overslaan, niets op of na een archiefdatum. Met
+  droogloop; toepassen in één keer, met vooraf een back-up (*voor-patroon*), een logboekregel per
+  gewijzigde dienst en Google-synchronisatie alleen voor de geraakte collega's.
+
+### Gewijzigd
+- **De Excel-export staat in Beheer → Excel import/export** (het scherm heet nu zo, met de
+  delen *Importeren* en *Exporteren*) en is **alleen voor de beheerder**. De knoppen
+  *Exporteren (Excel)*, *Excel…* en *Meer exportkeuzes…* op de weekpagina, de jaarkalender en
+  het urenoverzicht, *Rooster exporteren (Excel)…* bij zoeken en de route `/export/` zijn weg.
+  **Collega's hebben geen Excel-export meer**; de CSV-exports blijven.
+- Import: formulecellen zonder opgeslagen waarde (een export die nog niet in Excel is geopend)
+  worden goed gelezen: tijden uit een opzoekformule = de standaardtijden van de code, uren uit
+  een formule zijn niet *zelf ingevuld*, een weektotaal zonder waarde geeft geen vals verschil.
+- De import en roosterpatronen gebruiken dezelfde code om wijzigingen door te voeren
+  (`roosteracties.py`).
+- Databasemigratie `0007` (tabellen voor roosterpatronen).
+
+### Opgelost
+- **Twee diensten op één dag telden uren dubbel** als dienst 1 *zelf ingevulde uren* had,
+  bijvoorbeeld na de import van het oude Excel (dienst plus een training op de opmerkingregel,
+  samen getypt als dagtotaal). Werd het tweede deel een echte tweede dienst (`4/13`), dan bleef
+  dienst 1 op het dagtotaal staan en kwam dienst 2 er nog eens bij. Nu vervallen de zelf
+  ingevulde uren van dienst 1 als er een tweede dienst bij komt (logboek met de oude waarde),
+  zodat elke dienst zijn eigen uren telt. Dagen die al zo opgeslagen waren, staan in
+  *Beheer → Statistieken* onder *Mogelijk dubbel geteld*.
+
 ## [1.5.0] – 2026-10-01
 
 ### Toegevoegd

@@ -1,4 +1,4 @@
-# Handleiding voor collega's (versie 1.5.0)
+# Handleiding voor collega's (versie 1.6.0)
 
 Met het Beveiligingsrooster bekijk je je diensten, het weekrooster van het team en je uren. Je kunt niets wijzigen; dat doet de planner.
 
@@ -28,7 +28,7 @@ Heb je op een dag **twee diensten**, dan staan ze in het weekrooster **onder elk
 
 - **Printen**: klik in het weekrooster op **Printen**. De week komt liggend op één A4, opgemaakt als het papieren rooster (per medewerker een blok, de uren in de grijze kolom naast elke dag, rechts het weektotaal). Staan de kleuren er niet op, zet dan in het printvenster "Achtergrondafbeeldingen afdrukken" aan.
 - **Exporteren**: in het urenoverzicht en bij zoekresultaten staat een knop **Exporteren (CSV)**. Dat bestand opent in Excel.
-- **Exporteren (Excel)**: op de weekpagina, de kalender en het urenoverzicht download je het rooster als Excel-bestand (`.xlsx`), met per week een blad zoals het weekrooster, in kleur. Via *Meer exportkeuzes…* kies je een jaar, een periode of één collega.
+- **Excel-bestand (`.xlsx`)**: sinds versie 1.6.0 maakt alleen de planner een Excel-export (in Beheer). De knoppen *Exporteren (Excel)* en *Meer exportkeuzes…* zijn voor collega's verdwenen. Heb je een Excel-bestand van het rooster nodig, vraag het dan aan de planner. De CSV-export werkt gewoon.
 
 ## Op je telefoon
 

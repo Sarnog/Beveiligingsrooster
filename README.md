@@ -36,14 +36,16 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 
 | Onderdeel | Wat je ermee doet | Status |
 |---|---|---|
-| **Inloggen en rollen** | Beheerder (planner) mag alles; gebruiker (collega) mag alleen kijken, printen en exporteren | ✅ |
+| **Inloggen en rollen** | Beheerder (planner) mag alles; gebruiker (collega) mag alleen kijken, printen en naar CSV exporteren | ✅ |
 | **Setup-wizard** | Eerste beheerder, instellingen, dienstcodes en medewerkers invoeren | ✅ |
 | **Beheer** | Medewerkers (met contracturen per jaar), dienstcodes met kleuren, vakanties, feestdagen, accounts en instellingen | ✅ |
-| **Urenberekening** | Precies zoals de oude Excel-VBA: pauze-aftrek, toeslag voor zaterdag en zondag, afronding op kwartieren | ✅ |
+| **Urenberekening** | Precies zoals de oude Excel-VBA: pauze-aftrek (instelbaar als staffel), toeslag voor zaterdag, zondag en eventueel feestdagen, afronding op kwartieren | ✅ |
 | **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf. Twee diensten op één dag: typ `4/7` | ✅ |
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand; de print van het weekrooster lijkt op het papieren rooster (A4 liggend, in kleur) | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
-| **Excel-import en -export, back-ups in de webinterface** | Het oude `.xlsm` (of een eigen export) inlezen voor een gekozen jaar, alles of alleen bepaalde medewerkers/periode, met droogloop en controle van de weektotalen; het rooster exporteren als `.xlsx`; back-ups downloaden en terugzetten | ✅ |
+| **Excel import/export, back-ups in de webinterface** | Het oude `.xlsm` (of een eigen export) inlezen voor een gekozen jaar, alles of alleen bepaalde medewerkers/periode, met droogloop en controle van de weektotalen; een week, periode, jaar of het jaarrooster van één persoon exporteren als `.xlsx` **met formules** (rekent in Excel zoals de app); back-ups downloaden en terugzetten | ✅ |
+| **Roosterpatronen** | Een cyclus van weken (of een sjabloon uit het rooster) uitrollen over medewerkers, elk met een eigen startweek, met droogloop | ✅ |
+| **Statistieken** | Mislukte agenda-synchronisatie, back-ups, uren tegenover contracturen, inlogpogingen en API-tokens in één overzicht | ✅ |
 | **Telefoon en app** | Elke pagina werkt op de telefoon; *Mijn rooster* en het weekrooster zijn voor de telefoon gemaakt; de planner wijzigt een dienst met één tik. Te installeren als app (PWA) | ✅ |
 | **API voor een app** | `/api/v1` (alleen lezen) met persoonlijke API-tokens, zie [docs/api.md](docs/api.md) | ✅ |
 
@@ -77,8 +79,8 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 - **Sessies.** Na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of een rolwijziging zijn alle andere sessies van die gebruiker direct ongeldig. Na het terugzetten van een back-up moet iedereen opnieuw inloggen.
 - **Urenberekening** (per dienst, alleen over begin- en eindtijd; bij twee diensten op een dag telt elke dienst apart):
   1. Eindtijd vóór de begintijd? Dan loopt de dienst door na middernacht.
-  2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af.
-  3. Daarna × de toeslagfactor: zaterdag 1,5 en zondag 2,0 (instelbaar).
+  2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af. Sinds 1.6.0 instelbaar in *Beheer → Instellingen → Pauze*: uit, of een staffel (bijv. meer dan 9 uur: 0,75); de hoogste regel telt.
+  3. Daarna × de toeslagfactor: zaterdag 1,5 en zondag 2,0 (instelbaar), eventueel een feestdagfactor (de hoogste telt).
   4. Tot slot afronden op kwartieren, op precies dezelfde manier als Excel. Gecontroleerd op 1899 diensten uit het oude bestand.
 
 ## Installeren
@@ -226,7 +228,7 @@ Daarna is `/setup` niet meer bereikbaar en is de code ongeldig.
 
 ## Het oude Excel-rooster overzetten
 
-*Beheer → Excel-import* leest het oude `Rooster_2026.xlsm` in (of een `.xlsx` die je met *Exporteren (Excel)* uit de app hebt gehaald). Dat zijn:
+*Beheer → Excel import/export* leest het oude `Rooster_2026.xlsm` in (of een `.xlsx` die je daar zelf uit de app hebt geëxporteerd). Dat zijn:
 - medewerkers en contracturen;
 - dienstcodes en toeslagen;
 - vakanties;
@@ -234,7 +236,7 @@ Daarna is `/setup` niet meer bereikbaar en is de code ongeldig.
 
 Je kiest eerst voor **welk jaar** het rooster is (voorstel uit het bestand); alleen dat jaar wordt gevuld, andere jaren blijven ongemoeid. Daarna krijg je een **droogloop** met per medewerker wat er nieuw is, vervangen of verwijderd wordt, en een controle van alle weektotalen tegen kolom Z in Excel. Je kiest wat er overschreven wordt: **alles** (alleen de weken uit het bestand), **gedeeltelijk** (medewerkers en/of een periode) of **alleen lege dagen aanvullen**, en of toeslagen, vakanties, contracturen en nieuwe dienstcodes overgenomen worden. Pas na bevestiging wordt er iets opgeslagen, en de app maakt daarvóór automatisch een back-up. Zie de [handleiding voor de planner](docs/handleiding-planner.md#8-een-excel-bestand-importeren).
 
-**Exporteren:** met *Exporteren (Excel)* (weekpagina, kalender, urenoverzicht) download je het rooster als `.xlsx` in dezelfde opbouw, dus ook weer te importeren.
+**Exporteren** (sinds 1.6.0 alleen voor de beheerder, onderaan *Beheer → Excel import/export*): een week, een vrije periode (binnen één jaar), een heel jaar of het jaarrooster van één persoon, als `.xlsx` in dezelfde opbouw, dus ook weer te importeren. Uren, weektotalen en het urenoverzicht zijn **formules** die rekenen zoals de app (toeslagen, feestdagen, pauze, opmerkingtijden; ook de afronding op een half kwartier): wijzig je in Excel een tijd of een code, dan kloppen de uren meteen. Zonder macro's. Zie de [handleiding voor de planner](docs/handleiding-planner.md#rooster-exporteren-naar-excel).
 
 Wachtwoorden en rechten uit het Excel-bestand worden **niet** overgenomen. Het geüploade bestand wordt na afloop direct verwijderd.
 
@@ -446,7 +448,7 @@ pip-compile --strip-extras --output-file requirements.lock requirements.txt
 
 ## Handleidingen
 
-- [Handleiding voor de planner](docs/handleiding-planner.md): een week invullen met het code-raster, toetsen, tijden, opmerkingen, beheer.
+- [Handleiding voor de planner](docs/handleiding-planner.md): een week invullen met het code-raster, toetsen, tijden, opmerkingen, roosterpatronen, Excel import/export, statistieken, beheer.
 - [Handleiding voor collega's](docs/handleiding-collega.md): inloggen, rooster bekijken, printen, agenda.
 - [Google Agenda koppelen](docs/google-agenda.md): service-account, modus A/B, ICS-feed.
 - [Installatie op Proxmox](docs/proxmox-lxc.md): LXC aanmaken, Docker, HTTPS.

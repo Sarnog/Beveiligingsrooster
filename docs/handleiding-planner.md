@@ -1,6 +1,6 @@
-# Handleiding voor de planner (beheerder, versie 1.5.0)
+# Handleiding voor de planner (beheerder, versie 1.6.0)
 
-Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
+Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 
 ![Weekrooster met code-raster](schermafbeeldingen/week-planner-1280x800.png)
 
@@ -103,6 +103,7 @@ Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op 
 
 - De uren worden opnieuw berekend.
 - Begin- en eindtijd mogen niet gelijk zijn (dat zou een dienst van 0 minuten zijn); je krijgt dan een melding. Een nachtdienst typ je gewoon met een eindtijd vóór de begintijd (22:00–06:30).
+- Stonden er bij dienst 1 **zelf ingevulde uren** (bijvoorbeeld uit het oude Excel: dienst plus een training op de opmerkingregel, samen getypt als dagtotaal) en komt er een tweede dienst bij, dan vervallen die zelf ingevulde uren (sinds 1.6.0). Zo telt elke dienst zijn eigen uren en telt het tweede deel niet dubbel in het weektotaal. In het logboek staat de oude waarde. Dagen die nog uit een eerdere versie zo zijn blijven staan, vind je in *Beheer → Statistieken* onder *Mogelijk dubbel geteld*.
 - Een handmatige tijd herken je aan de tip *Handmatig aangepast* als je er met de muis op staat. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
 
 ### Vrije dienst en eigen uren
@@ -156,6 +157,20 @@ Het Excel-achtige raster met toetsenbord blijft op de computer precies hetzelfde
 
 Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of één medewerker wilt kopiëren. De doelweek wordt **gelijk gemaakt** aan deze week: daar bestaande diensten worden overschreven. Tweede diensten gaan mee. In het logboek staat elke gewijzigde dienst apart, met de oude en de nieuwe waarde.
 
+## 4a. Roosterpatronen (sinds 1.6.0)
+
+Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer vast in *Beheer → Roosterpatronen* en rol hem uit over meer weken en collega's.
+
+1. **Nieuw patroon**: geef een naam en het aantal weken (1 t/m 12, standaard 8). Vul per week en dag de code in zoals in het code-raster: `4`, twee diensten als `4/7`, leeg = vrij. Klik op *Aantal weken toepassen* als je het aantal weken wijzigt. Een onbekende code geeft een melding; er wordt dan niets opgeslagen.
+2. Of maak een **sjabloon uit het rooster**: kies een medewerker en de weken (hooguit 12), bijvoorbeeld W10 t/m W17. Je krijgt het patroon eerst te zien en slaat het zelf op. Diensten zonder code (een vrije dienstnaam) tellen als vrij.
+3. **Uitrollen…**: kies de medewerkers en per medewerker de **startpositie** in de cyclus (1 = week 1 van het patroon in de startweek, 2 = week 2, …). Zo draaien acht collega's elk een andere week van hetzelfde patroon. Kies de startweek en een eindweek of -datum, en:
+   - **Overschrijven**: elke dag wordt precies het patroon; een vrije dag in het patroon wist de dienst van die dag. **Alleen lege dagen aanvullen**: een dag die al een dienst heeft, wordt overgeslagen.
+   - **Feestdagen** invullen of overslaan (dan blijft de feestdag zoals hij is).
+   - Een gearchiveerde medewerker krijgt niets op of na de archiefdatum.
+   - De **opmerking** van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.
+4. **Voorbeeld bijwerken** toont per medewerker hoeveel diensten nieuw, vervangen, verwijderd, ongewijzigd en overgeslagen zijn. Er is dan nog niets gewijzigd.
+5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
+
 ## 5. Printen
 
 Klik op **Printen**. De week komt liggend op één A4 (ook met 15 medewerkers, en ook als je vanaf een telefoon print), zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
@@ -178,19 +193,35 @@ De print ziet eruit als het vertrouwde papieren rooster:
 ## 6. Kalender, overzichten en zoeken
 
 - **Kalender** is de jaarkalender. Klik op een weeknummer of dag om die week te openen. Met "Zoek datum" (`dd-mm` of `dd-mm-jjjj`) spring je naar een dag; die dag wordt geel gemarkeerd. Rechts staan het **overzicht** (contracturen, gewerkte uren, verschil) en de **roostervrije dagen**.
-- **Urenoverzicht**: alle weektotalen van het jaar per medewerker. De huidige week is groen. Klik op een getal om die week te openen. Exporteren als CSV of als Excel-bestand kan ook.
+- **Urenoverzicht**: alle weektotalen van het jaar per medewerker. De huidige week is groen. Klik op een getal om die week te openen. Exporteren als CSV kan ook; naar Excel exporteren doe je in *Beheer → Excel import/export*.
 - **Zoeken**: zoek op naam of initialen (minimaal 3 tekens) of op dienstcode, eventueel binnen een periode. Diensten met afwijkende tijden krijgen de markering *afwijkend*. Er worden hooguit 5000 diensten getoond (ook in de export); is het er meer, dan staat dat er duidelijk bij.
 
 ### Rooster exporteren naar Excel
 
-Met **Exporteren (Excel)** (op de weekpagina, de kalender en het urenoverzicht) download je het rooster als `.xlsx`, bijvoorbeeld `rooster-2026.xlsx`. Op de weekpagina is dat die week; op de kalender en het urenoverzicht het hele jaar. Via **Meer exportkeuzes…** (of **Excel…** op de weekpagina) kies je een jaar of een periode, en eventueel één medewerker. Een periode moet binnen één jaar vallen.
+Sinds 1.6.0 staat de Excel-export onderaan **Beheer → Excel import/export** (alleen voor de beheerder). Kies één van:
+
+| Keuze | Bestandsnaam |
+|---|---|
+| **Eén week** (jaar + week 1 t/m 52/53) | `rooster-2026-W10.xlsx` |
+| **Een vrije periode** (van – t/m, binnen één roosterjaar) | `rooster-20260302-20260315.xlsx` |
+| **Een heel jaar** | `rooster-2026.xlsx` |
+| **Het jaarrooster van één persoon** | `rooster-2026-ma.xlsx` (de initialen) |
+
+Bij een week, periode of jaar kun je ook één medewerker kiezen. Een periode moet binnen één roosterjaar (ISO-weken) vallen: het bestand heeft één blad per weeknummer en blijft zo weer in te lezen. Een ongeldige keuze geeft een melding op het scherm.
 
 Het bestand lijkt op het oude Excel-rooster:
 
 - per week een blad **W1…W53** zoals het weekrooster: per medewerker de opmerking, de opmerkingtijden, de dienstnaam (in de kleur van de code) en begin, eind en uren; rechts de contracturen en het weektotaal, en het code-raster. Een **tweede dienst** op een dag staat rechts, vanaf kolom AK (*2e dienst*);
-- een blad **Lijsten** (medewerkers, contracturen, dienstcodes, toeslagen), **Urenoverzicht**, **Vakanties** en **Kalender** (met het jaar).
+- een blad **Lijsten** (medewerkers, contracturen, dienstcodes en de instellingen voor de uren: toeslagen in N2–N4, opmerkingtijden N5, pauze N6 en N9:O13), **Feestdagen**, **Urenoverzicht**, **Vakanties** (met het aantal werkdagen) en **Kalender** (met het jaar).
 
-Je kunt het bestand later weer **importeren** (zie 8). Diensten, tijden, opmerkingen, uren, tweede diensten, dienstcodes en contracturen komen dan precies terug. Wat **niet** terugkomt: de kleuren van dienstcodes en kleurregels, e-mailadressen, archiefdatums, agendakoppelingen en de instellingen van feestdagen. Tekst die met `=`, `+`, `-` of `@` begint, staat in het bestand als gewone tekst (nooit als formule). Elke export komt in het logboek.
+**Het werkt in Excel zoals de app** (gewone `.xlsx`, geen macro's):
+
+- De **uren** zijn een formule: begin- en eindtijd, de pauze uit de staffel, × de toeslag van de dag (zaterdag, zondag, feestdag: de hoogste telt), afgerond op kwartieren precies zoals de app (ook bij precies een half kwartier). Wijzig je in Excel een tijd, dan rekent Excel de uren en het **weektotaal** opnieuw uit; het **urenoverzicht** verwijst naar de weektotalen.
+- Volgt een dienst de standaard van zijn code, dan zoeken **dienstnaam en tijden** de code uit het code-raster op in *Lijsten*. Typ je in Excel een andere code (ook `4/7`), dan veranderen naam, tijden en uren mee. Afwijkende tijden, een eigen dienstnaam of een aanvulling achter de naam zijn vaste waarden. Op een dag zonder tweede dienst rekent het 2e-dienstblok wel uren als je tijden typt, maar zoekt het geen naam of tijden op.
+- **Zelf ingevulde uren** blijven een vaste waarde: rood, met een opmerking in de cel.
+- Het verborgen blad *Rekenhulp* zorgt dat Excel bij een half kwartier of precies op een pauzegrens precies zo afrondt als de app (die volgt de kommagetallen van de oude Excel-macro). Wijzig je in Excel de pauzeregels, dan rekent Excel daarna exact, zonder die correctie. Wijzig instellingen dus liever in de app en exporteer opnieuw. De opmerkingtijden tellen in Excel alleen mee als dat bij de export al aan stond.
+
+Je kunt het bestand later weer **importeren** (zie 8), ook als je het in Excel hebt geopend en opgeslagen. Diensten, tijden, opmerkingen, uren, tweede diensten, dienstcodes en contracturen komen dan precies terug; uren uit een formule tellen niet als *zelf ingevuld*. Wat **niet** terugkomt: de kleuren van dienstcodes en kleurregels, e-mailadressen, archiefdatums, agendakoppelingen, de pauzestaffel en de instellingen van feestdagen. Tekst die met `=`, `+`, `-` of `@` begint, staat in het bestand als gewone tekst (nooit als formule). Elke export komt in het logboek.
 
 Het **jaartotaal** telt de ISO-weken W1 t/m W52/W53 van dat jaar, net als in Excel. Week 1 van 2026 begint dus op maandag 29-12-2025.
 
@@ -203,9 +234,23 @@ Het **jaartotaal** telt de ISO-weken W1 t/m W52/W53 van dat jaar, net als in Exc
 | Vakanties | naam, van en tot; het aantal werkdagen wordt berekend |
 | Feestdagen | per jaar automatisch; aan of uit zetten; eigen roostervrije dagen toevoegen (met een feestdagtoeslag krijg je daarna de tip *Alle uren herberekenen*) |
 | Gebruikers | accounts, rollen, koppeling met een medewerker, wachtwoord resetten |
-| Instellingen | teamnaam, toeslagen, blanco-code, logboek-bewaartermijn, alleen-lezen deellink (toont het rooster met dienstnamen, tijden en uren per dienst, maar geen contracturen, weektotalen, urenoverzicht of exports) |
+| Instellingen | teamnaam, toeslagen, pauze (aan/uit en een staffel), blanco-code, logboek-bewaartermijn, alleen-lezen deellink (toont het rooster met dienstnamen, tijden en uren per dienst, maar geen contracturen, weektotalen, urenoverzicht of exports) |
 | Logboek | elke wijziging met wie, wanneer, oud en nieuw; te filteren. Ook bij week kopiëren, standaardtijden toepassen, de Excel-import en het verwijderen van een medewerker staat elke gewijzigde dienst apart |
-| Uren herberekenen | na het wijzigen van toeslagfactoren of feestdagen |
+| Uren herberekenen | na het wijzigen van toeslagfactoren, de pauze of feestdagen |
+| Excel import/export | een rooster inlezen (zie 8) of exporteren (zie 6) |
+| Roosterpatronen | zie 4a |
+| Statistieken | zie hieronder |
+
+### Statistieken (sinds 1.6.0)
+
+*Beheer → Statistieken* is een alleen-lezen overzicht:
+
+- **Google Agenda**: collega's bij wie de synchronisatie mislukte (met de melding en het tijdstip van de laatste geslaagde sync), de wachtrij (wachtend, bezig, mislukt) en de oudste wachtende taak, met *Mislukte opnieuw proberen*.
+- **Back-ups**: de laatste geslaagde automatische back-up en de laatste met een label, het aantal en de totale grootte, en de laatste mislukte back-up. Is de laatste automatische back-up ouder dan 2 dagen, dan staat er een waarschuwing (draait de worker?).
+- **Rooster**: het aantal diensten dit jaar, per medewerker de uren t/m deze week tegenover de contracturen naar rato, diensten met zelf ingevulde uren of afwijkende tijden, en dagen met een tweede dienst naast zelf ingevulde uren bij dienst 1 (mogelijk dubbel geteld).
+- **Beveiliging**: mislukte inlogpogingen en blokkades van de laatste 24 uur, en de actieve API-tokens.
+
+Zijn er syncfouten, is de back-up te oud of telt een dag mogelijk dubbel, dan zie je dat ook kort bovenaan de Beheer-startpagina.
 
 ### Archiveren of verwijderen?
 
@@ -220,11 +265,17 @@ Een nieuwe standaardtijd geldt alleen voor **nieuwe invoer**. Wil je ook de toek
 
 Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag of zondag gewijzigd, gebruik dan **Uren herberekenen**. Let op: dat verandert ook historische totalen.
 
+### Pauze instellen
+
+In *Beheer → Instellingen*, blok **Pauze**: zet de pauzeaftrek aan of uit en vul één of meer regels in: *meer dan X uur gewerkt → Y uur pauze eraf* (hooguit 5, grenzen oplopend, pauze kleiner dan de grens). Voorbeeld: meer dan 5,5 uur → 0,5; meer dan 9 uur → 0,75. De **hoogste regel** die van toepassing is telt (de pauzes worden niet opgeteld); precies op de grens telt niet. De pauze geldt per dienst, ook bij twee diensten op één dag. Standaard staat er precies wat het oude Excel deed: meer dan 5,5 uur → 0,5. Na een wijziging zie je de tip *Alle uren herberekenen*; in het logboek staan de oude en de nieuwe regels.
+
+Let op een eigenaardigheid die de app bewust van de oude Excel-macro overneemt: die rekent met kommagetallen, en een dienst van **precies** de grens (bijvoorbeeld 13:00–18:30, precies 5,5 uur) komt daardoor bij sommige begintijden net boven de grens uit en krijgt dan wél pauze. Zo blijven de uren gelijk aan die uit het oude bestand.
+
 ## 8. Een Excel-bestand importeren
 
-Je kunt het oude `Rooster_2026.xlsm` inlezen, of een bestand dat je eerder met **Exporteren (Excel)** hebt gemaakt.
+Je kunt het oude `Rooster_2026.xlsm` inlezen, of een bestand dat je eerder uit de app hebt geëxporteerd.
 
-1. Ga naar *Beheer → Excel-import* en upload het bestand.
+1. Ga naar *Beheer → Excel import/export* en upload het bestand bij **Importeren**.
 2. Kies **Rooster voor jaar** (verplicht). Het voorstel komt uit het bestand (*Kalender*, cel E2) of uit de bestandsnaam (`rooster-2027.xlsx`). Zo kun je ook het rooster van **volgend jaar** importeren naast het huidige. Alleen dat jaar wordt gevuld; **andere jaren blijven gegarandeerd ongemoeid**. Klopt het gekozen jaar niet met het bestand, dan zie je een waarschuwing, en weekbladen met datums uit een ander jaar worden overgeslagen.
 3. Je ziet een **voorbeeld** (er is nog niets opgeslagen) en kiest **wat er overschreven wordt**:
    - **Alles in het gekozen jaar**: alle diensten van de medewerkers uit het bestand worden vervangen, maar alleen in de **weken die in het bestand staan**. Weken zonder blad blijven zoals ze zijn.
