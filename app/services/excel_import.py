@@ -44,7 +44,7 @@ from .kalender import (
     maandag_van_week,
 )
 from .medewerkers import uniek_voorstel, voorstel_initialen
-from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
+from .rooster import UrenContext, dienst_tekst, logveld, markeer_bijgewerkt, uren_voor
 from .tijden import is_cijfers
 from .urenberekening import bereken_uren, dagfactor
 from .validatie import MAX_NAAM, MAX_OMSCHRIJVING, initialen_fout, is_codenummer
@@ -598,16 +598,9 @@ class _Inhoud:
                    dienst.uren_handmatig)
 
     def samenvatting(self) -> str:
-        """Korte tekst voor het logboek, bijv. '4 · 07:15-15:45 · opmerking BHV'."""
-        delen = [" ".join(str(x) for x in (self.code, self.dienstnaam) if x)]
-        if self.begin or self.eind:
-            delen.append(f"{self.begin or ''}-{self.eind or ''}")
-        if self.uren_handmatig is not None:
-            delen.append(f"{self.uren_handmatig:g} uur")
-        if self.opmerking or self.opm_begin:
-            tijden = f"{self.opm_begin or ''}-{self.opm_eind or ''}"
-            delen.append(f"opmerking {self.opmerking} {tijden}".strip(" -"))
-        return " · ".join(d for d in delen if d)
+        """Korte tekst voor het logboek (zie rooster.dienst_tekst)."""
+        return dienst_tekst(self.code, self.dienstnaam, self.begin, self.eind, self.uren_handmatig,
+                            self.opmerking, self.opm_begin, self.opm_eind)
 
 
 @dataclass
@@ -937,7 +930,7 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
         dienst.uren_berekend = uren_voor(dienst, context)
         dienst.versie = (dienst.versie or 0) + 1
         logboek.log("Excel-import", f"Dienst {actie.soort}", datum=actie.datum, medewerker=actie.naam,
-                    veld="dienst 2" if actie.volgnummer == 2 else "dienst", oud=oud,
+                    veld=logveld(actie.volgnummer), oud=oud,
                     nieuw=actie.nieuw.samenvatting() if actie.nieuw else "")
         resultaat[tellers[actie.soort]] += 1
         opruimen.add((medewerker.id, actie.datum))

@@ -8,6 +8,7 @@ from ...extensions import db
 from ...models import Contracturen, Dienst, Gebruiker, Medewerker
 from ...services import klok, logboek, sync_planning
 from ...services.medewerkers import uniek_voorstel
+from ...services.rooster import dienst_samenvatting, logveld
 from ...services.tijden import is_cijfers, parse_datum
 from ...services.validatie import MAX_NAAM, initialen_fout, lengte_fout
 from ..hulp import beheerder_vereist, getal
@@ -233,6 +234,11 @@ def medewerker_verwijder(mid: int):
             sync_planning.plan_ontkoppel(medewerker, request.form.get("agenda") == "verwijderen")
         # Gekoppelde accounts losmaken
         Gebruiker.query.filter_by(medewerker_id=mid).update({"medewerker_id": None})
+        for dienst in Dienst.query.filter_by(medewerker_id=mid).order_by(Dienst.datum, Dienst.volgnummer):
+            if not dienst.is_leeg:  # elke verwijderde dienst apart in het logboek (oud -> leeg)
+                logboek.log("Rooster gewijzigd", "Verwijderd met de medewerker", datum=dienst.datum,
+                            medewerker=medewerker.naam, veld=logveld(dienst.volgnummer),
+                            oud=dienst_samenvatting(dienst))
         Dienst.query.filter_by(medewerker_id=mid).delete()
         logboek.log("Medewerker verwijderd", f"Inclusief {aantal} diensten",
                     medewerker=medewerker.naam, oud=medewerker.initialen)

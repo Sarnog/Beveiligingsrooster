@@ -25,7 +25,7 @@ from ..models import MAX_DIENSTEN_PER_DAG, Dagopmerking, Dienst, Dienstcode, Med
 from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
-from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
+from .rooster import UrenContext, dienst_samenvatting, logveld, markeer_bijgewerkt, uren_voor
 from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd, tijd_naar_minuten
 from .urenberekening import formatteer_uren
 from .validatie import MAX_GETAL
@@ -740,6 +740,7 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
                                               volgnummer=volgnummer).first()
                 if origineel is None and doel is None:
                     continue
+                oud = dienst_samenvatting(doel)
                 if doel is None:
                     doel = Dienst(medewerker_id=medewerker.id, datum=dag_doel, volgnummer=volgnummer,
                                   versie=0)
@@ -748,6 +749,11 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
                     setattr(doel, kolom, getattr(origineel, kolom) if origineel else leeg)
                 doel.uren_berekend = uren_voor(doel, context)
                 doel.versie = (doel.versie or 0) + 1
+                nieuw = dienst_samenvatting(doel)
+                if oud != nieuw:  # per gewijzigde dienst een regel, zoals bij typen in het rooster
+                    logboek.log("Rooster gewijzigd", f"Week gekopieerd uit W{van_maandag.isocalendar()[1]}",
+                                datum=dag_doel, medewerker=medewerker.naam,
+                                veld=logveld(volgnummer), oud=oud, nieuw=nieuw)
                 dag_gewijzigd = True
             if dag_gewijzigd:
                 ruim_dag_op(medewerker.id, dag_doel)

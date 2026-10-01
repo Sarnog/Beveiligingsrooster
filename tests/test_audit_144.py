@@ -1116,3 +1116,51 @@ def test_feestdagen_in_periode_volgt_uitgezette_dag(app, klaar):
     Feestdag.query.filter_by(jaar=2027, sleutel="bevrijdingsdag").one().actief = False
     db.session.commit()
     assert date(2027, 5, 5) not in feestdagen_in_periode(date(2027, 5, 1), date(2027, 5, 31))
+
+
+# ---------------------------------------------------------------------------
+# Opruimen · Logboek: per wijziging oud en nieuw (zoals de handleiding belooft)
+# ---------------------------------------------------------------------------
+
+def _regels(actie):
+    from app.models import Logboek
+
+    return Logboek.query.filter_by(actie=actie).order_by(Logboek.id).all()
+
+
+def test_logboek_week_kopieren_per_dienst(app, mw):
+    from app.services.weekrooster import Wijziging, kopieer_week, wijzig_cellen
+
+    volgende = MAANDAG + timedelta(weeks=1)
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"),
+                   Wijziging(mw.id, volgende + timedelta(days=1), "code", "5")])
+    kopieer_week(MAANDAG, volgende)
+    regels = [r for r in _regels("Rooster gewijzigd") if "kopieer" in r.details.lower()]
+    assert len(regels) == 2  # maandag erbij, dinsdag (5) weg
+    per_dag = {r.dag: r for r in regels}
+    assert "VW Vroeg" in per_dag["09-03-2026"].nieuwe_waarde and per_dag["09-03-2026"].oude_waarde == ""
+    assert "VW Dag" in per_dag["10-03-2026"].oude_waarde and per_dag["10-03-2026"].nieuwe_waarde == ""
+
+
+def test_logboek_standaardtijden_toepassen_per_dienst(app, als_beheerder, mw):
+    from app.models import Dienstcode
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    toekomst = date.today() + timedelta(days=3)
+    wijzig_cellen([Wijziging(mw.id, toekomst, "code", "4"), Wijziging(mw.id, toekomst, "eind", "18:00")])
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    als_beheerder.post(f"/beheer/dienstcodes/{code.id}/standaardtijden",
+                       data={"vanaf": date.today().isoformat(), "bevestig": "1"})
+    regels = [r for r in _regels("Rooster gewijzigd") if "standaardtijden" in r.details.lower()]
+    assert len(regels) == 1 and regels[0].oude_waarde.endswith("18:00") and \
+        regels[0].nieuwe_waarde.endswith("15:45")
+
+
+def test_logboek_medewerker_verwijderen_per_dienst(app, als_beheerder, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"), Wijziging(mw.id, MAANDAG + timedelta(days=1),
+                                                                        "code", "5")])
+    als_beheerder.post(f"/beheer/medewerkers/{mw.id}/verwijder", data={"bevestig": "2"})
+    regels = [r for r in _regels("Rooster gewijzigd") if "verwijderd" in r.details.lower()]
+    assert len(regels) == 2 and all(r.medewerker == "Medewerker A" and r.oude_waarde for r in regels)
