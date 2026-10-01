@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.4.2)
+# Handleiding voor de planner (beheerder, versie 1.4.3)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
 
