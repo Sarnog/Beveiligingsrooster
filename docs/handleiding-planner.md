@@ -163,10 +163,12 @@ De print ziet eruit als het vertrouwde papieren rooster:
 - per medewerker één blok met een dikke lijn ertussen: bovenin de opmerking, daaronder de dienstnaam als gekleurde balk en dan begin en eind; op een dag met twee diensten staat dienst 1 bovenin en dienst 2 eronder (net als op het scherm);
 - de uren per dag in de smalle grijze kolom naast elke dag;
 - rechts de contracturen en, grijs, het weektotaal;
-- zaterdag en zondag staan er altijd op, ook als ze leeg zijn;
-- past het, dan staat onderaan een lege regel *Reserve 1* om met de hand iemand bij te schrijven.
+- zaterdag en zondag staan er altijd op, ook als ze leeg zijn.
 
-Bij veel medewerkers worden eerst de regels lager en pas daarna de letters kleiner, zodat alles op één pagina blijft.
+**Hoeveel past er op één A4?** Tot en met **10 medewerkers** past de week altijd op één pagina, ook als iedereen elke dag twee diensten heeft. Bij meer medewerkers worden eerst de regels lager en daarna de letters iets kleiner, zodat het zo lang mogelijk op één pagina blijft (bijvoorbeeld 13 medewerkers met overal twee diensten, of 18 met één dienst). Past het dan nog niet, dan wordt het gewoon **meer pagina's** in normale lettergrootte:
+
+- elke pagina begint weer met *Weeknummer* en de datums van de week;
+- een medewerker staat altijd helemaal op één pagina (nooit dienst 1 op de ene en dienst 2 op de volgende pagina).
 
 ![Printversie van het weekrooster](schermafbeeldingen/week-print-a4.png)
 

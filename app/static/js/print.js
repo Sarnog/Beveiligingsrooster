@@ -10,14 +10,18 @@
    en eind) en een smalle grijze kolom met de uren. Op een dag met twee
    diensten staat dienst 1 bovenaan (met de opmerking achter de naam) en
    dienst 2 eronder, net als op het scherm. De rijhoogte vult de pagina; pas als dat niet past wordt
-   het lettertype kleiner. De reserveregel komt er alleen bij als die past.
+   het lettertype kleiner (tot MIN_RIJ_MM). Past het dan nog niet, dan wordt
+   het gewoon meerdere pagina's in normale grootte: elke pagina begint met de
+   kopregel (weeknummer en datums) en een medewerker wordt nooit over twee
+   pagina's verdeeld (zie style.css). Tot en met 10 medewerkers past de week
+   altijd op één A4, ook als iedereen elke dag twee diensten heeft (40 regels).
    Zonder JavaScript print de browser het gewone schermrooster.
    ========================================================== */
 (function () {
   "use strict";
 
   var BESCHIKBAAR_MM = 184;  // A4 liggend (210 mm) min marges en kopregel
-  var MIN_RIJ_MM = 3.4, MAX_RIJ_MM = 7.5, NORMAAL_RIJ_MM = 4.6, RESERVE_MIN_MM = 4.4;
+  var MIN_RIJ_MM = 3.4, MAX_RIJ_MM = 7.5, NORMAAL_RIJ_MM = 4.6;
 
   function el(tag, klasse, tekst) {
     var e = document.createElement(tag);
@@ -119,8 +123,8 @@
     // Maat: aantal regels (3 per medewerker, 4 met een dag met twee diensten)
     var regels = 0;
     gegevens.forEach(function (g) { regels += g.twee ? 4 : 3; });
-    var reserve = (regels + 3) * RESERVE_MIN_MM <= BESCHIKBAAR_MM;
-    var rij = Math.max(Math.min(MAX_RIJ_MM, BESCHIKBAAR_MM / Math.max(regels + (reserve ? 3 : 0), 1)), MIN_RIJ_MM);
+    var opEenPagina = regels * MIN_RIJ_MM <= BESCHIKBAAR_MM;
+    var rij = opEenPagina ? Math.min(MAX_RIJ_MM, BESCHIKBAAR_MM / Math.max(regels, 1)) : NORMAAL_RIJ_MM;
     var schaal = Math.min(1, rij / NORMAAL_RIJ_MM);
     var tabel = el("table", "print-tabel");
     tabel.style.setProperty("--p-rij", rij.toFixed(2) + "mm");
@@ -190,24 +194,6 @@
       body.appendChild(tijdRegel("p-d", g.dagen.map(function (p) { return [p.d1, p.d2, p.d3]; })));
       tabel.appendChild(body);
     });
-
-    // Eén lege reserveregel, om met de hand iemand bij te schrijven (alleen als die past)
-    if (reserve) {
-      var body = el("tbody", "p-blok p-reserve");
-      var a = dagRegel("p-a", datums.map(function () { return el("td", "p-opm"); }));
-      var naam = el("th", "p-naam", "Reserve 1");
-      naam.rowSpan = 3;
-      a.insertBefore(naam, a.firstChild);
-      a.appendChild(el("td", "p-contract"));
-      body.appendChild(a);
-      var c = dagRegel("p-c", datums.map(function () { return el("td", "p-dienst"); }));
-      var totaal = el("td", "p-totaal");
-      totaal.rowSpan = 2;
-      c.appendChild(totaal);
-      body.appendChild(c);
-      body.appendChild(tijdRegel("p-d", datums.map(function () { return null; })));
-      tabel.appendChild(body);
-    }
 
     doel.replaceChildren(tabel);
     document.documentElement.classList.add("print-klaar");

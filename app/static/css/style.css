@@ -368,10 +368,11 @@ td.positief { color: #1565c0; font-weight: 600; }
     font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif; line-height: 1.1;
     font-size: calc(9pt * var(--p-f, 1));
   }
-  .print-tabel .p-naamkol { width: 10.5%; }
-  .print-tabel .p-tijdkol { width: 4.4%; }
-  .print-tabel .p-grijskol { width: 3.2%; }
-  .print-tabel .p-urenkol { width: 5.5%; }
+  /* Breedtes: naam 9% + 7 dagen x (2 x 4,25% + 3,9% grijs) + uren 4,2% = 100% */
+  .print-tabel .p-naamkol { width: 9%; }
+  .print-tabel .p-tijdkol { width: 4.25%; }
+  .print-tabel .p-grijskol { width: 3.9%; }
+  .print-tabel .p-urenkol { width: 4.2%; }
   .print-tabel th, .print-tabel td {
     border: .4pt solid #9a9a9a; padding: 0 1mm; height: var(--p-rij, 5mm); overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; text-align: center; vertical-align: middle;
@@ -389,16 +390,18 @@ td.positief { color: #1565c0; font-weight: 600; }
   .print-tabel .p-dagopm:empty { display: none; }
   .print-tabel .p-grijs { background: #d6d6d6; border-left: .6pt solid #6b6b6b; border-right: .6pt solid #6b6b6b; }
   .print-tabel .p-urenkop { background: #d6d6d6; }
+  /* Meerdere pagina's: kopregel bovenaan elke pagina, een medewerker nooit over twee pagina's */
+  .print-tabel thead { display: table-header-group; }
   .print-tabel tbody.p-blok { border-top: 1.6pt solid #000; break-inside: avoid; page-break-inside: avoid; }
+  .print-tabel tbody.p-blok tr { break-inside: avoid; page-break-inside: avoid; }
   .print-tabel .p-naam { text-align: left; font-size: calc(10pt * var(--p-f, 1)); font-weight: 700; white-space: normal; padding-left: 1.5mm; }
   .print-tabel .p-naam small { display: block; font-size: calc(7pt * var(--p-f, 1)); font-weight: 400; color: #444; }
   .print-tabel .p-opm { font-size: calc(8pt * var(--p-f, 1)); font-style: italic; }
   .print-tabel .p-dienst { font-size: calc(8.5pt * var(--p-f, 1)); font-weight: 700; }
   .print-tabel .p-tijd { font-size: calc(9pt * var(--p-f, 1)); font-variant-numeric: tabular-nums; }
   .print-tabel .p-uren { font-size: calc(8.5pt * var(--p-f, 1)); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-  .print-tabel .p-contract { font-size: calc(9pt * var(--p-f, 1)); font-variant-numeric: tabular-nums; }
-  .print-tabel .p-totaal { background: #d6d6d6; font-size: calc(10pt * var(--p-f, 1)); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .print-tabel .p-reserve .p-naam { font-weight: 400; color: #333; }
+  .print-tabel .p-contract { font-size: calc(8.5pt * var(--p-f, 1)); font-variant-numeric: tabular-nums; padding: 0 .5mm; }
+  .print-tabel .p-totaal { background: #d6d6d6; font-size: calc(9pt * var(--p-f, 1)); font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 .5mm; }
 }
 
 /* ---------- Printen (algemeen) ---------- */

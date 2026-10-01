@@ -68,18 +68,20 @@ def test_twee_diensten_typen_opslaan_en_tonen(server, browser, sessies):
         sync_api.expect(naam1).to_have_text("BHV")
         sync_api.expect(naam2).to_have_text("VW Avond")
         # Onder elkaar: dienst 1 op de bovenste regel (a), dienst 2 op regel c; geen extra regels
-        assert naam1.get_attribute("data-plek") == "a" and naam2.get_attribute("data-plek") == "c"
+        sync_api.expect(naam1).to_have_attribute("data-plek", "a")
+        sync_api.expect(naam2).to_have_attribute("data-plek", "c")
         assert naam2.bounding_box()["y"] > naam1.bounding_box()["y"]
-        assert blok.locator("tr").count() == 4
-        assert pagina.locator(f'.rooster {dag}[data-veld="begin"][data-vn="2"]').inner_text() == "14:30"
-        assert pagina.locator(f'.rooster {dag}[data-toon="uren"]:not([data-vn="2"])').inner_text() == "4,00"
-        assert pagina.locator(f'.rooster {dag}[data-toon="uren"][data-vn="2"]').inner_text() == "8,00"
+        sync_api.expect(blok.locator("tr")).to_have_count(4)
+        cel_van = pagina.locator  # korter
+        sync_api.expect(cel_van(f'.rooster {dag}[data-veld="begin"][data-vn="2"]')).to_have_text("14:30")
+        sync_api.expect(cel_van(f'.rooster {dag}[data-toon="uren"]:not([data-vn="2"])')).to_have_text("4,00")
+        sync_api.expect(cel_van(f'.rooster {dag}[data-toon="uren"][data-vn="2"]')).to_have_text("8,00")
         # Weektotaal = alle uren van die week, van beide diensten
         alle_uren = pagina.locator(f'.rooster [data-mw="{mw}"][data-toon="uren"]').all_inner_texts()
         totaal = _uren(pagina.locator(f'[data-totaal="{mw}"]').inner_text())
         assert totaal == pytest.approx(sum(_uren(u) for u in alle_uren))
         code = pagina.locator(f'.code-paneel td.code[data-mw="{mw}"][data-datum="{datum}"]')
-        assert code.inner_text() == "17/3"
+        sync_api.expect(code).to_have_text("17/3")
 
     controleer()
     pagina.reload()

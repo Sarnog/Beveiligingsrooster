@@ -11,6 +11,14 @@
   op de onderste twee. De opmerking van die dag staat dan achter de dienstnaam van dienst 1
   (bijv. *VW Vroeg – Later op dienst*); wijzigen kan weer zodra het één dienst is. De indeling
   wisselt per dag, direct tijdens het typen. De printversie volgt dezelfde indeling.
+- **Print van het weekrooster:**
+  - geen lege regel *Reserve 1* meer onderaan;
+  - tot en met 10 medewerkers past de week altijd op één A4, ook als iedereen elke dag twee
+    diensten heeft;
+  - past het niet op één pagina, dan wordt het meerdere pagina's in normale lettergrootte (niet
+    piepklein); elke pagina begint met het weeknummer en de datums, en een medewerker staat
+    altijd helemaal op één pagina;
+  - de grijze urenkolom per dag is iets breder, zodat ook `16,00` (zondag) er helemaal in past.
 - **Weekrooster ruim sneller** (ongeveer een derde): de dagcellen van het rooster en de
   kaarten van de telefoonweergave worden in Python opgebouwd (`app/services/weekweergave.py`)
   in plaats van in de template. De HTML is precies gelijk gebleven. De prestatietest in CI
