@@ -28,8 +28,20 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Lint (ruff)
         run: ruff check .
-      - name: Tests (pytest)
-        run: pytest -q
+      - name: Databasemigraties op een lege datamap (upgrade + check)
+        env:
+          DATA_MAP: ${{ runner.temp }}/lege-datamap
+        run: |
+          flask --app wsgi:app db upgrade
+          flask --app wsgi:app db check
+      - name: Tests (pytest, met branch-coverage)
+        run: pytest -q --cov=app --cov-branch --cov-report=term-missing:skip-covered
+      - name: Lock-bestand hoort bij requirements.txt
+        run: |
+          # Elk pakket uit requirements.txt moet in requirements.lock staan
+          for pakket in $(grep -vE '^\s*(#|-r|$)' requirements.txt | sed -E 's/[<>=!~ ;#].*//' | tr 'A-Z_' 'a-z-'); do
+            grep -qiE "^${pakket}==" requirements.lock || { echo "::error::$pakket ontbreekt in requirements.lock (pip-compile opnieuw draaien)"; exit 1; }
+          done
 
   versie:
     # Is dit een nieuwe versie (nog geen tag)?
@@ -51,7 +63,7 @@ jobs:
             echo "nieuw=false" >> "$GITHUB_OUTPUT"
             # Bestaat de versie al, dan mag de app-code niet veranderd zijn: anders komt
             # die wijziging nooit in een image terecht. Dan moet VERSIE omhoog.
-            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt wsgi.py; then
+            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt requirements.lock wsgi.py; then
               echo "::error::De code is gewijzigd, maar versie $VERSIE bestaat al. Verhoog VERSIE in app/__init__.py (en CHANGELOG.md)."
               exit 1
             fi

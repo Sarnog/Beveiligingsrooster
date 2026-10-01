@@ -85,6 +85,11 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   Bestaande kleurregels blijven ongewijzigd.
 - Opgeruimd: ongebruikte code (o.a. dubbele dagnamen, oude hulpfuncties) en een ongebruikte
   cookie-instelling.
+- De Docker-image wordt gebouwd met vaste pakketversies (`requirements.lock`), zodat elke
+  build hetzelfde is. `requirements.txt` blijft de bron.
+- CI controleert nu ook de databasemigraties op een lege database (`flask db upgrade` en
+  `flask db check`) en meet de testdekking (branch-coverage); er zijn veel tests bijgekomen
+  (o.a. met CSRF-bescherming aan, de commando's, de worker en de Google-koppeling).
 - README aangevuld: inlogblokkade en reverse proxy, `COOKIE_SECURE`, `TZ`, `GUNICORN_*`,
   `DATABASE_URL`, bewaartermijn van back-ups en terug naar de vorige versie na een mislukte
   update.
