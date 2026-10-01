@@ -17,7 +17,8 @@
     <div class="kop-rij">
       <p><strong>Aantal diensten: {{ resultaten|length }}</strong></p>
       {% if afgekapt %}<p class="melding fout">Let op: alleen de eerste {{ maximum }} diensten worden getoond (ook in de export). Maak de zoekopdracht kleiner, bijvoorbeeld met een kortere periode.</p>{% endif %}
-      {% if resultaten %}<a class="knop" href="{{ url_for('zoeken.export_csv', **args) }}">Exporteren (CSV)</a>{% endif %}
+      {% if resultaten %}<a class="knop" href="{{ url_for('zoeken.export_csv', **args) }}">Exporteren (CSV)</a>
+      <a class="knop" href="{{ url_for('export.kiezen', van=args.van, tot=args.tot) }}" title="Het rooster (weekbladen) van deze periode">Rooster exporteren (Excel)…</a>{% endif %}
     </div>
     <div class="tabel-schuif">
     <table class="tabel">

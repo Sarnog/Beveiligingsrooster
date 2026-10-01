@@ -13,6 +13,13 @@ Opbouw van het oude bestand:
              code-raster: AB = initialen, AC..AI = codes ma..zo op rij 6 + 2n
 - De waarde 15 (soms als datum 1900-01-15) betekent 'leeg'.
 
+Uitbreidingen voor de eigen Excel-export (app/services/excel_export.py), zodat die weer
+ingelezen kan worden; een oud bestand heeft ze niet en wordt gelezen zoals altijd:
+- een code-cel met twee codes ('4/7', '/3' of '4/'): dienst 1 en dienst 2;
+- tweede dienst per dag in AK..BE (per dag drie kolommen vanaf AK, AN, AQ, ...):
+  +2 dienstnaam, +3 begin/eind/uren, net als dienst 1 in D..V;
+- het code-raster ook na de 11e medewerker, als AB de initialen van die medewerker heeft.
+
 Werkwijze: eerst een droogloop (lees_bestand) met een voorbeeld van wat er gaat
 gebeuren, daarna pas definitief importeren (importeer).
 Wachtwoorden en rechten uit de bladen 'Beveiliging' en 'Rechten' worden bewust NIET gelezen.
@@ -54,6 +61,8 @@ from .weekrooster import LEGE_DIENST, automatische_dagopmerkingen, dagopmerkinge
 EXCEL_BLANCO = 15
 DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
 CODE_KOLOMMEN = list(range(29, 36))  # AC..AI
+TWEEDE_KOLOMMEN = [37 + 3 * i for i in range(7)]  # AK, AN, AQ, AT, AW, AZ, BC: tweede dienst
+OUD_CODERASTER = 11  # het oude bestand had een code-raster voor 11 medewerkers
 MAX_BLOKKEN = 30
 UPLOAD_BEWAREN_SECONDEN = 24 * 3600
 # Grenzen tegen 'zip-' en 'XML-bommen' (een klein bestand dat uitgepakt enorm wordt).
@@ -502,6 +511,23 @@ def _blad_heeft_diensten(blad) -> bool:
                for n in range(MAX_BLOKKEN // 3) for k in CODE_KOLOMMEN)
 
 
+def _code(tekst: str) -> int | None:
+    getal = _getal(tekst) if tekst.strip() else None
+    if getal is None or getal != int(getal) or not is_codenummer(int(getal)):
+        return None  # geen geldig codenummer: de dienstnaam telt
+    return None if int(getal) == EXCEL_BLANCO else int(getal)
+
+
+def _lees_codes(waarde) -> tuple[int | None, int | None]:
+    """Code-cel -> (code dienst 1, code dienst 2). '4' -> (4, None); '4/7' -> (4, 7); '/3' -> (None, 3)."""
+    if _is_leeg(waarde):
+        return None, None
+    if isinstance(waarde, str) and "/" in waarde:
+        eerste, _, tweede = waarde.partition("/")
+        return _code(eerste), _code(tweede)
+    return _code(str(waarde)), None
+
+
 def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
     cel = blad.cell(2, DAG_KOLOMMEN[0]).value
     maandag = (None if _is_leeg(cel) else _datum(cel)) or maandag_van_week(plan.jaar, week)
@@ -519,6 +545,7 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
             plan.dagopmerkingen[dagen[i]] = tekst
 
     namen = {m.naam for m in plan.medewerkers}
+    initialen = {m.naam: m.initialen for m in plan.medewerkers}
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
         naam = _tekst(blad.cell(basis, 2).value)[:MAX_NAAM]
@@ -533,14 +560,14 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
             continue
         excel_totaal = _getal(blad.cell(basis + 2, 26).value)  # kolom Z
         heeft_dienst = False
+        # Code-raster: in het oude bestand voor 11 medewerkers; daarna alleen als AB klopt
+        met_raster = n < OUD_CODERASTER or (
+            initialen.get(naam) and _tekst(blad.cell(6 + 2 * n, 28).value).upper() == initialen[naam])
         for i, kolom in enumerate(DAG_KOLOMMEN):
-            code_waarde = blad.cell(6 + 2 * n, CODE_KOLOMMEN[i]).value if n < 11 else None
-            code = None if _is_leeg(code_waarde) else _getal(code_waarde)
-            if code is not None and (code != int(code) or not is_codenummer(int(code))):
-                code = None  # geen geldig codenummer: de dienstnaam telt
+            code1, code2 = _lees_codes(blad.cell(6 + 2 * n, CODE_KOLOMMEN[i]).value if met_raster else None)
             dienst = ImportDienst(
                 naam=naam, datum=dagen[i],
-                code=int(code) if code is not None else None,
+                code=code1,
                 dienstnaam=_tekst(blad.cell(basis + 2, kolom).value),
                 begin=_tijd(blad.cell(basis + 3, kolom).value),
                 eind=_tijd(blad.cell(basis + 3, kolom + 1).value),
@@ -549,11 +576,23 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
                 opm_eind=_tijd(blad.cell(basis + 1, kolom + 1).value),
                 excel_uren=_getal(blad.cell(basis + 3, kolom + 2).value),
             )
-            if (dienst.code is None and not dienst.dienstnaam and not dienst.begin
-                    and not dienst.eind and not dienst.opmerking and not dienst.opm_begin):
-                continue
-            plan.diensten.append(dienst)
-            heeft_dienst = True
+            if (dienst.code is not None or dienst.dienstnaam or dienst.begin or dienst.eind
+                    or dienst.opmerking or dienst.opm_begin or dienst.opm_eind):
+                plan.diensten.append(dienst)
+                heeft_dienst = True
+            # Tweede dienst (alleen in een export uit de app; zie de docstring bovenaan)
+            k2 = TWEEDE_KOLOMMEN[i]
+            tweede = ImportDienst(
+                naam=naam, datum=dagen[i], code=code2, volgnummer=2,
+                dienstnaam=_tekst(blad.cell(basis + 2, k2).value),
+                begin=_tijd(blad.cell(basis + 3, k2).value),
+                eind=_tijd(blad.cell(basis + 3, k2 + 1).value),
+                opmerking="", opm_begin=None, opm_eind=None,
+                excel_uren=_getal(blad.cell(basis + 3, k2 + 2).value),
+            )
+            if tweede.code is not None or tweede.dienstnaam or tweede.begin or tweede.eind:
+                plan.diensten.append(tweede)
+                heeft_dienst = True
         if heeft_dienst and excel_totaal is not None:
             plan.excel_weektotalen[(naam, week)] = excel_totaal
 

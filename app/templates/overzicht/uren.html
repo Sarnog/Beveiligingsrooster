@@ -8,6 +8,7 @@
     <a class="knop" href="{{ url_for('overzicht.uren', jaar=jaar - 1) }}">◀ {{ jaar - 1 }}</a>
     <a class="knop" href="{{ url_for('overzicht.uren', jaar=jaar + 1) }}">{{ jaar + 1 }} ▶</a>
     <a class="knop" href="{{ url_for('overzicht.uren_csv', jaar=jaar) }}">Exporteren (CSV)</a>
+    <a class="knop" href="{{ url_for('export.rooster_xlsx', jaar=jaar) }}" data-export-excel>Exporteren (Excel)</a>
     <button class="knop" type="button" data-print>Printen</button>
   </span>
 </div>
