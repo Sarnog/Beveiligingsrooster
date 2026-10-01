@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 MAX_POGINGEN = 5  # mislukte pogingen ...
 BLOKKADE_MINUTEN = 15  # ... per zoveel minuten, per gebruiker + IP
 MAX_POGINGEN_PER_IP = MAX_POGINGEN * 4  # extra rem tegen veel namen proberen vanaf één IP
+# Harde grens per IP: daarboven wordt alles geweigerd, zonder wachtwoordcontrole (argon2)
+# en zonder nieuwe databaserijen. Tot die grens krijgt elke naam nog één kans.
+HARDE_GRENS_PER_IP = MAX_POGINGEN_PER_IP * 2
 MAX_NAAM = 64  # langer kan een gebruikersnaam niet zijn (zie beheer/gebruikers.py)
 _proxy_gewaarschuwd = False
 
@@ -54,7 +57,7 @@ def _mislukte_pogingen(gebruikersnaam: str, ip: str) -> tuple[int, int]:
     return per_gebruiker, per_ip
 
 
-def _is_geblokkeerd(gebruikersnaam: str, ip: str) -> bool:
+def _is_geblokkeerd(per_gebruiker: int, per_ip: int) -> bool:
     """True als deze gebruiker vanaf dit IP niet meer mag proberen.
 
     - Per gebruiker + IP: na MAX_POGINGEN fouten altijd geblokkeerd.
@@ -62,9 +65,9 @@ def _is_geblokkeerd(gebruikersnaam: str, ip: str) -> bool:
       Een collega die meteen het juiste wachtwoord geeft, komt er zo nog in, ook als
       iedereen via hetzelfde proxy-adres binnenkomt. Een aanvaller krijgt per naam
       hooguit één extra poging.
+    - Boven HARDE_GRENS_PER_IP: niemand meer vanaf dit IP (zie login).
     """
-    per_gebruiker, per_ip = _mislukte_pogingen(gebruikersnaam, ip)
-    if per_gebruiker >= MAX_POGINGEN:
+    if per_gebruiker >= MAX_POGINGEN or per_ip >= HARDE_GRENS_PER_IP:
         return True
     return per_ip >= MAX_POGINGEN_PER_IP and per_gebruiker > 0
 
@@ -73,12 +76,12 @@ def _ip_geblokkeerd(ip: str) -> bool:
     return _mislukte_pogingen("", ip)[1] >= MAX_POGINGEN_PER_IP
 
 
-def _blokkade_al_gelogd(gebruikersnaam: str, ip: str) -> bool:
+def _blokkade_al_gelogd(gebruikersnaam: str, details: str) -> bool:
     """Staat de blokkade van deze gebruiker + IP al in het logboek (binnen het venster)?"""
     grens = klok.nu() - timedelta(minutes=BLOKKADE_MINUTEN)
     return Logboek.query.filter(
         Logboek.actie == "Login geblokkeerd", Logboek.gebruiker == gebruikersnaam,
-        Logboek.details == f"IP {ip}", Logboek.tijdstempel >= grens,
+        Logboek.details == details, Logboek.tijdstempel >= grens,
     ).first() is not None
 
 
@@ -104,7 +107,12 @@ def login():
         wachtwoord = request.form.get("wachtwoord", "")
         ip = _client_ip()
 
-        if _is_geblokkeerd(gebruikersnaam, ip):
+        per_gebruiker, per_ip = _mislukte_pogingen(gebruikersnaam, ip)
+        if per_ip >= HARDE_GRENS_PER_IP:
+            # Inlogvloed: geen argon2 en geen rijen per nieuwe naam (één logregel per IP)
+            log.debug("Login geweigerd (harde grens per IP): %r vanaf %s", gebruikersnaam, ip)
+            return _geblokkeerd("", ip, f"IP {ip}: te veel mislukte pogingen, alles geweigerd")
+        if _is_geblokkeerd(per_gebruiker, per_ip):
             log.debug("Login geblokkeerd: %r vanaf %s", gebruikersnaam, ip)
             return _geblokkeerd(gebruikersnaam, ip)
 
@@ -122,6 +130,11 @@ def login():
             reden = "onbekende gebruiker" if gebruiker is None else (
                 "account niet actief" if not gebruiker.actief else "verkeerd wachtwoord")
             log.debug("Login mislukt: %r vanaf %s (%s)", gebruikersnaam, ip, reden)
+            if per_ip >= MAX_POGINGEN_PER_IP:
+                # Tijdens een IP-blokkade alleen de poging tellen; het logboek krijgt
+                # één regel per blokkade (zie _geblokkeerd), niet één per poging
+                db.session.commit()
+                return _geblokkeerd("", ip, f"IP {ip}: te veel mislukte pogingen met verschillende namen")
             logboek.log("Login mislukt", f"IP {ip}", gebruiker=gebruikersnaam, rol="")
             db.session.commit()
             if _ip_geblokkeerd(ip):
@@ -144,10 +157,14 @@ def login():
     return render_template("auth/login.html")
 
 
-def _geblokkeerd(gebruikersnaam: str, ip: str):
-    """Antwoord bij een blokkade. Eén logboekregel per blokkade, niet bij elke poging."""
-    if not _blokkade_al_gelogd(gebruikersnaam, ip):
-        logboek.log("Login geblokkeerd", f"IP {ip}", gebruiker=gebruikersnaam, rol="")
+def _geblokkeerd(gebruikersnaam: str, ip: str, details: str = ""):
+    """Antwoord bij een blokkade. Eén logboekregel per blokkade, niet bij elke poging.
+
+    Een blokkade van het hele IP-adres (gebruikersnaam leeg) krijgt één regel per IP.
+    """
+    details = details or f"IP {ip}"
+    if not _blokkade_al_gelogd(gebruikersnaam, details):
+        logboek.log("Login geblokkeerd", details, gebruiker=gebruikersnaam, rol="")
         db.session.commit()
     flash(f"Te veel mislukte pogingen. Probeer het over {BLOKKADE_MINUTEN} minuten opnieuw.", "fout")
     return render_template("auth/login.html"), 429

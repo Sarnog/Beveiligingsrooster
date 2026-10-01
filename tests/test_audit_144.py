@@ -380,3 +380,57 @@ def test_m4_terugzetten_via_cli_plant_agenda_sync(gemigreerd):
     db.session.remove()
     assert [t.soort for t in SyncTaak.query.all()] == ["volledig"]
     assert "Google Agenda" in resultaat.output
+
+
+# ---------------------------------------------------------------------------
+# M5 · Inlogvloed: per nieuwe naam elke poging argon2 en databaserijen
+# ---------------------------------------------------------------------------
+
+def _mislukte_pogingen_vanaf_ip(aantal, ip="127.0.0.1"):
+    from app.models import LoginPoging
+    from app.services import klok
+
+    db.session.add_all([LoginPoging(gebruikersnaam=f"onbekend{i}", ip=ip, gelukt=False,
+                                    tijdstip=klok.utc_nu()) for i in range(aantal)])
+    db.session.commit()
+
+
+def _tel_rijen():
+    from app.models import Logboek, LoginPoging
+
+    return LoginPoging.query.count(), Logboek.query.count()
+
+
+def test_m5_harde_grens_per_ip_zonder_hash_en_zonder_rijen(app, client, klaar, monkeypatch):
+    from app.blueprints import auth
+
+    hashes = []
+    monkeypatch.setattr(auth, "controleer_dummy", lambda w: hashes.append(w) or False)
+    monkeypatch.setattr(auth, "controleer_wachtwoord", lambda h, w: hashes.append(w) or False)
+    _mislukte_pogingen_vanaf_ip(auth.HARDE_GRENS_PER_IP)
+    client.post("/login", data={"gebruikersnaam": "nieuw1", "wachtwoord": "x"})  # eerste: één logregel
+    voor = _tel_rijen()
+    for i in range(5):
+        antwoord = client.post("/login", data={"gebruikersnaam": f"nieuwer{i}", "wachtwoord": "x"})
+        assert antwoord.status_code == 429
+    assert hashes == []  # geen argon2 meer
+    assert _tel_rijen() == voor  # geen nieuwe pogingen of logboekregels
+
+
+def test_m5_tijdens_blokkade_geen_login_mislukt_regels(app, client, klaar):
+    from app.blueprints import auth
+    from app.models import Logboek
+
+    _mislukte_pogingen_vanaf_ip(auth.MAX_POGINGEN_PER_IP)
+    for i in range(3):
+        client.post("/login", data={"gebruikersnaam": f"naam{i}", "wachtwoord": "fout"})
+    assert Logboek.query.filter_by(actie="Login mislukt").count() == 0
+
+
+def test_m5_een_kans_per_naam_blijft_tot_de_harde_grens(app, client, klaar):
+    from app.blueprints import auth
+
+    from .conftest import login
+
+    _mislukte_pogingen_vanaf_ip(auth.HARDE_GRENS_PER_IP - 1)
+    assert login(client, "collega").status_code == 302

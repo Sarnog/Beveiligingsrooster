@@ -368,16 +368,9 @@ def begint_met_dienstnaam(tekst: str, omschrijving: str) -> bool:
     return rest == "" or not rest[0].isalnum()
 
 
-def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str, behoud_vrij: bool = False) -> tuple[str, str]:
-    """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst.
-
-    behoud_vrij: een lege tweede code uit '5/' laat een dienst 2 zónder code (vrije
-    dienstnaam) staan; het raster toont die immers als '4/' (zie matrix_code).
-    """
+def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
+    """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst."""
     if veld == "code" and dienst.volgnummer == 2 and _lees_code(waarde) is None:
-        if behoud_vrij and dienst.dienstcode is None:
-            oud = dienst.dienstnaam
-            return oud, oud
         # Dienst 2 wissen: alles weg (ook een vrije dienstnaam en eigen tijden of uren)
         oud = code_tekst(dienst) or dienst.dienstnaam
         for kolom, leeg in LEGE_DIENST.items():
@@ -556,6 +549,8 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
             continue
         gecontroleerd.add(sleutel)
 
+        if w.behoud_vrij and dienst is not None and dienst.dienstcode_id is None:
+            continue  # '5/': een tweede dienst met vrije dienstnaam (raster '4/') blijft staan
         nieuw_record = dienst is None
         if nieuw_record:
             if w.veld == "code" and w.volgnummer == 2 and not w.waarde.strip():
@@ -566,7 +561,7 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
                             tijden_handmatig=False)
         try:
             with db.session.no_autoflush:
-                oud, nieuw = _pas_veld_toe(dienst, w.veld, w.waarde, w.behoud_vrij)
+                oud, nieuw = _pas_veld_toe(dienst, w.veld, w.waarde)
         except CelFout as fout:
             fouten.append(_fout(w, str(fout)))
             continue
