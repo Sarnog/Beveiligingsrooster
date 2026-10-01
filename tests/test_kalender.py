@@ -96,3 +96,57 @@ def test_initialen_zoals_excel():
     assert voorstel_initialen("M. Voorbeeld") == "MVO"
     assert voorstel_initialen("Medewerker") == "M"
     assert voorstel_initialen("") == ""
+
+
+# ---------- Testgaten uit de mutatietest (audit 1.4.4) ----------
+
+def test_werkdagen_telt_de_laatste_dag_mee():
+    vrijdag = date(2026, 3, 6)
+    assert werkdagen(vrijdag, vrijdag) == 1  # één werkdag: van = tot
+    assert werkdagen(date(2026, 3, 2), vrijdag) == 5  # ma t/m vr, inclusief vrijdag
+
+
+def test_werkdagen_negatief_als_tot_voor_van():
+    assert werkdagen(date(2026, 3, 6), date(2026, 3, 2)) == -5
+    assert werkdagen(date(2026, 3, 8), date(2026, 3, 7)) == 0  # zo -> za: geen werkdagen
+
+
+def test_alle_feestdagen_2026_namen_en_datums():
+    assert nederlandse_feestdagen(2026) == [
+        ("nieuwjaarsdag", "Nieuwjaarsdag", date(2026, 1, 1)),
+        ("goede_vrijdag", "Goede Vrijdag", date(2026, 4, 3)),
+        ("eerste_paasdag", "1e Paasdag", date(2026, 4, 5)),
+        ("tweede_paasdag", "2e Paasdag", date(2026, 4, 6)),
+        ("koningsdag", "Koningsdag", date(2026, 4, 27)),
+        ("bevrijdingsdag", "Bevrijdingsdag", date(2026, 5, 5)),
+        ("hemelvaartsdag", "Hemelvaartsdag", date(2026, 5, 14)),
+        ("eerste_pinksterdag", "1e Pinksterdag", date(2026, 5, 24)),
+        ("tweede_pinksterdag", "2e Pinksterdag", date(2026, 5, 25)),
+        ("eerste_kerstdag", "1e Kerstdag", date(2026, 12, 25)),
+        ("tweede_kerstdag", "2e Kerstdag", date(2026, 12, 26)),
+    ]
+
+
+@pytest.mark.parametrize("jaar", [2025, 2027, 2031])
+def test_nieuwjaar_en_kerst_vaste_datums(jaar):
+    dagen = {sleutel: datum for sleutel, _naam, datum in nederlandse_feestdagen(jaar)}
+    assert dagen["nieuwjaarsdag"] == date(jaar, 1, 1)
+    assert dagen["bevrijdingsdag"] == date(jaar, 5, 5)
+    assert (dagen["eerste_kerstdag"], dagen["tweede_kerstdag"]) == (date(jaar, 12, 25), date(jaar, 12, 26))
+
+
+@pytest.mark.parametrize("jaar, eerste, laatste", [
+    (2026, date(2025, 12, 29), date(2027, 1, 3)),  # 53 weken
+    (2027, date(2027, 1, 4), date(2028, 1, 2)),
+    (2021, date(2021, 1, 4), date(2022, 1, 2)),
+])
+def test_eerste_en_laatste_dag_isojaar(jaar, eerste, laatste):
+    from app.services.kalender import eerste_en_laatste_dag_isojaar
+
+    assert eerste_en_laatste_dag_isojaar(jaar) == (eerste, laatste)
+
+
+def test_datum_met_jaartal_van_twee_cijfers():
+    assert parse_datum("05-04-26") == date(2026, 4, 5)
+    assert parse_datum("5/4/26") == date(2026, 4, 5)
+    assert parse_datum("31-12-99") == date(1999, 12, 31)

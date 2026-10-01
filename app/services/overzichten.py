@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy.orm import selectinload
+
 from ..extensions import db
 from ..models import Dienst, Dienstcode, Feestdag, Medewerker
 from . import klok
@@ -31,7 +33,9 @@ def medewerkers_in_jaar(jaar: int) -> list[Medewerker]:
         mid for (mid,) in db.session.query(Dienst.medewerker_id)
         .filter(Dienst.datum >= eerste, Dienst.datum <= laatste).distinct()
     }
-    alle = Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()
+    # Contracturen in één keer meeladen (anders één query per medewerker)
+    alle = (Medewerker.query.options(selectinload(Medewerker.contracturen))
+            .order_by(Medewerker.volgorde, Medewerker.naam).all())
     return [m for m in alle if m.is_zichtbaar_op(eerste) or m.id in met_diensten]
 
 
