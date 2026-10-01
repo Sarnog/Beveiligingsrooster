@@ -113,8 +113,42 @@ def test_beheerscherm(debug_app):
 
 def test_beheerscherm_zonder_debug_log_legt_uit(app, als_beheerder):
     pagina = als_beheerder.get("/beheer/debuglog").data.decode()
-    assert "DEBUG_LOG=1" in pagina
+    assert "Het debuglog-bestand staat uit" in pagina and "Volgens .env (INFO)" in pagina
     assert als_beheerder.get("/beheer/debuglog/download").status_code == 404
+
+
+def test_logniveau_en_debuglog_via_beheer(app, als_beheerder):
+    """Zonder .env aan te passen: DEBUG en het logbestand aan, en weer terug naar .env."""
+    from app.models import Logboek
+
+    try:
+        antwoord = als_beheerder.post("/beheer/debuglog/instellen",
+                                      data={"log_niveau": "DEBUG", "debug_log": "1"}, follow_redirects=True)
+        assert "Loginstelling opgeslagen" in antwoord.data.decode()
+        console = [h for h in logging.getLogger().handlers if getattr(h, "_rooster", "") == "console"]
+        assert console[0].level == logging.DEBUG
+        assert (debuglog.stand(app)["niveau"], debuglog.stand(app)["aan"]) == ("DEBUG", True)
+        logging.getLogger("test").debug("via beheer aangezet")
+        assert "via beheer aangezet" in _inhoud(app)
+        pagina = als_beheerder.get("/beheer/debuglog").data.decode()
+        assert "Download debug.log" in pagina and "via beheer aangezet" in pagina
+        regel = Logboek.query.filter_by(actie="Loginstelling gewijzigd").first()
+        assert regel.nieuwe_waarde == "DEBUG, debuglog aan"
+
+        # Een ander proces (bijv. de worker) pikt het op bij ververs()
+        debuglog.stel_in(app)
+        debuglog.ververs(app, direct=True)
+        assert debuglog.stand(app)["niveau"] == "DEBUG" and debuglog.stand(app)["aan"]
+
+        # Terug naar .env: INFO en geen logbestand meer
+        als_beheerder.post("/beheer/debuglog/instellen", data={"log_niveau": "", "debug_log": ""})
+        assert console[0].level == logging.INFO
+        assert not [h for h in logging.getLogger().handlers if getattr(h, "_rooster", "") == "bestand"]
+        assert als_beheerder.post("/beheer/debuglog/instellen",
+                                  data={"log_niveau": "PRAATGRAAG"}).status_code == 302
+        assert debuglog.effectief(app) == ("INFO", False)  # ongeldige keuze niet opgeslagen
+    finally:
+        debuglog.verwijder_handlers()
 
 
 def test_gunicorn_volgt_log_niveau(monkeypatch):

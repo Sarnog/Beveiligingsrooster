@@ -23,6 +23,11 @@
           {{ csrf() }}<input type="hidden" name="naam" value="{{ b.naam }}"><input type="hidden" name="bevestig" value="1">
           <button class="knop klein gevaar" type="submit">Terugzetten</button>
         </form>
+        <form method="post" action="{{ url_for('beheer.backup_verwijderen') }}" class="inline"
+              data-bevestig="Back-up {{ b.naam }} verwijderen? Dit kan niet ongedaan gemaakt worden.">
+          {{ csrf() }}<input type="hidden" name="naam" value="{{ b.naam }}">
+          <button class="knop klein gevaar" type="submit">Verwijderen</button>
+        </form>
       </td></tr>
   {% else %}<tr><td colspan="4">Nog geen back-ups.</td></tr>
   {% endfor %}

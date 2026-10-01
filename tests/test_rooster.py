@@ -92,6 +92,29 @@ def test_dienst_zonder_tijden_geeft_geen_uren(als_beheerder, rooster):
     assert d.dienstnaam == "Bapo" and d.uren_berekend is None
 
 
+def test_aanvulling_achter_dienstnaam_houdt_code_en_kleur(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")  # VW Vroeg, rood
+    antwoord = cel(als_beheerder, a, MAANDAG, "dienstnaam", "vw vroeg – tot 12:00")
+    gegevens = antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]
+    assert gegevens["dienstnaam"] == "vw vroeg – tot 12:00"
+    assert "background:#FF0000" in gegevens["dienst_stijl"]
+    d = dienst(a, MAANDAG)
+    assert (d.dienstcode.nummer, d.begin, d.eind, d.tijden_handmatig) == (4, "07:15", "15:45", False)
+    # Terug naar alleen de dienstnaam: aanvulling weg, code blijft
+    cel(als_beheerder, a, MAANDAG, "dienstnaam", "VW Vroeg")
+    d = dienst(a, MAANDAG)
+    assert (d.dienstnaam, d.dienstnaam_override, d.dienstcode.nummer) == ("VW Vroeg", "", 4)
+    # Andere tekst (of de naam niet vooraan): vrije dienstnaam zonder code, zoals altijd
+    cel(als_beheerder, a, MAANDAG, "dienstnaam", "VW Vroegje")
+    assert dienst(a, MAANDAG).dienstcode is None
+    # Nieuwe code: de aanvulling vervalt
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    cel(als_beheerder, a, MAANDAG, "dienstnaam", "VW Vroeg (cursus)")
+    cel(als_beheerder, a, MAANDAG, "code", "5")
+    assert dienst(a, MAANDAG).dienstnaam_override == ""
+
+
 def test_optimistic_locking(als_beheerder, rooster):
     a = rooster["a"]
     cel(als_beheerder, a, MAANDAG, "code", "4", versie=0)

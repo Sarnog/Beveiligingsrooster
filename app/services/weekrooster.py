@@ -355,6 +355,19 @@ def _tijd(waarde: str) -> str | None:
         raise CelFout(f"{fout}. Gebruik bijvoorbeeld 715, 7:15 of 07.15.") from fout
 
 
+def begint_met_dienstnaam(tekst: str, omschrijving: str) -> bool:
+    """True als de tekst de dienstnaam is, eventueel met een aanvulling erachter.
+
+    Hoofdletterongevoelig; na de dienstnaam moet een spatie of leesteken komen
+    ('VW Vroeg – kort', 'VW Vroeg (cursus)'), dus 'VW Vroegje' telt niet.
+    """
+    tekst, naam = tekst.casefold(), (omschrijving or "").strip().casefold()
+    if not naam or not tekst.startswith(naam):
+        return False
+    rest = tekst[len(naam):]
+    return rest == "" or not rest[0].isalnum()
+
+
 def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
     """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst."""
     if veld == "code" and dienst.volgnummer == 2 and _lees_code(waarde) is None:
@@ -405,8 +418,11 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
         # Vrije dienstnaam (zonder code), bijvoorbeeld een cursus of 'Controleronde'
         oud = dienst.dienstnaam
         tekst = (waarde or "").strip()[:60]
-        if dienst.dienstcode is not None and tekst == dienst.dienstcode.omschrijving:
-            return oud, oud  # niets veranderd
+        if dienst.dienstcode is not None and begint_met_dienstnaam(tekst, dienst.dienstcode.omschrijving):
+            # Dienstnaam met een aanvulling erachter ('VW Vroeg tot 12:00'): de code (en dus de
+            # kleur en tijden) blijft, alleen de getoonde tekst krijgt de aanvulling
+            dienst.dienstnaam_override = "" if tekst == dienst.dienstcode.omschrijving else tekst
+            return oud, dienst.dienstnaam
         dienst.dienstcode = None
         dienst.dienstcode_id = None
         dienst.dienstnaam_override = tekst

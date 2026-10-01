@@ -1,4 +1,4 @@
-# Handleiding voor collega's (versie 1.4.3)
+# Handleiding voor collega's (versie 1.4.4)
 
 Met het Beveiligingsrooster bekijk je je diensten, het weekrooster van het team en je uren. Je kunt niets wijzigen; dat doet de planner.
 
@@ -20,7 +20,7 @@ Wachtwoord vergeten? Vraag de planner om een reset. Na 5 verkeerde pogingen moet
 | **Urenoverzicht** | de weektotalen van iedereen, per week |
 | **Zoeken** | zoek diensten op naam, initialen of dienstcode |
 
-Een tijd met een **rood gestippelde onderstreping** wijkt af van de standaardtijd van die dienst.
+Wijkt een tijd af van de standaardtijd van die dienst, dan zie je dat als je er met de muis op staat (*Handmatig aangepast*).
 
 Heb je op een dag **twee diensten**, dan staan ze in het weekrooster **onder elkaar** in je blok: de eerste bovenaan, de tweede onderaan (elk met eigen dienstnaam, tijden en uren). Een opmerking van die dag staat dan achter de naam van de eerste dienst. In *Mijn rooster* staan ze als twee regels; de tweede heeft *(2e dienst)* achter de datum. In je agenda (ICS of Google Agenda) worden het twee afspraken.
 

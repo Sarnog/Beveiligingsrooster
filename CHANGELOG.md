@@ -2,6 +2,29 @@
 
 ## [Onuitgebracht]
 
+## [1.4.4] – 2026-10-01
+
+### Toegevoegd
+- **Logniveau en debuglog instellen in Beheer** (*Beheer → Debuglog*): logniveau (DEBUG, INFO,
+  WARNING, ERROR) en het debuglog-bestand aan/uit, zonder `docker-compose.yml`/`.env` aan te passen
+  en zonder herstart (binnen een halve minuut actief in website en worker). *Volgens .env* gebruikt
+  weer `LOG_NIVEAU` en `DEBUG_LOG`. Elke wijziging komt in het logboek.
+- **Back-ups verwijderen** in *Beheer → Back-ups* (met bevestiging; komt in het logboek).
+
+### Opgelost
+- **Aanvulling achter de dienstnaam:** typ je iets achter de dienstnaam (*VW Vroeg – tot 12:00*),
+  dan blijven de code, de achtergrondkleur en de tijden staan. Voorheen werd het een vrije
+  dienstnaam zonder kleur. (Cellen die al zo zijn opgeslagen: code opnieuw invullen.)
+- **Print weekrooster:** de pagina-indeling wordt nu echt opgemeten in plaats van geschat. Met
+  lange namen, functies of dagopmerkingen in de kop liep de week eerder al bij 10 medewerkers
+  over naar een tweede pagina. Nu: t/m 10 medewerkers altijd één A4, 13 met overal twee diensten
+  ook (kleinere letters), en daarboven hooguit 10 medewerkers per pagina (14 = 10 + 4,
+  25 = 10 + 10 + 5). Elke pagina is een eigen tabel met de kopregel; dat werkt in elke browser.
+
+### Gewijzigd
+- Geen rode hoekjes en rode stippellijnen meer bij handmatig aangepaste tijden en uren (overgenomen
+  uit Excel, zonder functie). De tip *Handmatig aangepast* bij de muis blijft.
+
 ## [1.4.3] – 2026-10-01
 
 ### Gewijzigd

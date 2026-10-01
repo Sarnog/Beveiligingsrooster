@@ -1,9 +1,28 @@
 {% extends "base.html" %}
+{% from "macros.html" import csrf %}
 {% block titel %}Debuglog{% endblock %}
 {% block inhoud %}
 <section class="kaart">
   <h1>Debuglog</h1>
-  <p>Console-logniveau: <strong>{{ niveau }}</strong>. Debuglog-bestand: <strong>{{ 'aan' if aan else 'uit' }}</strong>.</p>
+  <p>Logniveau: <strong>{{ niveau }}</strong>. Debuglog-bestand: <strong>{{ 'aan' if aan else 'uit' }}</strong>.</p>
+  <h2>Loginstelling</h2>
+  <form method="post" action="{{ url_for('beheer.debuglog_instellen') }}">
+    {{ csrf() }}
+    <label class="veld"><span>Logniveau (<code>docker compose logs</code>)</span>
+      <select name="log_niveau">
+        <option value="" {{ 'selected' if not eigen_niveau }}>Volgens .env ({{ env_niveau }})</option>
+        {% for n in niveaus %}<option value="{{ n }}" {{ 'selected' if eigen_niveau == n }}>{{ n }}</option>{% endfor %}
+      </select></label>
+    <label class="veld"><span>Debuglog-bestand (alle details, ook DEBUG, in <code>data/logs/debug.log</code>)</span>
+      <select name="debug_log">
+        <option value="" {{ 'selected' if eigen_aan not in ('0', '1') }}>Volgens .env ({{ 'aan' if env_aan else 'uit' }})</option>
+        <option value="1" {{ 'selected' if eigen_aan == '1' }}>Aan</option>
+        <option value="0" {{ 'selected' if eigen_aan == '0' }}>Uit</option>
+      </select></label>
+    <button class="knop primair" type="submit">Opslaan</button>
+  </form>
+  <p class="hulp">Geen herstart nodig: binnen een halve minuut geldt de keuze voor de website én de worker.
+    Zet het debuglog-bestand na het onderzoeken van een probleem weer uit.</p>
   {% if aan %}
     <p class="hulp">Alle meldingen van de website en de worker, ook de details (DEBUG), staan in <code>data/logs/debug.log</code>
       ({{ (grootte / 1024)|round(0)|int }} kB). Bij 5 MB wordt het bestand vervangen; de laatste 3 oude blijven bewaard.
@@ -17,14 +36,8 @@
       <p>Er staat nog niets in de debuglog.</p>
     {% endif %}
   {% else %}
-    <p>De debuglog staat uit. Zet hem aan bij een probleem dat je wilt onderzoeken:</p>
-    <ol>
-      <li>Zet in <code>.env</code> (naast <code>docker-compose.yml</code>): <code>DEBUG_LOG=1</code></li>
-      <li>Herstart: <code>docker compose up -d</code></li>
-      <li>Doe wat het probleem geeft en kom hier terug.</li>
-    </ol>
-    <p class="hulp">Zet hem daarna weer uit (<code>DEBUG_LOG=0</code>). Met <code>LOG_NIVEAU=DEBUG</code> komen de details
-      ook in <code>docker compose logs</code>.</p>
+    <p>Het debuglog-bestand staat uit. Zet het hierboven aan bij een probleem dat je wilt onderzoeken,
+      doe wat het probleem geeft en kom hier terug.</p>
   {% endif %}
 </section>
 {% endblock %}
