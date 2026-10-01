@@ -322,6 +322,11 @@ def _registreer_template_helpers(app: Flask) -> None:
     app.jinja_env.globals["externe_url"] = externe_url
     app.jinja_env.globals["dagnamen"] = DAGNAMEN
     app.jinja_env.globals["dagnamen_kort"] = DAGNAMEN_KORT
+    # Dagcellen van het weekrooster en telefoonkaarten in Python (snelheid, zie weekweergave.py)
+    from .services import weekweergave
+
+    app.jinja_env.globals["blok_regels"] = weekweergave.blok_regels
+    app.jinja_env.globals["dagkaart"] = weekweergave.kaart
     app.jinja_env.filters["datum_nl"] = datum_nl
     app.jinja_env.filters["uren"] = formatteer_uren
 

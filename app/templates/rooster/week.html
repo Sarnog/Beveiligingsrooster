@@ -66,49 +66,27 @@
        - twee diensten: a/b dienst 1 (de opmerking staat dan achter de dienstnaam, data-opm),
          c/d dienst 2 (data-vn="2").
        data-plek (a, b1-b3, c, d1-d3) is de vaste plek in het blok: raster.js wisselt daarmee de
-       indeling van een dag zodra er een tweede dienst bij komt of af gaat. #}
-    {% set k = 'cel ' if bewerken else '' %}
+       indeling van een dag zodra er een tweede dienst bij komt of af gaat.
+       De dagcellen maakt blok_regels() in app/services/weekweergave.py (snelheid). #}
     {% for rij in rijen %}
-    {% set r = loop.index0 * 4 %}
     {% set mw = rij.medewerker %}
+    {% set regels = blok_regels(rij, dag_iso, loop.index0 * 4, bewerken) %}
     <tbody class="blok" data-blok="{{ mw.id }}">
       <tr class="r-a">
         <th rowspan="4" class="naamkol">{{ mw.naam }}{% if mw.functie_opmerking %}<small>{{ mw.functie_opmerking }}</small>{% endif %}</th>
-        {% for d in rij.dagen %}{% set datum = dag_iso[loop.index0] %}{% set c0 = loop.index0 * 3 %}
-        {% if d.tweede %}
-        <td colspan="3" class="{{ k }}dienstnaam" data-plek="a" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-toon="dienstnaam" data-veld="dienstnaam" data-r="{{ r + 1 }}" data-c="{{ c0 }}" data-cs="3" data-versie="{{ d.versie }}"{% set opm = d.opmerking ~ (' (' ~ d.opm_begin ~ '–' ~ d.opm_eind ~ ')' if d.opm_begin or d.opm_eind else '') %}{% if opm %} data-opm="{{ opm }}" title="Opmerking: {{ opm }}"{% endif %} style="{{ d.dienst_stijl }}">{{ d.dienstnaam }}</td>
-        {% else %}
-        <td colspan="3" class="{{ k }}opm" data-plek="a" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="opmerking" data-r="{{ r + 1 }}" data-c="{{ c0 }}" data-cs="3" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}</td>
-        {% endif %}
-        {% endfor %}
+        {{ regels[0] }}
         {% set c = rij.contracturen %}<td class="urenkol contract" title="Contracturen {{ jaar }}"{% if c is not none %} data-pcontract="{{ c|int if c == c|int else c|uren }}"{% endif %}>{{ c|uren }}</td>
       </tr>
       <tr class="r-b">
-        {% for d in rij.dagen %}{% set datum = dag_iso[loop.index0] %}{% set c0 = loop.index0 * 3 %}
-        {% if d.tweede %}
-        <td class="{{ k }}tijd{% if d.handmatig %} handmatig{% endif %}" data-plek="b1" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="begin" data-r="{{ r + 2 }}" data-c="{{ c0 }}"{% if d.handmatig %} title="Handmatig aangepast"{% endif %}>{{ d.begin }}</td>
-        <td class="{{ k }}tijd{% if d.handmatig %} handmatig{% endif %}" data-plek="b2" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="eind" data-r="{{ r + 2 }}" data-c="{{ c0 + 1 }}"{% if d.handmatig %} title="Handmatig aangepast"{% endif %}>{{ d.eind }}</td>
-        <td class="{{ k }}uren{% if d.uren_handmatig %} handmatig{% endif %}" data-plek="b3" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-toon="uren" data-veld="uren" data-r="{{ r + 2 }}" data-c="{{ c0 + 2 }}"{% if d.uren_handmatig %} title="Zelf ingevulde uren"{% endif %}>{{ d.uren }}</td>
-        {% else %}
-        <td class="{{ k }}tijd opmtijd" data-plek="b1" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="opm_begin" data-r="{{ r + 2 }}" data-c="{{ c0 }}">{{ d.opm_begin }}</td>
-        <td class="{{ k }}tijd opmtijd" data-plek="b2" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="opm_eind" data-r="{{ r + 2 }}" data-c="{{ c0 + 1 }}">{{ d.opm_eind }}</td>
-        <td class="leeg" data-plek="b3" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-r="{{ r + 2 }}" data-c="{{ c0 + 2 }}"></td>
-        {% endif %}
-        {% endfor %}
+        {{ regels[1] }}
         <td class="urenkol"></td>
       </tr>
       <tr class="r-c">
-        {% for d in rij.dagen %}{% set datum = dag_iso[loop.index0] %}{% set o = d.tweede or d %}{% set vn = ' data-vn="2"' if d.tweede else '' %}
-        <td colspan="3" class="{{ k }}dienstnaam" data-plek="c" data-mw="{{ mw.id }}" data-datum="{{ datum }}"{{ vn|safe }} data-toon="dienstnaam" data-veld="dienstnaam" data-r="{{ r + 3 }}" data-c="{{ loop.index0 * 3 }}" data-cs="3" data-versie="{{ o.versie }}" style="{{ o.dienst_stijl }}">{{ o.dienstnaam }}</td>
-        {% endfor %}
+        {{ regels[2] }}
         <td rowspan="2" class="urenkol totaal" data-totaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</td>
       </tr>
       <tr class="r-d">
-        {% for d in rij.dagen %}{% set datum = dag_iso[loop.index0] %}{% set o = d.tweede or d %}{% set vn = ' data-vn="2"' if d.tweede else '' %}{% set c0 = loop.index0 * 3 %}
-        <td class="{{ k }}tijd{% if o.handmatig %} handmatig{% endif %}" data-plek="d1" data-mw="{{ mw.id }}" data-datum="{{ datum }}"{{ vn|safe }} data-veld="begin" data-r="{{ r + 4 }}" data-c="{{ c0 }}"{% if o.handmatig %} title="Handmatig aangepast"{% endif %}>{{ o.begin }}</td>
-        <td class="{{ k }}tijd{% if o.handmatig %} handmatig{% endif %}" data-plek="d2" data-mw="{{ mw.id }}" data-datum="{{ datum }}"{{ vn|safe }} data-veld="eind" data-r="{{ r + 4 }}" data-c="{{ c0 + 1 }}"{% if o.handmatig %} title="Handmatig aangepast"{% endif %}>{{ o.eind }}</td>
-        <td class="{{ k }}uren{% if o.uren_handmatig %} handmatig{% endif %}" data-plek="d3" data-mw="{{ mw.id }}" data-datum="{{ datum }}"{{ vn|safe }} data-toon="uren" data-veld="uren" data-r="{{ r + 4 }}" data-c="{{ c0 + 2 }}"{% if o.uren_handmatig %} title="Zelf ingevulde uren"{% endif %}>{{ o.uren }}</td>
-        {% endfor %}
+        {{ regels[3] }}
       </tr>
     </tbody>
     {% else %}

@@ -611,3 +611,19 @@ def test_week_kopieren_neemt_beide_diensten_mee(als_beheerder, rooster):
     assert (kopie[1].dienstnaam, kopie[2].dienstnaam) == ("BHV", "VW Avond")
     assert kopie[2].uren_berekend == 8.0
     assert diensten(a, date(2026, 3, 17)) == {}  # bron leeg: doel ook leeg (beide diensten)
+
+
+def test_weekpagina_escapet_tekst_in_cellen_en_kaarten(als_beheerder, rooster):
+    """Dagcellen en telefoonkaarten worden in Python opgebouwd (weekweergave.py): tekst moet
+    net als in een template ge-escaped worden."""
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "opmerking", '<script>alert("x")</script>')
+    cel(als_beheerder, a, MAANDAG, "dienstnaam", "Ronde <b>&</b>")
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert "<script>alert" not in pagina and "<b>&</b>" not in pagina
+    assert "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;" in pagina
+    assert pagina.count("Ronde &lt;b&gt;&amp;&lt;/b&gt;") == 3  # rooster + 2 telefoonkaarten
+    # Bij twee diensten staat de opmerking (ge-escaped) in data-opm
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert 'data-opm="&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;"' in pagina

@@ -11,6 +11,10 @@
   op de onderste twee. De opmerking van die dag staat dan achter de dienstnaam van dienst 1
   (bijv. *VW Vroeg – Later op dienst*); wijzigen kan weer zodra het één dienst is. De indeling
   wisselt per dag, direct tijdens het typen. De printversie volgt dezelfde indeling.
+- **Weekrooster ruim sneller** (ongeveer een derde): de dagcellen van het rooster en de
+  kaarten van de telefoonweergave worden in Python opgebouwd (`app/services/weekweergave.py`)
+  in plaats van in de template. De HTML is precies gelijk gebleven. De prestatietest in CI
+  (< 300 ms) zat eerder te krap aan de grens.
 
 ## [1.4.1] – 2026-10-01
 
