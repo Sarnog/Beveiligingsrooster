@@ -1,4 +1,6 @@
 # Extra pakketten voor ontwikkelen en testen
 -r requirements.txt
 pytest>=8
+pytest-cov>=5
 ruff>=0.5
+playwright>=1.45  # browsertests (tests/test_mobiel*.py); Chromium apart installeren

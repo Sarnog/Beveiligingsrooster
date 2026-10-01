@@ -40,10 +40,12 @@
   </div>
   <aside class="kaart legenda-zoek">
     <h2>Dienstcodes</h2>
+    <div class="tabel-schuif">
     <table class="tabel compact">
       <thead><tr><th class="getal">Code</th><th>Omschrijving</th></tr></thead>
       <tbody>{% for c in codes %}<tr><td class="getal">{{ c.nummer }}</td><td>{{ c.omschrijving }}</td></tr>{% endfor %}</tbody>
     </table>
+    </div>
   </aside>
 </div>
 {% endblock %}

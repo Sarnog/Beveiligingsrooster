@@ -9,6 +9,8 @@ from app.models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker
 from app.services import instellingen
 from app.services.wachtwoorden import hash_wachtwoord
 
+from .browser_hulp import browser, server, sessies  # noqa: F401  (fixtures voor de browsertests)
+
 WACHTWOORD = "testwachtwoord123"
 
 
@@ -24,13 +26,39 @@ class TestConfig(Config):
         self.SQLALCHEMY_DATABASE_URI = f"sqlite:///{data_map}/test.db"
 
 
+def _vergeet_ingelogde_gebruiker():
+    """In de tests blijft één app-context open; in het echt krijgt elk verzoek een verse.
+
+    Flask-Login bewaart de gebruiker in g (per app-context). Zonder dit zou elk verzoek de
+    gebruiker van het vorige verzoek hergebruiken, en zie je uitloggen via de sessie niet.
+    """
+    from flask import g
+
+    g.pop("_login_user", None)
+
+
 @pytest.fixture
 def app(tmp_path):
     app = create_app(TestConfig(str(tmp_path)))
+    app.before_request_funcs.setdefault(None, []).insert(0, _vergeet_ingelogde_gebruiker)
     with app.app_context():
         db.create_all()
         yield app
         db.session.remove()
+
+
+@pytest.fixture
+def gemigreerd(app):
+    """Database via de echte migraties (zoals in productie), setup afgerond."""
+    import os
+
+    from flask_migrate import upgrade
+
+    db.drop_all()
+    upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
+    instellingen.schrijf("setup_voltooid", "1")
+    db.session.commit()
+    return app
 
 
 @pytest.fixture

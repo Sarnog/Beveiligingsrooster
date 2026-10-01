@@ -8,10 +8,12 @@ Een 'cel' is één veld van één medewerker op één dag:
 Daarnaast is er per dag de 'dagopmerking' (rij 3 van het Excel-blad).
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 
 from ..extensions import db
 from ..models import Dagopmerking, Dienst, Dienstcode, Medewerker, OpmerkingKleurregel
@@ -19,7 +21,7 @@ from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
-from .tijden import OngeldigeTijd, normaliseer_tijd
+from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from .urenberekening import formatteer_uren
 
 VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "dienstnaam", "uren")
@@ -29,6 +31,7 @@ VELD_NAMEN = {
     "dienstnaam": "dienstnaam", "uren": "uren",
 }
 MAX_OPMERKING = 120
+log = logging.getLogger(__name__)
 
 # Velden van een dienst met hun 'lege' waarde (gebruikt bij week kopiëren)
 LEGE_DIENST = {
@@ -157,12 +160,6 @@ def pas_dagopmerking_toe(datum: date, tekst: str) -> None:
         sync_planning.plan_dag(dienst.medewerker, datum, commit=False)
 
 
-def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
-    """Wijzig en sla direct op (gebruikt door scripts en tests)."""
-    resultaat = verwerk_rooster([], [(datum, tekst)], opslaan=True)
-    return resultaat["dagopmerkingen"][datum.isoformat()]
-
-
 # ---------------------------------------------------------------------------
 # Weekgegevens
 # ---------------------------------------------------------------------------
@@ -182,7 +179,9 @@ def medewerkers_voor_periode(van: date, tot: date) -> list[Medewerker]:
         mid for (mid,) in db.session.query(Dienst.medewerker_id)
         .filter(Dienst.datum >= van, Dienst.datum <= tot).distinct()
     }
-    alle = Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()
+    # Contracturen in één keer meeladen (anders één query per medewerker)
+    alle = (Medewerker.query.options(selectinload(Medewerker.contracturen))
+            .order_by(Medewerker.volgorde, Medewerker.naam).all())
     return [m for m in alle if m.is_zichtbaar_op(van) or m.id in met_diensten]
 
 
@@ -190,7 +189,8 @@ def week_gegevens(jaar: int, week: int) -> dict:
     """Alles voor de weekpagina: dagen, dagopmerkingen en per medewerker de 7 dagen."""
     dagen = dagen_van_week(jaar, week)
     medewerkers = medewerkers_voor_periode(dagen[0], dagen[-1])
-    diensten = Dienst.query.filter(Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all()
+    diensten = (Dienst.query.options(joinedload(Dienst.dienstcode))
+                .filter(Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all())
     per_sleutel = {(d.medewerker_id, d.datum): d for d in diensten}
     regels = kleurregels()
 
@@ -212,6 +212,7 @@ def week_gegevens(jaar: int, week: int) -> dict:
         "dagopmerkingen": dagopmerkingen(dagen),
         "feestdagen": feestdagen_in_periode(dagen[0], dagen[-1]),
         "rijen": rijen,
+        "diensten": per_sleutel,  # (medewerker_id, datum) -> Dienst, o.a. voor de API
     }
 
 
@@ -234,7 +235,7 @@ def _lees_code(waarde: str) -> Dienstcode | None:
     tekst = (waarde or "").strip()
     if tekst == "":
         return None
-    if not tekst.isdigit():
+    if not is_cijfers(tekst):
         raise CelFout(f"'{tekst}' is geen dienstcode (alleen een nummer).")
     nummer = int(tekst)
     if nummer == instellingen.blanco_code():
@@ -257,6 +258,8 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
     if veld == "code":
         oud = str(dienst.dienstcode.nummer) if dienst.dienstcode else ""
         code = _lees_code(waarde)
+        if (str(code.nummer) if code else "") == oud:
+            return oud, oud  # zelfde code: niets wijzigen (handmatige tijden blijven staan)
         dienst.dienstcode = code
         dienst.dienstcode_id = code.id if code else None
         dienst.dienstnaam_override = ""
@@ -328,9 +331,28 @@ class Wijziging:
     versie: int | None = None  # None = niet controleren
 
 
+def _claim(dienst: Dienst) -> None:
+    """Controleer en vergrendel een bestaande dienst vóór het wijzigen (optimistic locking).
+
+    Een voorwaardelijke UPDATE ... WHERE versie = <gelezen versie>: is de dienst intussen
+    door een ander proces gewijzigd, dan raakt hij 0 rijen en volgt een VersieConflict.
+    Lukt het, dan houdt SQLite de schrijfvergrendeling vast tot de commit; niemand kan de
+    dienst dan nog tussendoor wijzigen (geen 'check-then-write').
+    """
+    tabel = Dienst.__table__
+    with db.session.no_autoflush:  # eerst controleren, dan pas onze wijziging schrijven
+        resultaat = db.session.execute(
+            tabel.update().where(tabel.c.id == dienst.id, tabel.c.versie == dienst.versie)
+            .values(versie=tabel.c.versie))
+    if resultaat.rowcount != 1:
+        raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst. "
+                             "Ververs de pagina en probeer het opnieuw.")
+
+
 def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
     """Pas celwijzigingen toe in de sessie. Geeft (geraakte (mw, datum), fouten)."""
     fouten: list[dict] = []
+    geclaimd: set[tuple[int, date]] = set()
     geraakt: dict[tuple[int, date], Dienst | None] = {}
     gecontroleerd: set[tuple[int, date]] = set()
     medewerkers: dict[int, Medewerker] = {}
@@ -375,7 +397,10 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
             geraakt[sleutel] = None if nieuw_record else dienst
             continue
         if nieuw_record:
-            db.session.add(dienst)
+            db.session.add(dienst)  # tegelijk aangemaakt: de unieke index geeft een conflict
+        elif sleutel not in geclaimd:
+            _claim(dienst)
+            geclaimd.add(sleutel)
 
         # Uren opnieuw berekenen
         if w.datum not in context_cache:
@@ -443,6 +468,16 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
             db.session.commit()
         else:
             db.session.rollback()  # alleen een voorbeeld: niets bewaren
+        log.debug("Rooster %s: %s celwijzigingen, %s dagopmerkingen, %s geraakt, %s fouten",
+                  "opgeslagen" if opslaan else "voorbeeld", len(wijzigingen), len(dag_wijzigingen),
+                  len(geraakt), len(fouten))
+        for fout in fouten:
+            log.debug("Celfout: medewerker %s, %s, %s: %s", fout["mw"], fout["datum"], fout["veld"],
+                      fout["melding"])
+    except VersieConflict:
+        db.session.rollback()
+        log.debug("Versieconflict bij %s wijzigingen (opslaan=%s)", len(wijzigingen), opslaan)
+        raise
     except IntegrityError as fout:  # tegelijk door een ander aangemaakt
         db.session.rollback()
         raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst.") from fout
@@ -458,6 +493,7 @@ def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
 def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | None = None) -> int:
     """Maak de doelweek gelijk aan de bronweek (alle medewerkers of één).
 
+    Een gearchiveerde medewerker krijgt geen diensten op of na zijn archiefdatum.
     Geeft het aantal gewijzigde dagen terug.
     """
     verschuiving = naar_maandag - van_maandag
@@ -477,6 +513,8 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
         for i in range(7):
             dag_bron = van_maandag + timedelta(days=i)
             dag_doel = dag_bron + verschuiving
+            if not medewerker.is_zichtbaar_op(dag_doel):
+                continue  # gearchiveerd: niet meer inplannen
             origineel = bron.get((medewerker.id, dag_bron))
             doel = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=dag_doel).first()
             if origineel is None and doel is None:

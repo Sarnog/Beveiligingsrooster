@@ -6,9 +6,17 @@ from flask import has_request_context
 from flask_login import current_user
 
 from ..extensions import db
-from ..models import Logboek
+from ..models import Logboek, LoginPoging
 from . import instellingen, klok
 from .kalender import week_van
+
+MAX_TEKST = 1000  # details, oude en nieuwe waarde
+
+
+def _kap(waarde, lengte: int) -> str:
+    """Tekst afkappen op een maximale lengte (SQLite handhaaft String(n) zelf niet)."""
+    tekst = "" if waarde is None else str(waarde)
+    return tekst if len(tekst) <= lengte else tekst[: lengte - 1] + "…"
 
 
 def _huidige_gebruiker() -> tuple[str, str]:
@@ -33,6 +41,8 @@ def log(
     """Voeg een regel toe aan het logboek. Commit doet de aanroeper.
 
     datum: de roosterdag waar het over gaat (week en dag worden daaruit afgeleid).
+    Alle velden worden hier begrensd, zodat niemand het logboek met enorme teksten
+    kan vullen (bijv. via een extreem lange gebruikersnaam bij het inloggen).
     """
     naam, huidige_rol = _huidige_gebruiker()
     week = ""
@@ -43,28 +53,41 @@ def log(
         dag = datum.strftime("%d-%m-%Y")
     db.session.add(
         Logboek(
-            gebruiker=gebruiker if gebruiker is not None else naam,
-            rol=rol if rol is not None else huidige_rol,
-            actie=actie,
-            details=details,
+            gebruiker=_kap(gebruiker if gebruiker is not None else naam, 64),
+            rol=_kap(rol if rol is not None else huidige_rol, 20),
+            actie=_kap(actie, 60),
+            details=_kap(details, MAX_TEKST),
             week=week,
-            medewerker=medewerker,
+            medewerker=_kap(medewerker, 120),
             dag=dag,
-            veld=veld,
-            oude_waarde="" if oud is None else str(oud),
-            nieuwe_waarde="" if nieuw is None else str(nieuw),
+            veld=_kap(veld, 40),
+            oude_waarde=_kap(oud, MAX_TEKST),
+            nieuwe_waarde=_kap(nieuw, MAX_TEKST),
         )
     )
 
 
 def opschonen(nu: datetime | None = None) -> int:
-    """Verwijder regels ouder dan de bewaartermijn (dagen + uren). Geeft het aantal terug."""
+    """Verwijder regels ouder dan de bewaartermijn (dagen + uren). Geeft het aantal terug.
+
+    Een bewaartermijn van 0 dagen en 0 uur betekent: nooit opschonen.
+    """
     nu = nu or klok.nu()
     dagen = max(instellingen.lees_int("logboek_dagen", 31), 0)
     uren = instellingen.lees_int("logboek_uren", 0)
     if uren < 0 or uren > 23:  # zelfde grenzen als in Excel
         uren = 0
+    if dagen == 0 and uren == 0:
+        return 0
     grens = nu - timedelta(days=dagen, hours=uren)
     aantal = Logboek.query.filter(Logboek.tijdstempel < grens).delete()
+    db.session.commit()
+    return aantal
+
+
+def ruim_loginpogingen_op() -> int:
+    """Verwijder loginpogingen ouder dan één dag (die tellen niet meer mee voor de blokkade)."""
+    grens = klok.utc_nu() - timedelta(days=1)
+    aantal = LoginPoging.query.filter(LoginPoging.tijdstip < grens).delete()
     db.session.commit()
     return aantal

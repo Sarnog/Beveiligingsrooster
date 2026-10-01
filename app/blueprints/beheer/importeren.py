@@ -4,30 +4,26 @@ Stap 1: bestand uploaden -> droogloop met voorbeeld (er wordt nog niets opgeslag
 Stap 2: bevestigen -> definitief importeren. Het bestand wordt daarna verwijderd.
 """
 
+import logging
 import os
 import secrets
 
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 
 from ...services import backup
-from ...services.excel_import import ImportFout, importeer, lees_bestand
+from ...services.excel_import import ImportFout, import_map, importeer, lees_bestand
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
 TOEGESTAAN = (".xlsm", ".xlsx")
-
-
-def _import_map() -> str:
-    pad = os.path.join(current_app.config["DATA_MAP"], "import")
-    os.makedirs(pad, mode=0o700, exist_ok=True)
-    return pad
+log = logging.getLogger(__name__)
 
 
 def _opgeslagen_pad() -> str | None:
     naam = session.get("import_bestand", "")
     if not naam or "/" in naam or "\\" in naam:
         return None
-    pad = os.path.join(_import_map(), naam)
+    pad = os.path.join(import_map(), naam)
     return pad if os.path.exists(pad) else None
 
 
@@ -48,7 +44,7 @@ def excel_import():
             return redirect(url_for("beheer.excel_import"))
         _ruim_op()
         naam = secrets.token_hex(8) + ".xlsm"
-        pad = os.path.join(_import_map(), naam)
+        pad = os.path.join(import_map(), naam)
         bestand.save(pad)
         os.chmod(pad, 0o600)
         session["import_bestand"] = naam
@@ -74,8 +70,16 @@ def excel_import_voorbeeld():
         if not vinkje(request.form, "bevestig"):
             flash("Vink eerst de bevestiging aan.", "fout")
         else:
-            backup.maak_backup("voor-import")  # altijd eerst een back-up
-            resultaat = importeer(plan)
+            try:
+                backup.maak_backup("voor-import")  # altijd eerst een back-up
+                resultaat = importeer(plan)
+            except ImportFout as fout:
+                flash(str(fout), "fout")
+                return redirect(url_for("beheer.excel_import_voorbeeld"))
+            except Exception as fout:  # nooit een kale foutpagina
+                log.exception("Excel-import mislukt")
+                flash(f"De import is mislukt; er is niets geïmporteerd ({type(fout).__name__}).", "fout")
+                return redirect(url_for("beheer.excel_import_voorbeeld"))
             _ruim_op()
             flash("Import klaar: " + ", ".join(f"{v} {k}" for k, v in resultaat.items())
                   + ". Er is vooraf een back-up gemaakt.", "succes")

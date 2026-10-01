@@ -107,6 +107,7 @@ Handig als iemand de diensten in een agenda wil die hij of zij al heeft.
 
   Bestond er al een afspraak, dan wordt die verwijderd.
 - **De app raakt alleen haar eigen afspraken aan.** Die herkent ze aan een verborgen markering. Afspraken die de collega zelf maakt, blijven altijd staan.
+- **Gedeelde agenda (modus B) met meer collega's:** de markering bevat ook de medewerker. Volledig synchroniseren of ontkoppelen van één collega raakt alleen diens eigen afspraken; die van de andere collega's in dezelfde agenda blijven staan.
 
 ## Hoe snel?
 
@@ -118,7 +119,7 @@ Een roosterwijziging komt in een wachtrij. De worker verwerkt die na ongeveer 10
 |---|---|
 | Test koppeling | controleert direct of de agenda bereikbaar is |
 | Volledig synchroniseren | maakt de agenda gelijk aan het rooster, van 7 dagen terug tot 12 maanden vooruit (instelbaar), en ruimt verweesde afspraken op |
-| Ontkoppelen… | stopt de koppeling. Je kiest of de afspraken blijven staan of verwijderd worden. Bij modus A wordt dan de hele agenda verwijderd |
+| Ontkoppelen… | stopt de koppeling. Je kiest of de afspraken blijven staan of verwijderd worden. Bij modus A wordt dan de hele agenda verwijderd, bij modus B alleen de afspraken van deze medewerker |
 
 De status toont:
 - wanneer er het laatst is gesynchroniseerd;

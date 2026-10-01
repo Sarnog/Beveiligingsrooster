@@ -18,16 +18,24 @@ gebeuren, daarna pas definitief importeren (importeer).
 Wachtwoorden en rechten uit de bladen 'Beveiliging' en 'Rechten' worden bewust NIET gelezen.
 """
 
+import logging
+import os
 import re
+import time as _time
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
+from flask import current_app
+from sqlalchemy.exc import IntegrityError
+
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
-from . import instellingen, logboek
-from .kalender import aantal_weken, maandag_van_week
+from . import instellingen, klok, logboek, sync_planning
+from .feestdagen import zorg_voor_jaar
+from .kalender import MAX_JAAR, MIN_JAAR, aantal_weken, maandag_van_week
 from .medewerkers import uniek_voorstel
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
+from .tijden import is_cijfers
 from .urenberekening import bereken_uren, dagfactor
 from .voorbeeldpakket import DIENSTCODES
 
@@ -35,10 +43,31 @@ EXCEL_BLANCO = 15
 DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
 CODE_KOLOMMEN = list(range(29, 36))  # AC..AI
 MAX_BLOKKEN = 30
+UPLOAD_BEWAREN_SECONDEN = 24 * 3600
+log = logging.getLogger(__name__)
 
 
 class ImportFout(Exception):
     """Het bestand is niet te lezen als oud rooster."""
+
+
+def import_map() -> str:
+    """Map voor geüploade Excel-bestanden (alleen tot de import klaar is)."""
+    pad = os.path.join(current_app.config["DATA_MAP"], "import")
+    os.makedirs(pad, mode=0o700, exist_ok=True)
+    return pad
+
+
+def ruim_oude_uploads_op(nu: float | None = None) -> int:
+    """Verwijder geüploade bestanden die er langer dan een dag staan (import afgebroken)."""
+    grens = (nu or _time.time()) - UPLOAD_BEWAREN_SECONDEN
+    verwijderd = 0
+    for naam in os.listdir(import_map()):
+        pad = os.path.join(import_map(), naam)
+        if os.path.isfile(pad) and os.path.getmtime(pad) < grens:
+            os.remove(pad)
+            verwijderd += 1
+    return verwijderd
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +167,10 @@ class ImportMedewerker:
     initialen: str
     contracturen: float | None
     bestaand_id: int | None = None
+    # Hoe deze medewerker gekoppeld wordt: 'naam' (bestaande medewerker met dezelfde naam),
+    # 'initialen' (alleen de initialen zijn bezet: er komt een NIEUWE medewerker) of 'nieuw'
+    koppeling: str = "nieuw"
+    toelichting: str = ""
 
 
 @dataclass
@@ -147,7 +180,6 @@ class ImportCode:
     begin: str | None
     eind: str | None
     uren: float | None
-    bestaat: bool = False
 
 
 @dataclass
@@ -205,6 +237,15 @@ class ImportPlan:
                               f"tijden geven {berekend:.2f}, Excel {handmatig:.2f} (overgenomen)")
         return regels
 
+    def dubbele_diensten(self) -> list[str]:
+        """(medewerker, datum)-combinaties die meer dan eens in het bestand staan."""
+        gezien: dict[tuple[str, date], int] = {}
+        for d in self.diensten:
+            gezien[(d.naam, d.datum)] = gezien.get((d.naam, d.datum), 0) + 1
+        return [f"{naam} op {datum:%d-%m-%Y} ({aantal}×)"
+                for (naam, datum), aantal in sorted(gezien.items(), key=lambda x: (x[0][1], x[0][0]))
+                if aantal > 1]
+
     def weektotaal_verschillen(self) -> list[str]:
         za = self.toeslag_zaterdag or 1.5
         zo = self.toeslag_zondag or 2.0
@@ -231,7 +272,7 @@ def lees_bestand(pad: str) -> ImportPlan:
     try:
         # data_only: de laatst berekende waarden (datums, totalen) in plaats van formules
         boek = openpyxl.load_workbook(pad, data_only=True, keep_vba=False)
-    except Exception as fout:  # noqa: BLE001 - elk leesprobleem is een importfout
+    except Exception as fout:  # elk leesprobleem is een importfout
         raise ImportFout(f"Het bestand kan niet gelezen worden: {fout}") from fout
     if "Lijsten" not in boek.sheetnames:
         raise ImportFout("Dit lijkt geen oud rooster: het blad 'Lijsten' ontbreekt.")
@@ -239,8 +280,12 @@ def lees_bestand(pad: str) -> ImportPlan:
     jaar = None
     if "Kalender" in boek.sheetnames:
         jaar = int(_getal(boek["Kalender"]["E2"].value) or 0) or None
-    plan = ImportPlan(jaar=jaar or date.today().year)
+    if jaar is not None and not MIN_JAAR <= jaar <= MAX_JAAR:
+        raise ImportFout(f"Het jaar in Kalender!E2 ({jaar}) is ongeldig; verwacht een jaar tussen "
+                         f"{MIN_JAAR} en {MAX_JAAR}.")
+    plan = ImportPlan(jaar=jaar or klok.vandaag().year)
     _lees_lijsten(boek["Lijsten"], plan)
+    _bepaal_koppelingen(plan)
     if "Vakanties" in boek.sheetnames:
         _lees_vakanties(boek["Vakanties"], plan)
 
@@ -252,7 +297,39 @@ def lees_bestand(pad: str) -> ImportPlan:
                 plan.waarschuwingen.append(f"{naam} overgeslagen: {plan.jaar} heeft geen week {week}.")
             continue
         _lees_weekblad(boek[naam], week, plan)
+    if dubbel := plan.dubbele_diensten():
+        plan.waarschuwingen.append(
+            "Dubbele diensten (zelfde medewerker en dag staan er meer dan eens in): "
+            + "; ".join(dubbel) + ". Pas het Excel-bestand aan; zo kan het niet geïmporteerd worden.")
+    log.debug("Excel gelezen: jaar %s, %s medewerkers, %s codes, %s diensten, %s weken, "
+              "%s waarschuwingen", plan.jaar, len(plan.medewerkers), len(plan.codes),
+              len(plan.diensten), len(plan.weken), len(plan.waarschuwingen))
     return plan
+
+
+def _bepaal_koppelingen(plan: ImportPlan) -> None:
+    """Bepaal per Excel-medewerker of hij aan een bestaande medewerker gekoppeld wordt.
+
+    Alleen een gelijke naam koppelt automatisch. Zijn alleen de initialen gelijk, dan
+    is het waarschijnlijk iemand anders: er komt een nieuwe medewerker (met unieke
+    initialen) en de droogloop toont een waarschuwing.
+    """
+    for im in plan.medewerkers:
+        bestaand = Medewerker.query.filter_by(naam=im.naam).first()
+        if bestaand is not None:
+            im.bestaand_id, im.koppeling = bestaand.id, "naam"
+            im.toelichting = "bestaande medewerker (zelfde naam)"
+            continue
+        andere = Medewerker.query.filter_by(initialen=im.initialen).first() if im.initialen else None
+        if andere is not None:
+            im.koppeling = "initialen"
+            im.toelichting = f"nieuw; initialen {im.initialen} zijn al van {andere.naam}"
+            plan.waarschuwingen.append(
+                f"'{im.naam}' heeft dezelfde initialen ({im.initialen}) als de bestaande medewerker "
+                f"'{andere.naam}'. Er wordt een nieuwe medewerker aangemaakt met andere initialen. "
+                "Is het dezelfde persoon? Pas dan eerst de naam in de app of in Excel aan.")
+        else:
+            im.toelichting = "nieuwe medewerker"
 
 
 def _lees_lijsten(blad, plan: ImportPlan) -> None:
@@ -311,7 +388,7 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
         naam = _tekst(blad.cell(basis, 2).value)
-        if naam.isdigit():  # bijv. 0 uit een formule naar een lege cel
+        if is_cijfers(naam):  # bijv. 0 uit een formule naar een lege cel
             naam = ""
         if not naam:
             if n > 12 and all(_is_leeg(blad.cell(basis + k, 2).value) for k in range(8)):
@@ -350,15 +427,54 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
 # ---------------------------------------------------------------------------
 
 def importeer(plan: ImportPlan) -> dict:
-    """Schrijf het plan naar de database. Bestaande diensten in de geïmporteerde weken
-    worden overschreven; bestaande medewerkers en codes worden hergebruikt."""
+    """Schrijf het plan naar de database, in één transactie (alles of niets).
+
+    Bestaande diensten in de geïmporteerde weken worden overschreven; bestaande
+    medewerkers (zelfde naam) en codes (zelfde nummer) worden hergebruikt.
+    Gaat er iets mis, dan wordt alles teruggedraaid en volgt een ImportFout.
+    """
+    if dubbel := plan.dubbele_diensten():
+        raise ImportFout("Er is niets geïmporteerd: dubbele diensten in het bestand ("
+                         + "; ".join(dubbel) + ").")
+    try:
+        resultaat, medewerkers = _importeer(plan)
+        db.session.commit()
+    except IntegrityError as fout:
+        db.session.rollback()
+        raise ImportFout("Er is niets geïmporteerd: het bestand bevat gegevens die botsen "
+                         f"(bijvoorbeeld een dubbele dienst). Details: {fout.orig}") from fout
+    except Exception:
+        db.session.rollback()
+        raise
+    # Gekoppelde agenda's gelijk maken aan het nieuwe rooster. De import zelf is al
+    # opgeslagen: een fout hier mag niet als 'import mislukt' gemeld worden.
+    for medewerker in medewerkers:
+        try:
+            sync_planning.plan_volledig(medewerker)
+        except Exception:
+            db.session.rollback()
+            log.exception("Agenda-synchronisatie na de import niet gepland voor %s; "
+                          "gebruik Beheer → Google Agenda → Volledig synchroniseren", medewerker.naam)
+    log.info("Excel-import klaar: %s", resultaat)
+    return resultaat
+
+
+def _importeer(plan: ImportPlan) -> tuple[dict, list[Medewerker]]:
+    """Het eigenlijke importeren; er wordt hier nergens gecommit."""
     resultaat = {"medewerkers": 0, "codes": 0, "vakanties": 0, "diensten": 0, "dagopmerkingen": 0}
 
-    # Toeslagen
-    if plan.toeslag_zaterdag:
-        instellingen.schrijf("toeslag_zaterdag", plan.toeslag_zaterdag)
-    if plan.toeslag_zondag:
-        instellingen.schrijf("toeslag_zondag", plan.toeslag_zondag)
+    # Feestdagen vooraf aanmaken (zonder commit), zodat de berekeningen hieronder
+    # nooit halverwege iets opslaan. Een week kan over de jaargrens lopen.
+    for jaar in (plan.jaar - 1, plan.jaar, plan.jaar + 1):
+        zorg_voor_jaar(jaar, commit=False)
+
+    # Toeslagen (oude waarde in het logboek)
+    for sleutel, waarde in (("toeslag_zaterdag", plan.toeslag_zaterdag),
+                            ("toeslag_zondag", plan.toeslag_zondag)):
+        if waarde and instellingen.lees(sleutel) != str(waarde):
+            logboek.log("Instelling gewijzigd", "Excel-import", veld=sleutel,
+                        oud=instellingen.lees(sleutel), nieuw=waarde)
+            instellingen.schrijf(sleutel, waarde)
 
     # Dienstcodes (kleuren uit het voorbeeldpakket als het nummer daar in staat)
     pakket = {c[0]: c for c in DIENSTCODES}
@@ -382,13 +498,11 @@ def importeer(plan: ImportPlan) -> dict:
     for code in codes.values():
         per_naam_code.setdefault(code.omschrijving.casefold(), []).append(code)
 
-    # Medewerkers (op naam of initialen hergebruiken)
+    # Medewerkers: alleen op naam hergebruiken (zie _bepaal_koppelingen)
     medewerkers: dict[str, Medewerker] = {}
     volgorde = db.session.query(db.func.max(Medewerker.volgorde)).scalar() or 0
     for im in plan.medewerkers:
         medewerker = Medewerker.query.filter_by(naam=im.naam).first()
-        if medewerker is None and im.initialen:
-            medewerker = Medewerker.query.filter_by(initialen=im.initialen).first()
         if medewerker is None:
             volgorde += 1
             initialen = im.initialen if im.initialen and not Medewerker.query.filter_by(
@@ -438,7 +552,7 @@ def importeer(plan: ImportPlan) -> dict:
         dienst = Dienst(
             medewerker_id=medewerker.id, datum=d.datum,
             dienstcode_id=code.id if code else None,
-            dienstnaam_override="" if code else d.dienstnaam,
+            dienstnaam_override="" if code else d.dienstnaam[:60],
             begin=d.begin, eind=d.eind,
             tijden_handmatig=bool(code and (d.begin, d.eind) != (code.std_begin, code.std_eind)),
             opmerking_tekst=d.opmerking[:120], opmerking_begin=d.opm_begin,
@@ -468,5 +582,5 @@ def importeer(plan: ImportPlan) -> dict:
 
     logboek.log("Excel-import", ", ".join(f"{k}: {v}" for k, v in resultaat.items()))
     markeer_bijgewerkt()
-    db.session.commit()
-    return resultaat
+    db.session.flush()
+    return resultaat, list(medewerkers.values())

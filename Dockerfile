@@ -21,9 +21,11 @@ RUN useradd --uid 1000 --user-group --create-home --shell /usr/sbin/nologin roos
 
 WORKDIR /app
 
-# Eerst alleen de afhankelijkheden (sneller herbouwen bij codewijzigingen)
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Eerst alleen de afhankelijkheden (sneller herbouwen bij codewijzigingen).
+# requirements.lock bevat de exacte versies (gemaakt met pip-compile uit requirements.txt),
+# zodat elke build precies dezelfde pakketten krijgt.
+COPY requirements.txt requirements.lock ./
+RUN pip install -r requirements.lock
 
 COPY app ./app
 COPY migrations ./migrations

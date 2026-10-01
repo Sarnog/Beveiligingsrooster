@@ -39,12 +39,29 @@ class Gebruiker(UserMixin, db.Model):
     moet_wachtwoord_wijzigen = db.Column(db.Boolean, nullable=False, default=False)
     aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
     laatst_ingelogd = db.Column(db.DateTime, nullable=True)
+    # Wordt opgehoogd bij wachtwoord wijzigen/resetten en deactiveren: alle bestaande
+    # sessies van deze gebruiker zijn dan direct ongeldig (zie get_id en laad_gebruiker)
+    sessie_versie = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     medewerker = db.relationship("Medewerker")
 
     @property
     def is_beheerder(self) -> bool:
         return self.rol == ROL_BEHEERDER
+
+    def get_id(self) -> str:
+        """Sessiesleutel voor Flask-Login: '<id>:<sessie_versie>:<sessie_generatie>'.
+
+        De sessie_generatie is één instelling voor de hele app; die verandert na het
+        terugzetten van een back-up, zodat dan iedereen opnieuw moet inloggen.
+        """
+        from .services import instellingen
+
+        return f"{self.id}:{self.sessie_versie or 0}:{instellingen.lees('sessie_generatie')}"
+
+    def maak_sessies_ongeldig(self) -> None:
+        """Log deze gebruiker overal uit (commit doet de aanroeper)."""
+        self.sessie_versie = (self.sessie_versie or 0) + 1
 
     @property
     def is_active(self) -> bool:  # gebruikt door Flask-Login
@@ -197,7 +214,11 @@ class Dienst(db.Model):
 
 
 class Dagopmerking(db.Model):
-    """Handmatige dagopmerking (rij 3). Automatische tekst wordt niet opgeslagen."""
+    """Handmatige dagopmerking (rij 3). Automatische tekst wordt niet opgeslagen.
+
+    De kolom 'handmatig' is altijd True (er worden alleen handmatige teksten bewaard);
+    hij blijft bestaan omdat hij in het databaseschema staat.
+    """
 
     __tablename__ = "dagopmerking"
 
@@ -220,9 +241,16 @@ class Vakantie(db.Model):
 
 
 class Feestdag(db.Model):
-    """Feestdag of eigen roostervrije dag, per jaar."""
+    """Feestdag of eigen roostervrije dag, per jaar.
+
+    Een standaard feestdag (met sleutel) bestaat maar één keer per jaar (unieke index).
+    """
 
     __tablename__ = "feestdag"
+    __table_args__ = (
+        db.Index("uq_feestdag_jaar_sleutel", "jaar", "sleutel", unique=True,
+                 sqlite_where=db.text("sleutel != ''")),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     jaar = db.Column(db.Integer, nullable=False, index=True)
@@ -266,14 +294,18 @@ class Logboek(db.Model):
 
 
 class LoginPoging(db.Model):
-    """Inlogpogingen, voor de beperking van 5 pogingen per 15 minuten."""
+    """Inlogpogingen, voor de beperking van 5 pogingen per 15 minuten.
+
+    tijdstip is in UTC (klok.utc_nu), zodat de wintertijd de blokkade niet beïnvloedt.
+    De worker ruimt pogingen ouder dan één dag op.
+    """
 
     __tablename__ = "login_poging"
 
     id = db.Column(db.Integer, primary_key=True)
     gebruikersnaam = db.Column(db.String(64), nullable=False, index=True)
     ip = db.Column(db.String(64), nullable=False, index=True)
-    tijdstip = db.Column(db.DateTime, nullable=False, default=nu, index=True)
+    tijdstip = db.Column(db.DateTime, nullable=False, default=klok.utc_nu, index=True)
     gelukt = db.Column(db.Boolean, nullable=False, default=False)
 
 
@@ -289,11 +321,39 @@ class SyncTaak(db.Model):
     )
     datum = db.Column(db.Date, nullable=True)  # leeg = volledige synchronisatie
     soort = db.Column(db.String(20), nullable=False, default="dag")  # dag/volledig/ontkoppel
-    # Niet eerder uitvoeren dan dit tijdstip (debounce en backoff)
-    niet_voor = db.Column(db.DateTime, nullable=False, default=nu, index=True)
+    # Niet eerder uitvoeren dan dit tijdstip (debounce en backoff), in UTC.
+    # Bij status 'bezig' is dit het moment waarop de worker begon.
+    niet_voor = db.Column(db.DateTime, nullable=False, default=klok.utc_nu, index=True)
     pogingen = db.Column(db.Integer, nullable=False, default=0)
     laatste_fout = db.Column(db.Text, nullable=False, default="")
-    status = db.Column(db.String(12), nullable=False, default="wacht", index=True)
+    status = db.Column(db.String(12), nullable=False, default="wacht", index=True)  # wacht/bezig/fout
     aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
     # Extra gegevens, bijvoorbeeld een event-id dat verwijderd moet worden
     extra = db.Column(db.Text, nullable=False, default="")
+
+
+class ApiToken(db.Model):
+    """Persoonlijk API-token voor een app (Account → API-tokens).
+
+    Alleen de SHA-256-hash wordt bewaard; het token zelf ziet de gebruiker één keer.
+    sessie_sleutel is Gebruiker.get_id() op het moment van aanmaken: na wachtwoord
+    wijzigen of resetten, deactiveren, een rolwijziging of het terugzetten van een
+    back-up klopt die niet meer en is het token ongeldig (net als een sessie).
+    Tijden in UTC.
+    """
+
+    __tablename__ = "api_token"
+
+    id = db.Column(db.Integer, primary_key=True)
+    gebruiker_id = db.Column(
+        db.Integer, db.ForeignKey("gebruiker.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    naam = db.Column(db.String(60), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    prefix = db.Column(db.String(12), nullable=False)  # begin van het token, om het te herkennen
+    sessie_sleutel = db.Column(db.String(120), nullable=False)
+    aangemaakt_op = db.Column(db.DateTime, nullable=False, default=klok.utc_nu)
+    verloopt_op = db.Column(db.DateTime, nullable=False)
+    laatst_gebruikt = db.Column(db.DateTime, nullable=True)
+
+    gebruiker = db.relationship("Gebruiker")

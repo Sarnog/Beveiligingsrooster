@@ -24,5 +24,5 @@ def health():
     try:
         db.session.execute(text("SELECT 1"))
         return jsonify(status="ok")
-    except Exception:  # noqa: BLE001 - elke databasefout is 'niet gezond'
+    except Exception:  # elke databasefout is 'niet gezond'
         return jsonify(status="fout"), 503

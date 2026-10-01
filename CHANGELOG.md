@@ -2,6 +2,174 @@
 
 ## [Onuitgebracht]
 
+## [1.3.0] – 2026-10-01
+
+> Versie 1.2.0 is per ongeluk als tussenstand uitgebracht; gebruik 1.3.0.
+
+Onderhouds- en beveiligingsversie na een audit van 1.1.2: veel kleine en een paar
+belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen.
+
+**Bijwerken vanaf 1.1.x:**
+1. Maak eerst een back-up (`update.sh` doet dat vanzelf).
+2. Iedereen moet na de update één keer opnieuw inloggen.
+3. Gebruik je Google Agenda? Klik daarna in *Beheer → Google Agenda* per medewerker één keer
+   op *Volledig synchroniseren*.
+
+### Nieuw
+- **Op de telefoon:** elke pagina past nu op een telefoonscherm, zonder inzoomen of opzij
+  schuiven. Het menu klapt in (☰), knoppen zijn groot genoeg om op te tikken en brede tabellen
+  schuiven binnen de tabel (met een hint), met een vaste eerste kolom. Op de computer blijft
+  alles hetzelfde.
+- **Mijn rooster** is vernieuwd: bovenaan *Vandaag* en *Volgende dienst*, per dag een
+  duidelijke kaart, en een grote knop *Toevoegen aan mijn agenda*.
+- **Weekrooster op de telefoon:** per dag (het hele team) of per medewerker (zeven dagen),
+  bladeren met knoppen of door te vegen. Een knop wisselt tussen deze weergave en het gewone
+  raster; de keuze wordt onthouden.
+- **De planner kan op de telefoon een dienst wijzigen:** tik op een dag, kies de dienst, pas
+  eventueel tijden, opmerking of uren aan en tik op *Opslaan*. Je ziet vooraf hoeveel uren het
+  worden. Een gelijktijdige wijziging door een andere planner wordt nooit overschreven.
+- **Installeren als app** op het beginscherm van Android en iPhone (via HTTPS). De app bewaart
+  geen roosterdata en laadt na een update altijd de nieuwe versie; zonder verbinding zie je
+  *Je bent offline*.
+- **API voor een app:** `/api/v1` (alleen lezen) met je eigen rooster, het weekrooster en de
+  dienstcodes. Inloggen met een persoonlijk **API-token** dat je zelf maakt en intrekt
+  (*naam rechtsboven → API-token*). Een token verloopt, staat alleen als hash in de database
+  en werkt niet meer na een wachtwoordwijziging. Zie `docs/api.md` en `docs/app.md`.
+- `flask terugzetten <back-up>`: een back-up terugzetten op de server, als de website niet werkt.
+  `flask backup --label` accepteert alleen kleine letters, cijfers en `-`, zodat zo'n back-up
+  later ook automatisch opgeruimd wordt.
+
+### Opgelost
+- **Back-ups:** een mislukte nachtelijke back-up (bijvoorbeeld een volle schijf) liet een leeg
+  bestand achter en werd elke 5 seconden opnieuw geprobeerd. Bij de eerstvolgende geslaagde
+  back-up ruimde de app dan alle échte back-ups op en bewaarde alleen de lege. Nu:
+  - een back-up wordt eerst als tijdelijk bestand geschreven en gecontroleerd, pas daarna krijgt
+    hij zijn echte naam; bij een fout wordt het tijdelijke bestand opgeruimd;
+  - na een mislukte back-up wacht de worker 30 minuten en zet een regel in het logboek
+    ("Back-up mislukt");
+  - het opruimen telt alleen geldige automatische back-ups.
+- **Weekrooster:** dezelfde dienstcode opnieuw invoeren (bijv. 4 → 5 → terug naar 4 en dan
+  Opslaan) zette zelf aangepaste tijden stilletjes terug naar de standaardtijden, zonder
+  logboekregel en zonder agenda-update. Een ongewijzigde code verandert nu niets meer.
+- **Excel-import:** de import gebeurt nu in één keer. Ging er halverwege iets mis (bijvoorbeeld
+  bij een verse installatie), dan kon er een half rooster achterblijven. Nu wordt alles
+  teruggedraaid en zie je een duidelijke melding in plaats van een foutpagina.
+  Dubbele diensten (zelfde medewerker en dag) worden al in de droogloop gemeld.
+- **Excel-import:** een medewerker werd ook op alleen dezelfde initialen gekoppeld, waardoor
+  diensten bij de verkeerde collega terecht konden komen. Alleen een gelijke naam koppelt nog;
+  bij alleen gelijke initialen komt er een nieuwe medewerker en toont de droogloop een
+  waarschuwing. De droogloop laat per medewerker zien hoe hij gekoppeld wordt.
+- **Google Agenda:** een wijziging die binnenkwam terwijl de worker met dezelfde dag bezig was,
+  kon verloren gaan. De worker zet een taak nu eerst op "bezig"; een nieuwe wijziging krijgt
+  een eigen taak. Taken die na een crash op "bezig" blijven staan, gaan na 10 minuten terug
+  in de wachtrij.
+- **Google Agenda, gedeelde agenda (modus B):** een volledige synchronisatie of ontkoppelen van
+  één collega verwijderde ook de afspraken van andere collega's in dezelfde agenda. Nu worden
+  alleen de eigen afspraken van die medewerker aangeraakt.
+- **Back-up terugzetten:** een back-up van een nieuwere versie van de app terugzetten legde de
+  app plat (ook na een herstart). Nu wordt dat vooraf geweigerd met een duidelijke melding.
+  Mislukt het bijwerken van een oudere back-up, dan wordt de vorige stand automatisch
+  teruggezet. Een beschadigde back-up wordt geweigerd (de integriteitscontrole telt nu echt).
+  Een mislukte upload wordt altijd opgeruimd.
+
+- **Toeslagfactoren:** "inf" of "nan" werd geaccepteerd, waarna elke weekenddienst een foutpagina
+  gaf. Factoren moeten nu een gewoon getal groter dan 0 en hooguit 10 zijn (instellingen en setup).
+- **Tijdzone:** een onbekende tijdzone (tikfout) werd opgeslagen, waarna Google elke afspraak
+  weigerde. De tijdzone wordt nu gecontroleerd. Er is nog maar één bron: de instelling
+  (standaard de `TZ` uit docker-compose), voor de klok, de ICS-feed en Google Agenda.
+- **Blanco-code:** mocht gelijk zijn aan een bestaande dienstcode, die daarna niet meer in te
+  voeren was. Dat wordt nu geweigerd.
+- **Worker:** een fout in de agenda-synchronisatie kon stil blijven of de back-up tegenhouden.
+  Elke stap heeft nu een eigen foutafhandeling met een duidelijke regel in de log.
+  `google-auth-httplib2` en `httplib2` staan nu ook echt in `requirements.txt`.
+- **Weekrooster:** twee beheerders die exact tegelijk dezelfde dienst opslaan, kunnen elkaars
+  wijziging niet meer ongemerkt overschrijven; de tweede krijgt een melding (409).
+- **Excel-import:** na de import worden de gekoppelde Google-agenda's automatisch bijgewerkt.
+  Lukt het plannen daarvan niet, dan blijft de import gewoon staan (met een regel in de log);
+  er komt geen onterechte melding "er is niets geïmporteerd".
+- De app-log zweeg na het terugzetten van een back-up (de databasemigratie zette de loggers uit).
+- Kleine reparaties:
+  - een agenda-taak die tijdens een fout verdwijnt, of een onverwachte fout bij Google, legt de
+    wachtrij niet meer stil (de taak wordt later opnieuw geprobeerd);
+  - tekens als "²" in een tijd- of codecel geven een gewone foutmelding in plaats van een
+    foutpagina; ongeldige verzoeken en datums buiten 1950–2150 worden netjes geweigerd;
+  - na het wijzigen van een codenummer, een vakantie of een feestdag worden de agenda-afspraken
+    (met de dagtekst) bijgewerkt;
+  - "Week kopiëren" plant geen diensten meer voor een medewerker na zijn archiefdatum;
+  - een standaard feestdag kan niet meer dubbel ontstaan (dubbele worden bij de update
+    opgeruimd);
+  - een bewaartermijn van 0 dagen en 0 uur wiste het hele logboek; nu betekent dat "nooit
+    opschonen";
+  - zoeken op "___" of "%%%" vindt niet meer alles;
+  - kleurregels zijn uniek zonder op hoofdletters te letten en hooguit 60 tekens;
+  - Excel-import: een onmogelijk jaar in Kalender!E2 geeft een duidelijke melding, lange
+    dienstnamen worden ingekort en overschreven toeslagen komen met hun oude waarde in het
+    logboek;
+  - `BASE_URL` wordt nu echt gebruikt voor de ICS-links en de deellink.
+- Een handmatige back-up die mislukt (bijv. volle schijf) geeft een melding in plaats van een
+  foutpagina.
+- **Printen:** met 15 medewerkers kwam de week op twee pagina's; nu altijd op één A4 liggend.
+  De weektotalen worden niet meer afgekapt.
+- Het weekrooster laadt sneller: contracturen en dienstcodes worden in één keer opgehaald in
+  plaats van per medewerker (gemeten: ongeveer 25 ms met 15 medewerkers en een vol jaar).
+
+### Gewijzigd
+- **Uitbrengen:** alleen een push naar `main` maakt nog een versie-tag, een GitHub-release en
+  een image (`<versie>` en `latest`). Een zijbranch of pull request test alleen. Daardoor kan er
+  niet meer per ongeluk een halve versie uitkomen, zoals bij 1.2.0. De GitHub Actions zijn
+  bijgewerkt naar de nieuwste hoofdversies en vastgezet op een vaste commit.
+- Wachttijden van de agenda-wachtrij en de loginblokkade rekenen in UTC; het dubbele uur bij de
+  overgang naar wintertijd heeft er geen invloed meer op.
+- Back-ups met een label (handmatig, voor-update, voor-import, voor-terugzetten, upload) worden
+  na 90 dagen opgeruimd; de nieuwste 10 blijven altijd staan.
+- Geüploade Excel-bestanden van een afgebroken import worden na een dag opgeruimd.
+- Voorbeeldpakket: de kleurregels heten nu "Locatie A" en "Locatie B" (geen echte plaatsnamen).
+  Bestaande kleurregels blijven ongewijzigd.
+- Opgeruimd: ongebruikte code (o.a. dubbele dagnamen, oude hulpfuncties) en een ongebruikte
+  cookie-instelling.
+- **Debuglog:** met `LOG_NIVEAU` (DEBUG, INFO, WARNING, ERROR) stel je in hoeveel er in
+  `docker compose logs` komt. Met `DEBUG_LOG=1` komen alle details van website en worker in
+  `data/logs/debug.log` (maximaal 4 × 5 MB), te bekijken en te downloaden via *Beheer → Debuglog*.
+  Wachtwoorden, SQL en geheime tokens komen er nooit in.
+- De Docker-image wordt gebouwd met vaste pakketversies (`requirements.lock`), zodat elke
+  build hetzelfde is. `requirements.txt` blijft de bron.
+- CI controleert nu ook de databasemigraties op een lege database (`flask db upgrade` en
+  `flask db check`) en meet de testdekking (branch-coverage); er zijn veel tests bijgekomen
+  (o.a. met CSRF-bescherming aan, de commando's, de worker en de Google-koppeling).
+- README aangevuld: inlogblokkade en reverse proxy, `COOKIE_SECURE`, `TZ`, `GUNICORN_*`,
+  `DATABASE_URL`, bewaartermijn van back-ups en terug naar de vorige versie na een mislukte
+  update.
+- Databaseversies 0004 en 0005 (gaan automatisch bij de start): sessieversie per gebruiker,
+  unieke standaard feestdagen per jaar, wachttijden in UTC, en een tabel voor API-tokens.
+- Elke versie wordt nu vóór het uitbrengen automatisch getest: de Docker-image wordt gebouwd en
+  gestart op een lege datamap (inclusief back-up en terugzetten), het bijwerken vanaf 1.1.2 wordt
+  getest met voorbeelddata, en alle pagina's worden in een echte browser op telefoon-, tablet-
+  en computerformaat gecontroleerd.
+
+### Beveiliging
+- **Sessies:** na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of
+  een rolwijziging worden alle andere sessies van die gebruiker direct uitgelogd. Na het
+  terugzetten van een back-up moet iedereen opnieuw inloggen.
+- **Achter een proxy:** zonder `PROXY_VERTROUWEN=1` lijkt iedereen van hetzelfde IP-adres te
+  komen; na 20 foute pogingen werd dan het hele team geblokkeerd. Nu komt een collega met het
+  juiste wachtwoord er nog steeds in (elke naam krijgt dan nog één poging). Komt er een
+  `X-Forwarded-For`-header binnen terwijl `PROXY_VERTROUWEN` uit staat, dan staat er een
+  waarschuwing in de log.
+- CSV-exports: cellen die met `=`, `+`, `-` of `@` beginnen, krijgen een `'` ervoor, zodat
+  Excel ze nooit als formule uitvoert.
+- De geheime tokens van de ICS-feed en de deellink staan niet meer in de toegangslog.
+- Verkeerde bestandsrechten in `./data` (na een commando zonder `-u rooster`) geven een
+  duidelijke melding met de oplossing.
+- **Inloggen:** een bezoeker zonder account kon de database onbeperkt laten groeien met extreem
+  lange gebruikersnamen. De gebruikersnaam wordt nu op 64 tekens afgekapt, een blokkade komt
+  maar één keer in het logboek, alle logboekvelden zijn begrensd en loginpogingen ouder dan een
+  dag worden dagelijks opgeruimd.
+- Inloggen met een onbekende gebruikersnaam of een gedeactiveerd account duurt even lang als met
+  een bestaande (je kunt aan de responstijd niet meer zien welke namen bestaan).
+- Via HTTPS (Secure-cookies aan) stuurt de app nu `Strict-Transport-Security` mee; zonder HTTPS
+  niet, zodat je jezelf op een LAN-adres niet buitensluit. De Content-Security-Policy blokkeert
+  nu ook plug-ins (`object-src 'none'`).
+
 ## [1.1.2] – 2026-10-01
 
 ### Opgelost
@@ -30,10 +198,6 @@
   - De server slaat alleen nog op bij een expliciete opdracht van de knop **Opslaan**; zonder die
     opdracht wordt alleen een voorbeeld berekend. Een oud script kan dus nooit meer iets opslaan.
   - De oude route die dagopmerkingen direct opsloeg, is verwijderd.
-
-## [1.1.1] – 2026-10-01
-
-### Opgelost
 - Google Agenda, modus A: de knop was uitgeschakeld (klikken deed niets) als de medewerker geen
   e-mailadres had, bijvoorbeeld na een Excel-import. Het e-mailadres kan nu direct bij de knop
   ingevuld worden en wordt bij de medewerker bewaard; zonder e-mailadres volgt een duidelijke melding.

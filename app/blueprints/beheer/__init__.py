@@ -22,6 +22,7 @@ def index():
 from . import (  # noqa: E402,F401
     agenda,
     backups,
+    debuglog,
     dienstcodes,
     gebruikers,
     importeren,

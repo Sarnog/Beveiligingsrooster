@@ -5,10 +5,11 @@ import secrets
 from flask import flash, redirect, render_template, request, url_for
 
 from ...extensions import db
-from ...models import Dienst, Medewerker
-from ...services import instellingen, logboek, sync_planning
+from ...models import Dienst, Dienstcode, Medewerker
+from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import herbereken_alle
-from ..hulp import beheerder_vereist, getal, vinkje
+from ...services.tijden import is_cijfers
+from ..hulp import MAX_FACTOR, beheerder_vereist, factor, vinkje
 from . import bp
 
 # Tekstinstellingen die direct uit het formulier komen
@@ -36,30 +37,36 @@ def instellingen_scherm():
             nieuw[veld] = formulier.get(veld, "").strip()
         if not nieuw["teamnaam"]:
             fouten.append("Vul een teamnaam in.")
+        if nieuw["tijdzone"] and not klok.is_geldige_tijdzone(nieuw["tijdzone"]):
+            fouten.append(f"Onbekende tijdzone '{nieuw['tijdzone']}'. Gebruik een naam zoals "
+                          "Europe/Amsterdam.")
 
         for veld, (minimum, maximum) in GETALVELDEN.items():
             tekst = formulier.get(veld, "").strip()
-            if not tekst.lstrip("-").isdigit() or not (minimum <= int(tekst) <= maximum):
+            if not is_cijfers(tekst.removeprefix("-")) or not (minimum <= int(tekst) <= maximum):
                 fouten.append(f"Ongeldige waarde voor '{veld}' ({minimum} t/m {maximum}).")
             else:
                 nieuw[veld] = tekst
 
         blanco = formulier.get("blanco_code", "").strip()
-        if blanco and not blanco.isdigit():
+        if blanco and not is_cijfers(blanco):
             fouten.append("De blanco-code moet een getal zijn (of leeg).")
+        elif blanco and Dienstcode.query.filter_by(nummer=int(blanco)).first():
+            fouten.append(f"De blanco-code {blanco} is al een dienstcode. Kies een ander nummer, "
+                          "anders is die dienstcode niet meer in te voeren.")
         nieuw["blanco_code"] = blanco
 
-        # Toeslagen: komma of punt
+        # Toeslagen: komma of punt, groter dan 0 en hooguit MAX_FACTOR
         for veld in ("toeslag_zaterdag", "toeslag_zondag"):
-            waarde = getal(formulier.get(veld))
-            if waarde is None or waarde <= 0:
-                fouten.append("Toeslagfactoren moeten groter dan 0 zijn.")
+            waarde = factor(formulier.get(veld))
+            if waarde is None:
+                fouten.append(f"Toeslagfactoren moeten groter dan 0 en hooguit {MAX_FACTOR:g} zijn.")
             else:
                 nieuw[veld] = str(waarde)
         if vinkje(formulier, "feestdagtoeslag_aan"):
-            waarde = getal(formulier.get("toeslag_feestdag"))
-            if waarde is None or waarde <= 0:
-                fouten.append("Vul een geldige feestdagfactor in.")
+            waarde = factor(formulier.get("toeslag_feestdag"))
+            if waarde is None:
+                fouten.append(f"Vul een geldige feestdagfactor in (groter dan 0, hooguit {MAX_FACTOR:g}).")
             else:
                 nieuw["toeslag_feestdag"] = str(waarde)
         else:
@@ -88,6 +95,7 @@ def instellingen_scherm():
                 instellingen.schrijf(sleutel, waarde)
                 uren_gewijzigd = uren_gewijzigd or sleutel in uren_relevant
         db.session.commit()
+        klok.wis_cache()  # nieuwe tijdzone direct gebruiken
         # Titel of tijdzone van afspraken gewijzigd: alle gekoppelde agenda's bijwerken
         if any(instellingen.lees(k) != oude.get(k) for k in ("agenda_voorvoegsel", "tijdzone")):
             for medewerker in Medewerker.query.filter(Medewerker.agenda_modus != "").all():
@@ -101,7 +109,9 @@ def instellingen_scherm():
 
 
 def _huidig() -> dict:
-    return {sleutel: instellingen.lees(sleutel) for sleutel in instellingen.STANDAARD}
+    waarden = {sleutel: instellingen.lees(sleutel) for sleutel in instellingen.STANDAARD}
+    waarden["tijdzone"] = waarden["tijdzone"] or klok.standaard_tijdzone()
+    return waarden
 
 
 @bp.route("/instellingen/deellink-vernieuwen", methods=["POST"])

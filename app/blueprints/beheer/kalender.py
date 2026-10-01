@@ -5,11 +5,12 @@ from flask import flash, redirect, render_template, request, url_for
 
 from ...extensions import db
 from ...models import Feestdag, Vakantie
-from ...services import klok, logboek
+from ...services import logboek, sync_planning
 from ...services.feestdagen import zorg_voor_jaar
 from ...services.kalender import werkdagen
 from ...services.tijden import parse_datum
 from ..hulp import beheerder_vereist
+from ..kalender import kies_jaar
 from . import bp
 
 # ---------- Vakanties ----------
@@ -27,7 +28,7 @@ def vakanties():
 @beheerder_vereist
 def vakantie_opslaan():
     """Nieuwe vakantie toevoegen, of een bestaande (veld 'id') wijzigen."""
-    naam = request.form.get("naam", "").strip()
+    naam = request.form.get("naam", "").strip()[:80]
     van = parse_datum(request.form.get("datum_van"))
     tot = parse_datum(request.form.get("datum_tot"))
     if not naam or van is None or tot is None:
@@ -36,9 +37,11 @@ def vakantie_opslaan():
         flash("De einddatum ligt voor de begindatum.", "fout")
     else:
         vid = request.form.get("id", type=int)
+        periodes = [(van, tot)]
         if vid:
             vakantie = db.get_or_404(Vakantie, vid)
             oud = f"{vakantie.naam} {vakantie.datum_van:%d-%m-%Y} t/m {vakantie.datum_tot:%d-%m-%Y}"
+            periodes.append((vakantie.datum_van, vakantie.datum_tot))
             vakantie.naam, vakantie.datum_van, vakantie.datum_tot = naam, van, tot
             actie = "Vakantie gewijzigd"
         else:
@@ -47,6 +50,8 @@ def vakantie_opslaan():
             actie = "Vakantie toegevoegd"
         logboek.log(actie, oud=oud, nieuw=f"{naam} {van:%d-%m-%Y} t/m {tot:%d-%m-%Y}")
         db.session.commit()
+        for begin, einde in periodes:  # de dagtekst staat in de agenda-afspraken
+            sync_planning.plan_periode(begin, einde)
         flash("Vakantie opgeslagen.", "succes")
     return redirect(url_for("beheer.vakanties"))
 
@@ -56,8 +61,10 @@ def vakantie_opslaan():
 def vakantie_verwijder(vid: int):
     vakantie = db.get_or_404(Vakantie, vid)
     logboek.log("Vakantie verwijderd", oud=f"{vakantie.naam} {vakantie.datum_van:%d-%m-%Y}")
+    van, tot = vakantie.datum_van, vakantie.datum_tot
     db.session.delete(vakantie)
     db.session.commit()
+    sync_planning.plan_periode(van, tot)
     flash("Vakantie verwijderd.", "succes")
     return redirect(url_for("beheer.vakanties"))
 
@@ -67,7 +74,7 @@ def vakantie_verwijder(vid: int):
 @bp.route("/feestdagen")
 @beheerder_vereist
 def feestdagen():
-    jaar = request.args.get("jaar", type=int) or klok.vandaag().year
+    jaar = kies_jaar()
     zorg_voor_jaar(jaar)
     lijst = Feestdag.query.filter_by(jaar=jaar).order_by(Feestdag.datum).all()
     return render_template("beheer/feestdagen.html", jaar=jaar, feestdagen=lijst)
@@ -82,6 +89,7 @@ def feestdag_wissel(fid: int):
     logboek.log("Feestdag gewijzigd", f"{feestdag.naam} {feestdag.datum:%d-%m-%Y}",
                 veld="actief", oud=not feestdag.actief, nieuw=feestdag.actief)
     db.session.commit()
+    sync_planning.plan_periode(feestdag.datum, feestdag.datum)
     flash("Let op: gebruik 'Alle uren herberekenen' als je een feestdagtoeslag gebruikt.", "info")
     return redirect(url_for("beheer.feestdagen", jaar=feestdag.jaar))
 
@@ -95,9 +103,10 @@ def feestdag_nieuw():
     if not naam or datum is None:
         flash("Vul een naam en een geldige datum in.", "fout")
         return redirect(url_for("beheer.feestdagen"))
-    db.session.add(Feestdag(jaar=datum.year, datum=datum, naam=naam, sleutel=""))
+    db.session.add(Feestdag(jaar=datum.year, datum=datum, naam=naam[:80], sleutel=""))
     logboek.log("Roostervrije dag toegevoegd", nieuw=f"{naam} {datum:%d-%m-%Y}")
     db.session.commit()
+    sync_planning.plan_periode(datum, datum)
     flash("Roostervrije dag toegevoegd.", "succes")
     return redirect(url_for("beheer.feestdagen", jaar=datum.year))
 
@@ -110,8 +119,10 @@ def feestdag_verwijder(fid: int):
     jaar = feestdag.jaar
     if feestdag.is_eigen:
         logboek.log("Roostervrije dag verwijderd", oud=f"{feestdag.naam} {feestdag.datum:%d-%m-%Y}")
+        datum = feestdag.datum
         db.session.delete(feestdag)
         db.session.commit()
+        sync_planning.plan_periode(datum, datum)
         flash("Roostervrije dag verwijderd.", "succes")
     else:
         flash("Standaard feestdagen kun je alleen uitzetten.", "fout")

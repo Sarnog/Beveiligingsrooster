@@ -1,15 +1,44 @@
 {% extends "base.html" %}
 {% block titel %}Mijn rooster{% endblock %}
-{% set dagnamen = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'] %}
+{% macro dienst_info(d) -%}
+  {% if d.dienstnaam %}<span class="dienst-voorbeeld" style="{% if d.dienstcode %}background:{{ d.dienstcode.kleur_achtergrond }};color:{{ d.dienstcode.kleur_tekst }}{% endif %}">{{ d.dienstnaam }}</span>{% endif %}
+  {% if d.begin %}<span class="mijn-tijden">{{ d.begin }} – {{ d.eind }}</span>{% endif %}
+  {% if d.opmerking_tekst %}<em class="mijn-opmerking">{{ d.opmerking_tekst }}{% if d.opmerking_begin %} ({{ d.opmerking_begin }}–{{ d.opmerking_eind }}){% endif %}</em>{% endif %}
+{%- endmacro %}
 {% block inhoud %}
 <div class="kop-rij">
   <h1>Mijn rooster <small>{{ medewerker.naam }}</small></h1>
   <span class="knoppen">
     <a class="knop" href="{{ url_for('rooster.week') }}">Deze week</a>
     <a class="knop" href="{{ url_for('kalender.jaar') }}">Kalender</a>
-    {% if heeft_route('rooster.agenda_info') %}<a class="knop" href="{{ url_for('rooster.agenda_info') }}">In mijn agenda</a>{% endif %}
   </span>
 </div>
+
+<div class="mijn-samenvatting">
+  <section class="kaart mijn-blok" data-blok="vandaag">
+    <h2>Vandaag <small>{{ dagnamen[vandaag.weekday()] }} {{ vandaag|datum_nl }}</small></h2>
+    {% if dienst_vandaag %}
+      <p class="mijn-dienst">{{ dienst_info(dienst_vandaag) }}</p>
+    {% else %}
+      <p class="hulp">Geen dienst.</p>
+    {% endif %}
+  </section>
+  <section class="kaart mijn-blok" data-blok="volgende">
+    <h2>Volgende dienst</h2>
+    {% if volgende %}
+      <p><strong>{{ dagnamen[volgende.datum.weekday()] }} {{ volgende.datum|datum_nl }}</strong></p>
+      <p class="mijn-dienst">{{ dienst_info(volgende) }}</p>
+    {% else %}
+      <p class="hulp">Geen diensten gepland in de komende 8 weken.</p>
+    {% endif %}
+  </section>
+</div>
+
+<p class="mijn-agenda">
+  <a class="knop primair groot" href="{{ agenda_url }}" data-agenda-knop>📅 Toevoegen aan mijn agenda</a>
+  {% if heeft_route('rooster.agenda_info') %}<a class="hulp" href="{{ url_for('rooster.agenda_info') }}">Hoe werkt dat?</a>{% endif %}
+</p>
+
 <p class="hulp">Je diensten voor de komende 8 weken.</p>
 <ul class="mijn-lijst">
 {% for d in diensten %}
@@ -18,11 +47,7 @@
   {% endif %}
   <li class="mijn-dag{% if d.datum == vandaag %} vandaag{% endif %}">
     <span class="mijn-datum">{{ dagnamen[d.datum.weekday()] }} {{ d.datum|datum_nl }}</span>
-    <span class="mijn-dienst">
-      {% if d.dienstnaam %}<span class="dienst-voorbeeld" style="{% if d.dienstcode %}background:{{ d.dienstcode.kleur_achtergrond }};color:{{ d.dienstcode.kleur_tekst }}{% endif %}">{{ d.dienstnaam }}</span>{% endif %}
-      {% if d.begin %}{{ d.begin }} – {{ d.eind }}{% endif %}
-      {% if d.opmerking_tekst %}<em>{{ d.opmerking_tekst }}{% if d.opmerking_begin %} ({{ d.opmerking_begin }}–{{ d.opmerking_eind }}){% endif %}</em>{% endif %}
-    </span>
+    <span class="mijn-dienst">{{ dienst_info(d) }}</span>
     <span class="mijn-uren">{{ d.uren_berekend|uren }}</span>
   </li>
 {% else %}

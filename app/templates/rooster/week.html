@@ -4,7 +4,6 @@
 {% block titel %}Week {{ week }} ({{ jaar }}) – {{ teamnaam }}{% endblock %}
 {% block main_klasse %}inhoud inhoud-breed{% endblock %}
 {% block kop %}{% if bewerken %}<script src="{{ url_for('static', filename='js/raster.js', v=versie) }}" defer></script>{% endif %}{% endblock %}
-{% set dagkort = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] %}
 {% block inhoud %}
 <div class="week-kop geen-print">
   <h1>Week {{ week }} <small>{{ jaar }}</small></h1>
@@ -19,6 +18,7 @@
     <a class="knop" href="{{ u.week_url(huidig[0], huidig[1]) }}">Vandaag</a>
     <a class="knop" href="{{ u.kalender_url(jaar) }}">Kalender</a>
     <button class="knop" type="button" data-print>Printen</button>
+    <button class="knop weergave-wissel" type="button" data-weergave-wissel aria-pressed="false">Telefoonweergave</button>
     {% if bewerken %}<button class="knop primair opslaan-knop" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>{% endif %}
   </nav>
   {% if bewerken %}
@@ -46,7 +46,7 @@
       <tr>
         <th class="naamkol">Naam</th>
         {% for dag in dagen %}
-        <th colspan="3" class="dagkop{% if dag.weekday() >= 5 %} weekend{% endif %}{% if dag.isoformat() == markeer_dag %} gemarkeerd{% endif %}">{{ dagkort[loop.index0] }} {{ dag.strftime('%d-%m-%y') }}</th>
+        <th colspan="3" class="dagkop{% if dag.weekday() >= 5 %} weekend{% endif %}{% if dag.isoformat() == markeer_dag %} gemarkeerd{% endif %}">{{ dagnamen_kort[loop.index0] }} {{ dag.strftime('%d-%m-%y') }}</th>
         {% endfor %}
         <th class="urenkol">Uren</th>
       </tr>
@@ -105,7 +105,7 @@
   <aside class="code-paneel geen-print">
     <div class="raster-status" data-status aria-live="polite">Typ een dienstcode per dag</div>
     <table class="raster" data-raster="codes">
-      <thead><tr><th>Init.</th>{% for dag in dagen %}<th class="{{ 'weekend' if dag.weekday() >= 5 }}">{{ dagkort[loop.index0]|upper }}</th>{% endfor %}</tr></thead>
+      <thead><tr><th>Init.</th>{% for dag in dagen %}<th class="{{ 'weekend' if dag.weekday() >= 5 }}">{{ dagnamen_kort[loop.index0]|upper }}</th>{% endfor %}</tr></thead>
       <tbody>
       {% for rij in rijen %}{% set ri = loop.index0 %}
         <tr>
@@ -143,6 +143,8 @@
   </aside>
   {% endif %}
 </div>
+
+{% include "rooster/_week_mobiel.html" %}
 
 {% if bewerken %}
 <dialog id="niet-opgeslagen" class="dialoog" aria-labelledby="dialoog-titel">

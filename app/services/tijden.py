@@ -10,6 +10,18 @@ class OngeldigeTijd(ValueError):
     """Wordt gegooid als een tijd niet te lezen is."""
 
 
+_CIJFERS = re.compile(r"[0-9]+")
+
+
+def is_cijfers(tekst: str) -> bool:
+    """True als de tekst alleen uit de cijfers 0-9 bestaat.
+
+    Bewust niet str.isdigit(): die vindt ook '²' of Arabische cijfers goed, en daar
+    kan int() niet altijd mee overweg.
+    """
+    return bool(_CIJFERS.fullmatch(tekst or ""))
+
+
 def normaliseer_tijd(invoer: str | None) -> str | None:
     """Zet allerlei tijdnotaties om naar 'HH:MM'.
 
@@ -27,13 +39,13 @@ def normaliseer_tijd(invoer: str | None) -> str | None:
 
     if ":" in tekst:
         delen = tekst.split(":")
-        if len(delen) != 2 or not delen[0].isdigit() or not delen[1].isdigit():
+        if len(delen) != 2 or not is_cijfers(delen[0]) or not is_cijfers(delen[1]):
             raise OngeldigeTijd(f"Ongeldige tijd: {invoer}")
         uur, minuut = int(delen[0]), int(delen[1])
         if len(delen[1]) == 1:
             # '7:3' lezen we als 07:30, net als '7.3'
             minuut = minuut * 10
-    elif tekst.isdigit():
+    elif is_cijfers(tekst):
         if len(tekst) <= 2:  # '7' of '07' = hele uren
             uur, minuut = int(tekst), 0
         elif len(tekst) in (3, 4):  # '715' of '0715'

@@ -10,6 +10,7 @@ from ..services import klok
 from ..services.kalender import week_van
 from ..services.overzichten import uren_overzicht, weken_lijst
 from ..services.urenberekening import formatteer_uren
+from .hulp import csv_cel
 from .kalender import kies_jaar
 
 bp = Blueprint("overzicht", __name__, url_prefix="/overzicht")
@@ -35,7 +36,7 @@ def uren_csv():
                        + ["Totaal", "Contracturen", "Verschil"])
     for rij in uren_overzicht(jaar):
         schrijver.writerow(
-            [rij.medewerker.naam, rij.medewerker.initialen]
+            [csv_cel(rij.medewerker.naam), csv_cel(rij.medewerker.initialen)]
             + [formatteer_uren(rij.per_week.get(w)) for w in weken]
             + [formatteer_uren(rij.gewerkt), formatteer_uren(rij.contracturen),
                formatteer_uren(rij.verschil)])

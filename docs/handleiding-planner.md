@@ -1,8 +1,8 @@
-# Handleiding voor de planner (beheerder)
+# Handleiding voor de planner (beheerder, versie 1.3.0)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
 
-<!-- Screenshot: weekrooster met code-raster (placeholder) -->
+![Weekrooster met code-raster](schermafbeeldingen/week-planner-1280x800.png)
 
 ## 1. Een week invullen met het code-raster
 
@@ -99,13 +99,28 @@ Een opmerking die precies overeenkomt met een **kleurregel** (bijvoorbeeld een l
 - **Delete** op een eigen tekst: de automatische tekst komt terug.
 - **Delete** op een automatische tekst: de dagopmerking wordt verborgen.
 
+## 3a. Op de telefoon een dienst wijzigen
+
+Op een telefoon (of als je **Telefoonweergave** kiest) zie je het weekrooster als kaarten: **Per dag** (één dag, het hele team) of **Per medewerker** (zeven dagen). Blader met ◀ ▶ of door te vegen.
+
+1. Tik op de kaart van een medewerker op een dag. Er schuift een paneel omhoog.
+2. Kies de **dienst** uit de lijst (met omschrijving en standaardtijden). De begin- en eindtijd worden ingevuld en je ziet direct de **uren**.
+3. Pas zo nodig de **begin- en eindtijd**, de **opmerking** (met tijden) of de **eigen uren** aan. Eigen tijden worden, net als in het raster, gemarkeerd als *handmatig aangepast*.
+4. Tik op **Opslaan**. Het paneel sluit en de kaart toont de nieuwe dienst.
+
+Het opslaan werkt precies zoals in het raster: heeft een andere planner dezelfde dag intussen gewijzigd, dan krijg je een melding en wordt er niets overschreven (zie 10). Ga je weg met niet-opgeslagen wijzigingen, dan krijg je eerst de vraag *Opslaan / Terug / Doorgaan*.
+
+Het Excel-achtige raster met toetsenbord blijft op de computer precies hetzelfde. Op een tablet kun je met **Rasterweergave** / **Telefoonweergave** wisselen; je keuze wordt per gebruiker onthouden.
+
+![Dienst wijzigen op de telefoon](schermafbeeldingen/week-planner-dienst-wijzigen-390x844.png)
+
 ## 4. Week kopiëren
 
 Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of één medewerker wilt kopiëren. De doelweek wordt **gelijk gemaakt** aan deze week: daar bestaande diensten worden overschreven.
 
 ## 5. Printen
 
-Klik op **Printen**. De week komt liggend op één A4, zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
+Klik op **Printen**. De week komt liggend op één A4 (ook met 15 medewerkers, en ook als je vanaf een telefoon print), zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
 
 ## 6. Kalender, overzichten en zoeken
 
@@ -154,8 +169,15 @@ Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag o
 
 ## 9. Back-ups
 
-*Beheer → Back-ups*: nu een back-up maken, downloaden of terugzetten. Bij het terugzetten wordt de huidige stand eerst bewaard als veiligheidsback-up. Elke nacht maakt de app zelf ook een back-up.
+*Beheer → Back-ups*: nu een back-up maken, downloaden of terugzetten. Bij het terugzetten wordt de huidige stand eerst bewaard als veiligheidsback-up. Elke nacht maakt de app zelf ook een back-up. Na het terugzetten moet iedereen opnieuw inloggen, en werken bestaande API-tokens niet meer.
+
+Werkt de website niet meer, maar draait de container nog? Dan kan het ook op de server: `docker compose exec -u rooster web flask terugzetten <naam-van-de-back-up>`.
 
 ## 10. Twee planners tegelijk
 
 Heeft een andere beheerder dezelfde dag van dezelfde medewerker al opgeslagen terwijl jij er nog mee bezig bent? Dan krijg je bij die cel een melding en wordt jouw wijziging daar niet opgeslagen. Ververs de pagina om de nieuwste stand te zien. Er gaat niets stilletjes verloren.
+
+## 11. Telefoon, app en API
+
+- De hele site werkt op de telefoon; via **https://** kun je hem als app op het beginscherm zetten (Android: *App installeren*, iPhone: *Zet op beginscherm*). Zie de [handleiding voor collega's](handleiding-collega.md#als-app-op-je-beginscherm).
+- Elke gebruiker kan zelf **API-tokens** maken voor een app (*naam rechtsboven → API-token*). Een token kan alleen lezen, met dezelfde rechten als het account. Het aanmaken en intrekken staat in het logboek. Een wachtwoordreset, deactiveren of een back-up terugzetten maakt de tokens van die gebruiker (of van iedereen) ongeldig. Zie [api.md](api.md) en [app.md](app.md).

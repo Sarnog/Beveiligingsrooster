@@ -1,5 +1,6 @@
 """Weekrooster: bekijken (iedereen) en invullen (beheerder), plus 'Mijn rooster'."""
 
+import re
 from datetime import date, timedelta
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -8,7 +9,7 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import Dienstcode, Medewerker
 from ..services import instellingen, klok
-from ..services.kalender import aantal_weken, maandag_van_week, week_van
+from ..services.kalender import MAX_JAAR, MIN_JAAR, aantal_weken, maandag_van_week, week_van
 from ..services.weekrooster import (
     VELDEN,
     VersieConflict,
@@ -18,13 +19,21 @@ from ..services.weekrooster import (
     verwerk_rooster,
     week_gegevens,
 )
-from .hulp import beheerder_vereist
+from .hulp import beheerder_vereist, externe_url
 
 bp = Blueprint("rooster", __name__)
 
 
 def geldige_week(jaar: int, week: int) -> bool:
     return 1900 < jaar < 2200 and 1 <= week <= aantal_weken(jaar)
+
+
+def _lees_datum(waarde) -> date:
+    """ISO-datum uit het verzoek, alleen binnen MIN_JAAR..MAX_JAAR (anders ValueError)."""
+    datum = date.fromisoformat(str(waarde))
+    if not MIN_JAAR <= datum.year <= MAX_JAAR:
+        raise ValueError("datum buiten bereik")
+    return datum
 
 
 @bp.route("/week")
@@ -68,6 +77,7 @@ def navigatie(jaar: int, week: int) -> dict:
         "volgende": volgende,
         "huidig": week_van(klok.vandaag()),
         "aantal": aantal_weken(jaar),
+        "vandaag": klok.vandaag(),
     }
 
 
@@ -80,8 +90,19 @@ def mijn():
         flash("Je account is niet gekoppeld aan een medewerker. Vraag dit aan de beheerder.", "info")
         return redirect(url_for("kalender.jaar"))
     diensten = komende_diensten(medewerker, weken=8)
+    vandaag = klok.vandaag()
+    # Bovenaan: de dienst van vandaag en de eerstvolgende dienst daarna
+    dienst_vandaag = next((d for d in diensten if d.datum == vandaag), None)
+    volgende = next((d for d in diensten if d.datum > vandaag), None)
+    # 'Toevoegen aan mijn agenda': de ICS-link als webcal:// (opent de agenda-app),
+    # zonder ICS-link naar de uitlegpagina
+    if medewerker.ics_token:
+        agenda_url = re.sub(r"^https?://", "webcal://", externe_url("ics.feed", token=medewerker.ics_token))
+    else:
+        agenda_url = url_for("rooster.agenda_info")
     return render_template("rooster/mijn.html", medewerker=medewerker, diensten=diensten,
-                           vandaag=klok.vandaag())
+                           vandaag=vandaag, dienst_vandaag=dienst_vandaag, volgende=volgende,
+                           agenda_url=agenda_url)
 
 
 @bp.route("/mijn/agenda")
@@ -92,8 +113,7 @@ def agenda_info():
     if medewerker is None:
         flash("Je account is niet gekoppeld aan een medewerker.", "info")
         return redirect(url_for("kalender.jaar"))
-    ics_url = url_for("ics.feed", token=medewerker.ics_token, _external=True) \
-        if medewerker.ics_token else ""
+    ics_url = externe_url("ics.feed", token=medewerker.ics_token) if medewerker.ics_token else ""
     return render_template("rooster/agenda_info.html", medewerker=medewerker, ics_url=ics_url)
 
 
@@ -114,7 +134,11 @@ def api_cellen():
       ook_tonen:      ["<mw>|<datum>", ...]  extra dagen om de actuele stand van te krijgen
       ook_dagen:      ["<datum>", ...]       idem voor dagopmerkingen
     """
-    gegevens = request.get_json(silent=True) or {}
+    gegevens = request.get_json(silent=True)
+    if gegevens is None:
+        gegevens = {}
+    if not isinstance(gegevens, dict):
+        return jsonify(fout="Geen geldige wijzigingen ontvangen."), 400
     ruwe = gegevens.get("wijzigingen") or []
     ruwe_dagen = gegevens.get("dagopmerkingen") or []
     if not isinstance(ruwe, list) or not isinstance(ruwe_dagen, list) \
@@ -130,18 +154,18 @@ def api_cellen():
             versie = item.get("versie")
             wijzigingen.append(Wijziging(
                 medewerker_id=int(item["mw"]),
-                datum=date.fromisoformat(str(item["datum"])),
+                datum=_lees_datum(item["datum"]),
                 veld=veld,
                 waarde="" if item.get("waarde") is None else str(item["waarde"]),
                 versie=None if versie is None else int(versie),
             ))
-        dag_wijzigingen = [(date.fromisoformat(str(d["datum"])), str(d.get("tekst") or ""))
+        dag_wijzigingen = [(_lees_datum(d["datum"]), str(d.get("tekst") or ""))
                            for d in ruwe_dagen]
         ook_tonen = []
         for sleutel in gegevens.get("ook_tonen") or []:
             mw, datum = str(sleutel).split("|")
-            ook_tonen.append((int(mw), date.fromisoformat(datum)))
-        ook_dagen = [date.fromisoformat(str(d)) for d in gegevens.get("ook_dagen") or []]
+            ook_tonen.append((int(mw), _lees_datum(datum)))
+        ook_dagen = [_lees_datum(d) for d in gegevens.get("ook_dagen") or []]
     except (KeyError, TypeError, ValueError, AttributeError):
         return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
 

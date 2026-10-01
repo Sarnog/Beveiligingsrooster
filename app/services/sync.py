@@ -5,10 +5,17 @@ Taaksoorten in 'sync_wachtrij':
     volledig   de hele periode (standaard vandaag -7 dagen t/m +12 maanden)
     ontkoppel  na het ontkoppelen: eventueel alle afspraken (of de agenda) verwijderen
 
+Status van een taak: 'wacht' -> 'bezig' (de worker is ermee bezig) -> klaar (weg),
+of terug naar 'wacht' (tijdelijke fout) of 'fout'. Komt er tijdens 'bezig' een nieuwe
+wijziging binnen, dan maakt sync_planning een NIEUWE wachtende taak; de worker
+verwijdert alleen de taak die hij zelf geclaimd had. Zo gaat er niets verloren.
+Een taak die na een crash op 'bezig' blijft hangen, gaat na VASTGELOPEN terug naar 'wacht'.
+
 Fouten: bij tijdelijke fouten (429, 5xx, netwerk) proberen we het later opnieuw,
 steeds langer wachtend (exponentiële backoff: 30 s, 1 min, 2 min, ... max 1 uur).
 Na MAX_POGINGEN, of bij een blijvende fout, krijgt de taak status 'fout' en komt
 de melding in het logboek en bij de medewerker (Beheer -> Google Agenda).
+Alle wachttijden (niet_voor) zijn in UTC (klok.utc_nu).
 """
 
 import json
@@ -23,6 +30,7 @@ from .google_agenda import AgendaFout, afspraak_voor, dagtekst_voor
 log = logging.getLogger(__name__)
 MAX_POGINGEN = 6
 MAX_TAKEN_PER_RONDE = 50
+VASTGELOPEN = timedelta(minutes=10)  # zo lang mag een taak op 'bezig' staan
 
 
 def wachttijd(pogingen: int) -> timedelta:
@@ -74,17 +82,33 @@ def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:
     _ruim_lege_dienst_op(dienst)
 
 
+def _privé(afspraak: dict) -> dict:
+    return afspraak.get("extendedProperties", {}).get("private", {})
+
+
 def sync_volledig(klant, medewerker: Medewerker) -> int:
-    """Maak de agenda gelijk aan het rooster in de sync-periode. Geeft het aantal afspraken."""
+    """Maak de agenda gelijk aan het rooster in de sync-periode. Geeft het aantal afspraken.
+
+    Alleen afspraken van DEZE medewerker worden aangeraakt (een gedeelde agenda kan ook
+    afspraken van collega's bevatten). Oude afspraken zonder medewerker-markering tellen
+    alleen mee als hun dienst van deze medewerker is.
+    """
     van, tot = sync_periode()
-    bestaande = {e["id"]: e for e in klant.eigen_afspraken(medewerker.agenda_id, van, tot)}
-    per_dienst = {
-        e.get("extendedProperties", {}).get("private", {}).get("dienst_id"): e["id"]
-        for e in bestaande.values()
-    }
-    gebruikt: set[str] = set()
     diensten = Dienst.query.filter(Dienst.medewerker_id == medewerker.id,
                                    Dienst.datum >= van, Dienst.datum <= tot).all()
+    eigen_diensten = {str(d.id) for d in diensten}
+    # Eén keer alle afspraken van de app ophalen en hier splitsen (scheelt Google-quota)
+    bestaande = {}
+    for e in klant.eigen_afspraken(medewerker.agenda_id, van, tot):
+        eigenaar = _privé(e).get("medewerker_id")
+        if eigenaar:
+            van_hem = eigenaar == str(medewerker.id)
+        else:  # oude afspraak zonder markering: herkennen aan de dienst
+            van_hem = _privé(e).get("dienst_id") in eigen_diensten
+        if van_hem:
+            bestaande[e["id"]] = e
+    per_dienst = {_privé(e).get("dienst_id"): e["id"] for e in bestaande.values()}
+    gebruikt: set[str] = set()
     aantal = 0
     for dienst in diensten:
         huidig = dienst.google_event_id if dienst.google_event_id in bestaande else ""
@@ -102,8 +126,12 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
     return aantal
 
 
-def ontkoppel(klant, extra: dict) -> None:
-    """Afspraken (modus B) of de hele agenda (modus A) verwijderen na het ontkoppelen."""
+def ontkoppel(klant, extra: dict, medewerker_id: int | None = None) -> None:
+    """Afspraken (modus B) of de hele agenda (modus A) verwijderen na het ontkoppelen.
+
+    Modus B: alleen de afspraken van deze medewerker (de agenda kan gedeeld zijn).
+    Het medewerker-ID staat in 'extra', want de medewerker kan al verwijderd zijn.
+    """
     if not extra.get("verwijder"):
         return
     agenda_id = extra.get("agenda_id", "")
@@ -116,7 +144,11 @@ def ontkoppel(klant, extra: dict) -> None:
             if fout.status not in (404, 410):
                 raise
     else:
-        for afspraak in klant.eigen_afspraken(agenda_id):
+        medewerker_id = extra.get("medewerker_id") or medewerker_id
+        if not medewerker_id:
+            log.warning("Ontkoppelen zonder medewerker-ID: afspraken blijven staan (%s)", agenda_id)
+            return
+        for afspraak in klant.eigen_afspraken(agenda_id, medewerker_id=medewerker_id):
             klant.verwijder_afspraak(agenda_id, afspraak["id"])
 
 
@@ -126,7 +158,7 @@ def ontkoppel(klant, extra: dict) -> None:
 
 def _voer_uit(klant, taak: SyncTaak) -> None:
     if taak.soort == "ontkoppel":
-        ontkoppel(klant, json.loads(taak.extra or "{}"))
+        ontkoppel(klant, json.loads(taak.extra or "{}"), taak.medewerker_id)
         return
     medewerker = db.session.get(Medewerker, taak.medewerker_id) if taak.medewerker_id else None
     if medewerker is None or not (medewerker.agenda_modus and medewerker.agenda_id):
@@ -143,10 +175,11 @@ def _voer_uit(klant, taak: SyncTaak) -> None:
 
 def _verwerk_fout(taak: SyncTaak, fout: AgendaFout) -> None:
     taak.pogingen += 1
-    taak.laatste_fout = str(fout)
+    taak.laatste_fout = str(fout)[:1000]
     medewerker = db.session.get(Medewerker, taak.medewerker_id) if taak.medewerker_id else None
     if fout.tijdelijk and taak.pogingen < MAX_POGINGEN:
-        taak.niet_voor = klok.nu() + wachttijd(taak.pogingen)
+        taak.status = "wacht"
+        taak.niet_voor = klok.utc_nu() + wachttijd(taak.pogingen)
         log.warning("Agenda-sync mislukt (poging %s), later opnieuw: %s", taak.pogingen, fout)
         return
     taak.status = "fout"
@@ -157,32 +190,69 @@ def _verwerk_fout(taak: SyncTaak, fout: AgendaFout) -> None:
     log.error("Agenda-sync definitief mislukt: %s", fout)
 
 
+def herstel_vastgelopen() -> int:
+    """Taken die na een crash op 'bezig' zijn blijven staan weer in de wachtrij zetten."""
+    nu = klok.utc_nu()
+    aantal = SyncTaak.query.filter(
+        SyncTaak.status == "bezig", SyncTaak.niet_voor < nu - VASTGELOPEN,
+    ).update({"status": "wacht", "niet_voor": nu}, synchronize_session=False)
+    db.session.commit()
+    if aantal:
+        log.warning("%s vastgelopen agenda-taken opnieuw in de wachtrij gezet", aantal)
+    return aantal
+
+
+def _claim(taak_id: int) -> SyncTaak | None:
+    """Zet een wachtende taak op 'bezig' (niet_voor = starttijd) en sla dat direct op.
+
+    Geeft de taak terug, of None als hij intussen niet meer wacht of weg is.
+    """
+    aantal = SyncTaak.query.filter_by(id=taak_id, status="wacht").update(
+        {"status": "bezig", "niet_voor": klok.utc_nu()}, synchronize_session=False)
+    db.session.commit()
+    return db.session.get(SyncTaak, taak_id) if aantal == 1 else None
+
+
 def verwerk_wachtrij(klant_maker=None) -> int:
     """Verwerk alle taken die aan de beurt zijn. Geeft het aantal verwerkte taken."""
-    taken = (
-        SyncTaak.query.filter(SyncTaak.status == "wacht", SyncTaak.niet_voor <= klok.nu())
+    herstel_vastgelopen()
+    taak_ids = [t.id for t in (
+        SyncTaak.query.filter(SyncTaak.status == "wacht", SyncTaak.niet_voor <= klok.utc_nu())
         .order_by(SyncTaak.niet_voor, SyncTaak.id).limit(MAX_TAKEN_PER_RONDE).all()
-    )
-    if not taken:
+    )]
+    if not taak_ids:
         return 0
     try:
         klant = (klant_maker or google_agenda.klant)()
     except AgendaFout as fout:
-        for taak in taken:
+        for taak in SyncTaak.query.filter(SyncTaak.id.in_(taak_ids)).all():
             _verwerk_fout(taak, fout)
         db.session.commit()
         return 0
 
     verwerkt = 0
-    for taak in taken:
+    for taak_id in taak_ids:
+        taak = _claim(taak_id)
+        if taak is None:
+            continue
+        log.debug("Agenda-taak %s gestart: %s, medewerker %s, datum %s, poging %s", taak_id,
+                  taak.soort, taak.medewerker_id, taak.datum, taak.pogingen + 1)
         try:
             _voer_uit(klant, taak)
-            db.session.delete(taak)
+            # Alleen de eigen (geclaimde) taak weg; een nieuwe wachtende taak blijft staan
+            SyncTaak.query.filter_by(id=taak_id).delete(synchronize_session=False)
             db.session.commit()
             verwerkt += 1
-        except AgendaFout as fout:
+            log.debug("Agenda-taak %s klaar", taak_id)
+        except Exception as fout:  # één taak mag de wachtrij niet stilleggen
             db.session.rollback()
-            taak = db.session.get(SyncTaak, taak.id)
+            if not isinstance(fout, AgendaFout):
+                log.exception("Onverwachte fout bij agenda-taak %s", taak_id)
+                fout = AgendaFout(f"Onverwachte fout: {fout}", tijdelijk=True)
+            taak = db.session.get(SyncTaak, taak_id)  # na de rollback opnieuw ophalen
+            if taak is None:
+                log.debug("Agenda-taak %s is intussen verwijderd", taak_id)
+                continue  # intussen verwijderd
             _verwerk_fout(taak, fout)
             db.session.commit()
     return verwerkt
@@ -191,6 +261,6 @@ def verwerk_wachtrij(klant_maker=None) -> int:
 def probeer_mislukte_opnieuw() -> int:
     """Zet alle mislukte taken terug in de wachtrij."""
     aantal = SyncTaak.query.filter_by(status="fout").update(
-        {"status": "wacht", "pogingen": 0, "niet_voor": klok.nu()})
+        {"status": "wacht", "pogingen": 0, "niet_voor": klok.utc_nu()})
     db.session.commit()
     return aantal

@@ -9,6 +9,7 @@
     <a class="knop" href="{{ url_for('beheer.feestdagen', jaar=jaar+1) }}">{{ jaar+1 }} ▶</a>
   </span>
 </div>
+<div class="tabel-schuif">
 <table class="tabel">
   <thead><tr><th>Naam</th><th>Datum</th><th>Week</th><th>Soort</th><th>Status</th><th></th></tr></thead>
   <tbody>
@@ -25,6 +26,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 <h2>Eigen roostervrije dag toevoegen</h2>
 <form method="post" action="{{ url_for('beheer.feestdag_nieuw') }}" class="rij-formulier">
   {{ csrf() }}

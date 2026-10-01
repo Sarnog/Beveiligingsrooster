@@ -8,6 +8,7 @@ vervangen door een nep-versie, zodat er nooit echt met Google gepraat wordt.
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -15,13 +16,14 @@ from datetime import date, datetime, timedelta
 from flask import current_app
 
 from ..models import Dienst, Medewerker
-from . import instellingen
+from . import instellingen, klok
 from .weekrooster import dagopmerkingen
 
 BESTANDSNAAM = "google-service-account.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 BRON = "beveiligingsrooster"  # markering in extendedProperties.private
 TIMEOUT = 30  # seconden
+log = logging.getLogger(__name__)
 BEHEERD_TEKST = "Automatisch beheerd door Beveiligingsrooster – niet handmatig wijzigen"
 
 
@@ -95,7 +97,7 @@ def _vertaal_fout(fout: Exception) -> AgendaFout:
         reden = ""
         try:
             reden = json.loads(fout.content.decode())["error"]["errors"][0].get("reason", "")
-        except Exception:  # noqa: BLE001 - reden is alleen extra informatie
+        except Exception:  # reden is alleen extra informatie
             reden = ""
         tijdelijk = status == 429 or status >= 500 or reden in (
             "rateLimitExceeded", "userRateLimitExceeded", "backendError")
@@ -135,10 +137,16 @@ class AgendaKlant:
         self.service = service
 
     def _voer_uit(self, verzoek):
+        naam = getattr(verzoek, "methodId", type(verzoek).__name__)
         try:
-            return verzoek.execute()
-        except Exception as fout:  # noqa: BLE001 - wordt vertaald
-            raise _vertaal_fout(fout) from fout
+            antwoord = verzoek.execute()
+        except Exception as fout:  # wordt vertaald
+            vertaald = _vertaal_fout(fout)
+            log.debug("Google %s mislukt: %s (status %s, tijdelijk %s)", naam, vertaald,
+                      vertaald.status, vertaald.tijdelijk)
+            raise vertaald from fout
+        log.debug("Google %s gelukt", naam)
+        return antwoord
 
     def maak_agenda(self, titel: str, tijdzone: str) -> str:
         agenda = self._voer_uit(self.service.calendars().insert(
@@ -171,13 +179,21 @@ class AgendaKlant:
             if fout.status not in (404, 410):  # al weg is ook goed
                 raise
 
-    def eigen_afspraken(self, agenda_id: str, van: date | None = None,
-                        tot: date | None = None) -> list[dict]:
-        """Alle afspraken die door deze app gemaakt zijn (optioneel binnen een periode)."""
+    def eigen_afspraken(self, agenda_id: str, van: date | None = None, tot: date | None = None,
+                        medewerker_id: int | None = None) -> list[dict]:
+        """Alle afspraken die door deze app gemaakt zijn (optioneel binnen een periode).
+
+        Met medewerker_id: alleen de afspraken van die medewerker. Nodig bij een gedeelde
+        agenda (modus B), waar meer collega's hun diensten in dezelfde agenda hebben.
+        Google accepteert privateExtendedProperty meerdere keren (alle filters gelden).
+        """
+        filters = [f"bron={BRON}"]
+        if medewerker_id is not None:
+            filters.append(f"medewerker_id={medewerker_id}")
         afspraken, pagina = [], None
         while True:
             parameters = {"calendarId": agenda_id, "maxResults": 2500, "singleEvents": True,
-                          "privateExtendedProperty": f"bron={BRON}", "pageToken": pagina}
+                          "privateExtendedProperty": filters, "pageToken": pagina}
             if van:
                 parameters["timeMin"] = datetime.combine(van, datetime.min.time()).isoformat() + "Z"
             if tot:
@@ -234,7 +250,7 @@ def afspraak_voor(dienst: Dienst | None, dagtekst: str = "") -> Afspraak | None:
     if code is not None and not code.in_agenda:
         return None
 
-    tijdzone = instellingen.lees("tijdzone") or "Europe/Amsterdam"
+    tijdzone = klok.tijdzone_naam()
     titel = (instellingen.lees("agenda_voorvoegsel") or "") + naam
 
     regels = []

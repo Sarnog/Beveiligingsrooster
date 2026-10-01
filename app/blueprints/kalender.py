@@ -4,7 +4,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from ..services import instellingen, klok
-from ..services.kalender import week_van
+from ..services.kalender import MAX_JAAR, MIN_JAAR, week_van
 from ..services.overzichten import jaarkalender, roostervrije_dagen, uren_overzicht, weken_lijst
 from ..services.tijden import parse_datum
 
@@ -14,7 +14,7 @@ bp = Blueprint("kalender", __name__, url_prefix="/kalender")
 def kies_jaar() -> int:
     """Jaar uit ?jaar=, anders het huidige jaar (binnen redelijke grenzen)."""
     jaar = request.args.get("jaar", type=int) or klok.vandaag().year
-    return min(max(jaar, 1950), 2150)
+    return min(max(jaar, MIN_JAAR), MAX_JAAR)
 
 
 @bp.route("/")

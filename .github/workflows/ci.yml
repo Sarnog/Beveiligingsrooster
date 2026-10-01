@@ -1,11 +1,16 @@
-# Bij elke push en pull request: lint (ruff) en tests (pytest).
+# Bij elke push (elke branch) en elk pull request: lint (ruff), tests (pytest) en een
+# rooktest van de Docker-image (bouwen zonder publiceren, starten, back-up, terugzetten).
 #
-# Docker-image bouwen en publiceren op ghcr.io/sarnog/beveiligingsrooster:
-#   - bij elke push naar main (tag 'latest');
+# Alleen bij een push naar main wordt er iets gepubliceerd op
+# ghcr.io/sarnog/beveiligingsrooster:
+#   - altijd de image met tag 'latest' (en de korte commit-hash);
 #   - bij een NIEUWE versie: staat er in app/__init__.py een VERSIE waarvoor nog geen
-#     tag v<VERSIE> bestaat, dan maakt deze workflow de image (<VERSIE> en 'latest'),
+#     tag v<VERSIE> bestaat, dan maakt deze workflow ook de image <VERSIE>,
 #     de git-tag en een GitHub-release met de tekst uit CHANGELOG.md.
-# Een release maken is dus: VERSIE ophogen, CHANGELOG bijwerken, pushen.
+# Een zijbranch of pull request maakt dus nooit een tag, release of image.
+# Een release maken is: VERSIE ophogen, CHANGELOG bijwerken, via een pull request naar main.
+#
+# Actions staan vast op een commit (SHA); het versienummer staat erachter als commentaar.
 name: CI
 
 on:
@@ -19,8 +24,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -28,18 +33,77 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Lint (ruff)
         run: ruff check .
-      - name: Tests (pytest)
-        run: pytest -q
+      - name: Databasemigraties op een lege datamap (upgrade + check)
+        env:
+          DATA_MAP: ${{ runner.temp }}/lege-datamap
+        run: |
+          flask --app wsgi:app db upgrade
+          flask --app wsgi:app db check
+      - name: Tests (pytest, met branch-coverage)
+        run: pytest -q -m "not browser" --cov=app --cov-branch --cov-report=term-missing:skip-covered
+      - name: Lock-bestand hoort bij requirements.txt
+        run: |
+          # Elk pakket uit requirements.txt moet in requirements.lock staan
+          for pakket in $(grep -vE '^\s*(#|-r|$)' requirements.txt | sed -E 's/[<>=!~ ;#].*//' | tr 'A-Z_' 'a-z-'); do
+            grep -qiE "^${pakket}==" requirements.lock || { echo "::error::$pakket ontbreekt in requirements.lock (pip-compile opnieuw draaien)"; exit 1; }
+          done
+
+  browsertests:
+    # Playwright + Chromium: elke pagina op telefoon, tablet en desktop, het menu,
+    # de mobiele bewerkflow (opslaan, conflict/409), printen en de service worker.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Afhankelijkheden en Chromium installeren
+        run: |
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+      - name: Browsertests (falen als Chromium ontbreekt)
+        env:
+          BROWSERTESTS: verplicht
+          SCHERMAFBEELDINGEN: ${{ runner.temp }}/schermafbeeldingen
+        run: pytest -q -m browser
+      - name: Schermafbeeldingen bewaren
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: schermafbeeldingen
+          path: ${{ runner.temp }}/schermafbeeldingen
+          if-no-files-found: ignore
+
+  docker-rooktest:
+    # Op elke push en elk pull request: de image bouwen (zonder te publiceren) en proefdraaien
+    # op een lege datamap: /health, setup-code, worker, flask backup en terugzetten.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Image bouwen (alleen amd64, niet publiceren)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: beveiligingsrooster:rooktest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Rooktest (scripts/docker-rooktest.sh)
+        run: sh scripts/docker-rooktest.sh beveiligingsrooster:rooktest
 
   versie:
-    # Is dit een nieuwe versie (nog geen tag)?
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    # Is dit een nieuwe versie (nog geen tag)? Alleen op main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       versie: ${{ steps.lees.outputs.versie }}
       nieuw: ${{ steps.lees.outputs.nieuw }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0  # alle tags en geschiedenis, voor de vergelijking hieronder
       - name: Versie lezen en vergelijken met de bestaande tags
@@ -51,7 +115,7 @@ jobs:
             echo "nieuw=false" >> "$GITHUB_OUTPUT"
             # Bestaat de versie al, dan mag de app-code niet veranderd zijn: anders komt
             # die wijziging nooit in een image terecht. Dan moet VERSIE omhoog.
-            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt wsgi.py; then
+            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt requirements.lock wsgi.py; then
               echo "::error::De code is gewijzigd, maar versie $VERSIE bestaat al. Verhoog VERSIE in app/__init__.py (en CHANGELOG.md)."
               exit 1
             fi
@@ -62,21 +126,19 @@ jobs:
           fi
 
   image:
-    needs: [test, versie]
-    if: >-
-      always() && needs.test.result == 'success' && needs.versie.result != 'failure' &&
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || needs.versie.outputs.nieuw == 'true')
+    needs: [test, browsertests, docker-rooktest, versie]
+    # Alleen op main, en alleen als de tests en de versiecontrole geslaagd zijn
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       - name: Inloggen bij GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -85,16 +147,16 @@ jobs:
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/beveiligingsrooster" >> "$GITHUB_ENV"
       - name: Labels en tags bepalen
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || needs.versie.outputs.nieuw == 'true' }}
+            type=raw,value=latest
             type=raw,value=${{ needs.versie.outputs.versie }},enable=${{ needs.versie.outputs.nieuw == 'true' }}
             type=sha,prefix=
       - name: Bouwen en publiceren (amd64 + arm64)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -106,13 +168,15 @@ jobs:
 
   release:
     # Tag v<VERSIE> en GitHub-release aanmaken, met de tekst uit CHANGELOG.md
-    needs: [test, versie, image]
-    if: needs.versie.outputs.nieuw == 'true'
+    needs: [test, browsertests, docker-rooktest, versie, image]
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.versie.outputs.nieuw == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Releasetekst uit CHANGELOG.md halen
         env:
           VERSIE: ${{ needs.versie.outputs.versie }}
@@ -131,7 +195,7 @@ jobs:
           } >> release-tekst.md
           cat release-tekst.md
       - name: Tag en release aanmaken
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: v${{ needs.versie.outputs.versie }}
           target_commitish: ${{ github.sha }}

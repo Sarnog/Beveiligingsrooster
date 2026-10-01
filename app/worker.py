@@ -2,23 +2,29 @@
 
 Gekozen voor een eigen lus in plaats van APScheduler: geen extra afhankelijkheid
 en makkelijk te volgen. Elke ronde (elke paar seconden):
-- Google Agenda-wachtrij verwerken (fase 3)
-- één keer per dag: logboek opschonen
-- één keer per nacht (na 02:00): back-up maken (fase 4)
+- de Google Agenda-wachtrij verwerken;
+- één keer per dag: logboek, oude loginpogingen en achtergebleven importbestanden opruimen;
+- één keer per nacht (na 02:00): een back-up maken en oude back-ups opruimen.
+
+Elke stap heeft een eigen foutafhandeling: een fout in de agenda-sync houdt de
+back-up dus niet tegen (en andersom). Mislukt de back-up, dan probeert de worker
+het pas na BACKUP_BACKOFF opnieuw (niet elke ronde), met een regel in het logboek.
 
 Starten: python -m app.worker
 """
 
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from . import create_app
+from .extensions import db
 from .services import instellingen, klok, logboek
 
 log = logging.getLogger("worker")
 INTERVAL_SECONDEN = 5
 BACKUP_UUR = 2  # back-up na 02:00 's nachts
+BACKUP_BACKOFF = timedelta(minutes=30)  # wachttijd na een mislukte back-up
 
 
 class Planning:
@@ -27,59 +33,102 @@ class Planning:
     def __init__(self) -> None:
         self.opschonen_gedaan: date | None = None
         self.backup_gedaan: date | None = None
+        self.backup_niet_voor: datetime | None = None  # backoff na een mislukte back-up
+
+
+def _stap_sync() -> None:
+    from .services import sync
+
+    sync.verwerk_wachtrij()
+
+
+def _stap_opschonen(nu: datetime) -> None:
+    from .services import excel_import
+
+    aantal = logboek.opschonen(nu)
+    pogingen = logboek.ruim_loginpogingen_op()
+    bestanden = excel_import.ruim_oude_uploads_op()
+    log.info("Opgeschoond: %s logboekregels, %s loginpogingen, %s importbestanden",
+             aantal, pogingen, bestanden)
+
+
+def _stap_backup(planning: Planning, nu: datetime) -> None:
+    from .services import backup
+
+    try:
+        pad = backup.maak_backup()
+    except Exception as fout:  # nooit elke ronde opnieuw proberen
+        planning.backup_niet_voor = nu + BACKUP_BACKOFF
+        log.exception("Back-up mislukt; volgende poging na %s", planning.backup_niet_voor)
+        db.session.rollback()
+        try:
+            logboek.log("Back-up mislukt", f"{type(fout).__name__}: {fout}", gebruiker="systeem")
+            db.session.commit()
+        except Exception:  # bijv. de schijf is vol
+            db.session.rollback()
+        return
+    planning.backup_gedaan = nu.date()
+    planning.backup_niet_voor = None
+    log.info("Back-up gemaakt: %s", pad)
+    try:
+        backup.ruim_oude_op()
+        backup.ruim_gelabelde_op()
+    except Exception:  # de back-up zelf is gelukt; opruimen kan morgen weer
+        log.exception("Oude back-ups opruimen mislukt")
 
 
 def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
     """Voer één ronde van de worker uit (los aan te roepen in tests)."""
     nu = nu or klok.nu()
+    try:
+        from flask import current_app
+
+        from . import debuglog
+
+        if debuglog.roteer(current_app.config["DATA_MAP"]):
+            log.info("Debuglog geroteerd")
+    except Exception:  # loggen mag de worker nooit stilleggen
+        log.exception("Debuglog roteren mislukt")
 
     # 1. Agenda-synchronisatie
     try:
-        from .services import sync
-
-        sync.verwerk_wachtrij()
-    except ImportError:
-        pass  # sync bestaat nog niet (fase 3)
+        _stap_sync()
+    except Exception:  # een sync-fout mag de rest niet tegenhouden
+        log.exception("Fout in de agenda-synchronisatie")
+        db.session.rollback()
 
     if not instellingen.setup_voltooid():
         return
 
-    # 2. Logboek dagelijks opschonen
+    # 2. Dagelijks opschonen (bij een fout: morgen opnieuw)
     if planning.opschonen_gedaan != nu.date():
-        aantal = logboek.opschonen(nu)
-        log.info("Logboek opgeschoond: %s regels verwijderd", aantal)
         planning.opschonen_gedaan = nu.date()
-
-    # 3. Nachtelijke back-up
-    if nu.hour >= BACKUP_UUR and planning.backup_gedaan != nu.date():
         try:
-            from .services import backup
+            _stap_opschonen(nu)
+        except Exception:
+            log.exception("Fout bij het opschonen")
+            db.session.rollback()
 
-            pad = backup.maak_backup()
-            backup.ruim_oude_op()
-            log.info("Back-up gemaakt: %s", pad)
-        except ImportError:
-            pass  # back-ups komen in fase 4
-        planning.backup_gedaan = nu.date()
+    # 3. Nachtelijke back-up (na een fout: pas na de backoff opnieuw)
+    if nu.hour >= BACKUP_UUR and planning.backup_gedaan != nu.date() \
+            and (planning.backup_niet_voor is None or nu >= planning.backup_niet_voor):
+        _stap_backup(planning, nu)
 
 
 def main() -> None:
     app = create_app()
     planning = Planning()
-    log.info("Worker gestart")
+    log.info("Worker gestart (log: %s%s)", app.config["LOG_NIVEAU"],
+             ", debuglog aan" if app.config["DEBUG_LOG"] else "")
     with app.app_context():
         while True:
             try:
                 een_ronde(planning)
-            except Exception:  # noqa: BLE001 - worker mag nooit stoppen door één fout
+            except Exception:  # worker mag nooit stoppen door één fout
                 log.exception("Fout in worker-ronde")
-                from .extensions import db
-
                 db.session.rollback()
             finally:
                 # Sessie opruimen zodat we steeds verse data uit de database lezen
-                from .extensions import db
-
                 db.session.remove()
             time.sleep(INTERVAL_SECONDEN)
 

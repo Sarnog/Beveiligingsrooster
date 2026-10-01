@@ -58,6 +58,7 @@
     {% if overzicht is not none %}
     <section class="kaart">
       <h2>Overzicht {{ jaar }}</h2>
+      <div class="tabel-schuif">
       <table class="tabel compact">
         <thead><tr><th>Naam</th><th class="getal">Contract</th><th class="getal">Gewerkt</th><th class="getal">Verschil</th></tr></thead>
         <tbody>
@@ -71,16 +72,19 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
     {% endif %}
     <section class="kaart">
       <h2>Roostervrije dagen {{ jaar }}</h2>
+      <div class="tabel-schuif">
       <table class="tabel compact">
         <thead><tr><th>Naam</th><th>Datum</th><th class="getal">Week</th></tr></thead>
         <tbody>
         {% for f in feestdagen %}<tr><td>{{ f.naam }}</td><td>{{ f.datum|datum_nl }}</td><td class="getal">{{ f.datum.isocalendar()[1] }}</td></tr>{% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
     {% if laatst_bijgewerkt %}<p class="hulp">Laatst bijgewerkt: {{ laatst_bijgewerkt }}</p>{% endif %}
   </div>

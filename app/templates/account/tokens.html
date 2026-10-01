@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, post_knop %}
+{% block titel %}API-tokens{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>API-tokens</h1>
+  <a class="knop" href="{{ url_for('auth.wachtwoord_wijzigen') }}">Wachtwoord wijzigen</a>
+</div>
+<p class="hulp">Met een API-token kan een app (of een script) je rooster lezen, zonder je wachtwoord.
+  Het token geeft dezelfde leesrechten als jouw account. Zie <code>docs/api.md</code>.
+  Een token werkt niet meer na het verlopen, na intrekken, en na het wijzigen of resetten van je wachtwoord.</p>
+
+{% if nieuw_token %}
+<section class="kaart melding succes" aria-live="polite">
+  <h2>Je nieuwe token</h2>
+  <p><strong>Kopieer het nu.</strong> Het wordt maar één keer getoond; de app bewaart alleen een versleutelde
+     versie (hash).</p>
+  <p><code class="breek" data-nieuw-token>{{ nieuw_token }}</code></p>
+  <button type="button" class="knop" data-kopieer-knop="{{ nieuw_token }}">Kopiëren</button>
+</section>
+{% endif %}
+
+<section class="kaart">
+  <h2>Nieuw token</h2>
+  <form method="post" class="rij-formulier">
+    {{ csrf() }}
+    <label class="veld"><span>Naam</span><input name="naam" maxlength="60" required placeholder="bijv. Telefoon"></label>
+    <label class="veld"><span>Geldig</span>
+      <select name="dagen">{% for d in termijnen %}<option value="{{ d }}"{% if d == 90 %} selected{% endif %}>{{ d }} dagen</option>{% endfor %}</select></label>
+    <button class="knop primair" type="submit">Token aanmaken</button>
+  </form>
+</section>
+
+<h2>Je tokens</h2>
+<div class="tabel-schuif">
+<table class="tabel">
+  <thead><tr><th>Naam</th><th>Begint met</th><th>Aangemaakt (UTC)</th><th>Verloopt (UTC)</th><th>Laatst gebruikt (UTC)</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for t in tokens %}
+    <tr>
+      <td>{{ t.naam }}</td>
+      <td><code>{{ t.prefix }}…</code></td>
+      <td class="nowrap">{{ t.aangemaakt_op.strftime('%d-%m-%Y %H:%M') }}</td>
+      <td class="nowrap">{{ t.verloopt_op.strftime('%d-%m-%Y') }}</td>
+      <td class="nowrap">{{ t.laatst_gebruikt.strftime('%d-%m-%Y %H:%M') if t.laatst_gebruikt else '–' }}</td>
+      <td>{% if is_geldig(t) %}geldig{% elif t.verloopt_op <= nu %}verlopen{% else %}ongeldig (wachtwoord of account gewijzigd){% endif %}</td>
+      <td>{{ post_knop(url_for('account.token_intrekken', tid=t.id), 'Intrekken', 'knop klein gevaar', 'Dit token intrekken? Een app die het gebruikt, werkt dan niet meer.') }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="hulp">Nog geen tokens.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,13 +1,17 @@
 """Commando's voor de command line (noodgevallen en onderhoud).
 
-Aanroepen in Docker, vanuit de map met docker-compose.yml:
-    docker compose exec web flask reset-wachtwoord <gebruiker>
-    docker compose exec web flask maak-beheerder
-    docker compose exec web flask setup-code
-    docker compose exec web flask herbereken-uren
+Aanroepen in Docker, vanuit de map met docker-compose.yml. Gebruik altijd
+'-u rooster', anders worden nieuwe bestanden in ./data van root:
+    docker compose exec -u rooster web flask reset-wachtwoord <gebruiker>
+    docker compose exec -u rooster web flask maak-beheerder
+    docker compose exec -u rooster web flask setup-code
+    docker compose exec -u rooster web flask backup
+    docker compose exec -u rooster web flask terugzetten <naam-van-de-back-up>
+    docker compose exec -u rooster web flask herbereken-uren
 """
 
 import getpass
+import re
 import secrets
 
 import click
@@ -47,6 +51,7 @@ def registreer_commando_s(app: Flask) -> None:
         gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
         gebruiker.actief = True
         gebruiker.moet_wachtwoord_wijzigen = True
+        gebruiker.maak_sessies_ongeldig()
         logboek.log("Wachtwoord gereset", "Via command line", gebruiker="cli",
                     nieuw=gebruiker.gebruikersnaam)
         db.session.commit()
@@ -67,6 +72,7 @@ def registreer_commando_s(app: Flask) -> None:
             db.session.add(gebruiker)
         gebruiker.rol = ROL_BEHEERDER
         gebruiker.actief = True
+        gebruiker.maak_sessies_ongeldig()
         gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
         gebruiker.moet_wachtwoord_wijzigen = False
         logboek.log("Beheerder aangemaakt", "Via command line", gebruiker="cli",
@@ -99,7 +105,33 @@ def registreer_commando_s(app: Flask) -> None:
         """Maak nu een back-up van de database (in <datamap>/backups)."""
         from .services import backup
 
+        if label and not re.fullmatch(r"[a-z0-9-]{1,40}", label):
+            raise click.ClickException("Het label mag alleen kleine letters, cijfers en '-' bevatten "
+                                       "(bijv. 'voor-update').")
         click.echo(f"Back-up gemaakt: {backup.maak_backup(label)}")
+
+    @app.cli.command("terugzetten")
+    @click.argument("naam")
+    @click.confirmation_option(prompt="De huidige stand wordt vervangen door deze back-up. Doorgaan?")
+    def terugzetten(naam: str):
+        """Zet een back-up uit <datamap>/backups terug (noodgeval, als de website niet werkt).
+
+        Maakt eerst zelf een veiligheidsback-up; daarna moet iedereen opnieuw inloggen.
+        """
+        from .services import backup
+
+        pad = backup.pad_van(naam)
+        if pad is None:
+            raise click.ClickException(f"Onbekende back-up '{naam}'. Kies een naam uit Beheer → Back-ups "
+                                       "of uit de map backups.")
+        try:
+            veiligheid = backup.zet_terug(pad)
+        except ValueError as fout:
+            raise click.ClickException(str(fout)) from fout
+        logboek.log("Back-up teruggezet", f"{naam} (via command line)", gebruiker="cli", oud=veiligheid)
+        db.session.commit()
+        click.echo(f"Back-up {naam} is teruggezet. De vorige stand is bewaard als {veiligheid}. "
+                   "Iedereen moet opnieuw inloggen.")
 
     @app.cli.command("logboek-opschonen")
     def logboek_opschonen():

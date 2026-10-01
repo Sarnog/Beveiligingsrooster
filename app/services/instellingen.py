@@ -4,14 +4,17 @@ Alle instellingen met hun standaardwaarde staan in STANDAARD. Waarden worden als
 tekst opgeslagen; de hulpfuncties zetten ze om naar het juiste type.
 """
 
+import math
+
 from ..extensions import db
 from ..models import Instelling
+from .tijden import is_cijfers
 
 # Sleutel -> standaardwaarde (altijd als tekst)
 STANDAARD: dict[str, str] = {
     "setup_voltooid": "0",
     "teamnaam": "Beveiligingsrooster",
-    "tijdzone": "Europe/Amsterdam",
+    "tijdzone": "",  # leeg = TZ uit de omgeving (standaard Europe/Amsterdam), zie klok.py
     "eerste_jaar": "",
     "toeslag_zaterdag": "1.5",
     "toeslag_zondag": "2.0",
@@ -28,6 +31,7 @@ STANDAARD: dict[str, str] = {
     "agenda_sync_maanden_vooruit": "12",
     "backup_bewaren": "30",
     "laatst_bijgewerkt": "",
+    "sessie_generatie": "",  # verandert na het terugzetten van een back-up: iedereen uitloggen
 }
 
 
@@ -61,20 +65,21 @@ def lees_int(sleutel: str, standaard: int = 0) -> int:
 
 
 def lees_float(sleutel: str) -> float | None:
-    """Lees een getal (komma of punt). Leeg of ongeldig -> None."""
+    """Lees een getal (komma of punt). Leeg, ongeldig, inf of nan -> None."""
     tekst = lees(sleutel).strip().replace(",", ".")
     if tekst == "":
         return None
     try:
-        return float(tekst)
+        waarde = float(tekst)
     except ValueError:
         return None
+    return waarde if math.isfinite(waarde) else None
 
 
 def blanco_code() -> int | None:
     """Het codenummer dat 'geen dienst' betekent (standaard 15), of None."""
     tekst = lees("blanco_code").strip()
-    return int(tekst) if tekst.isdigit() else None
+    return int(tekst) if is_cijfers(tekst) else None
 
 
 def toeslagen() -> dict:

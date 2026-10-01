@@ -6,8 +6,10 @@ Week 1 kan dus in december van het vorige jaar beginnen (2026: maandag 29-12-202
 
 from datetime import date, timedelta
 
+# Ook beschikbaar in de templates (zie _registreer_template_helpers in app/__init__.py)
 DAGNAMEN_KORT = ["ma", "di", "wo", "do", "vr", "za", "zo"]
 DAGNAMEN = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+MIN_JAAR, MAX_JAAR = 1950, 2150  # redelijke grenzen voor jaartallen in de app
 MAANDNAMEN = [
     "januari", "februari", "maart", "april", "mei", "juni",
     "juli", "augustus", "september", "oktober", "november", "december",
