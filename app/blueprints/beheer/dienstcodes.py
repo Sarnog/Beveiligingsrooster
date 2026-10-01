@@ -10,6 +10,7 @@ from ...services.rooster import diensten_met_afwijkende_std_tijden, pas_std_tijd
 from ...services.tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from ...services.validatie import MAX_OMSCHRIJVING, is_codenummer, lengte_fout
 from ...services.voorbeeldpakket import laad_voorbeeldpakket
+from ...services.weekrooster import BEGIN_IS_EIND
 from ..hulp import beheerder_vereist, getal, kleur, vinkje
 from . import bp
 
@@ -62,6 +63,8 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
         begin = eind = None
     if (begin is None) != (eind is None):
         fouten.append("Vul zowel een begin- als eindtijd in, of geen van beide.")
+    elif begin is not None and begin == eind:
+        fouten.append(BEGIN_IS_EIND)
 
     waarden = {
         "nummer": nummer,

@@ -103,7 +103,12 @@ def nep(app, monkeypatch):
 
 @pytest.fixture
 def gekoppeld(klaar, nep):
+    from app.services import instellingen
+
     laad_voorbeeldpakket()
+    # De tests gebruiken vaste datums (maart 2026); sinds 1.5.0 synchroniseert sync_dag alleen
+    # binnen de sync-periode (audit L6). Daarom hier een ruime periode terug.
+    instellingen.schrijf("agenda_sync_dagen_terug", "3650")
     medewerker = Medewerker(naam="Medewerker A", initialen="TSA", email="a@voorbeeld.nl",
                             agenda_modus="B", agenda_id="agenda-a")
     db.session.add(medewerker)

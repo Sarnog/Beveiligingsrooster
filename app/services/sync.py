@@ -131,13 +131,19 @@ def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:
     """Zet de afspraken van één dag goed: één afspraak per dienst (dus twee bij een 2e dienst).
 
     Geen dienst betekent ook geen afspraak (die houden we bij in de dienstregel).
+    Buiten de sync-periode (zie sync_volledig) wordt niets aangemaakt of gewijzigd; daar
+    worden alleen afspraken van gewiste diensten nog opgeruimd.
     """
+    van, tot = sync_periode()
+    binnen = van <= datum <= tot
     diensten = (Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum)
                 .order_by(Dienst.volgnummer).all())
-    dagtekst = dagtekst_voor(datum) if diensten else ""
+    dagtekst = dagtekst_voor(datum) if diensten and binnen else ""
     met_tweede = _dagen_met_tweede_dienst(diensten)
     for dienst in diensten:
         gewenst = afspraak_voor(dienst, dagtekst)
+        if not binnen and gewenst is not None:
+            continue  # buiten de periode: bestaande afspraak laten zoals hij is
         _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, dienst.google_event_id)
         _ruim_lege_dienst_op(dienst, met_tweede)
 

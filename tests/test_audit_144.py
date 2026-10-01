@@ -105,7 +105,10 @@ def test_h1_droogloopscherm_toont_verwijderde_diensten_per_medewerker(app, als_b
 
 @pytest.fixture
 def gekoppeld(mw):
+    from app.services import instellingen
+
     mw.agenda_modus, mw.agenda_id = "B", "agenda-a"
+    instellingen.schrijf("agenda_sync_dagen_terug", "3650")  # vaste datums: zie test_agenda.gekoppeld
     db.session.commit()
     return mw
 
@@ -704,3 +707,107 @@ def test_l3_api_toont_lege_plaatshouder_als_null(app, als_beheerder, mw):
     gegevens = als_beheerder.get("/api/v1/week/2026/10").get_json()
     rij = gegevens["medewerkers"][0]
     assert rij["dagen"][0] is None and rij["tweede_diensten"][0]["code"] == 3
+
+
+# ---------------------------------------------------------------------------
+# L4 · Archiveren met een ongeldige datum gebruikt stil 'vandaag'
+# ---------------------------------------------------------------------------
+
+def test_l4_archiveren_met_ongeldige_datum_geeft_fout(app, als_beheerder, mw):
+    antwoord = als_beheerder.post(f"/beheer/medewerkers/{mw.id}/archiveer", data={"vanaf": "31-02-2026"},
+                                  follow_redirects=True)
+    assert "ongeldige datum" in antwoord.data.decode().lower()
+    db.session.expire_all()
+    assert db.session.get(Medewerker, mw.id).gearchiveerd_vanaf is None
+
+
+def test_l4_archiveren_met_geldige_datum(app, als_beheerder, mw):
+    als_beheerder.post(f"/beheer/medewerkers/{mw.id}/archiveer", data={"vanaf": "2026-12-01"})
+    db.session.expire_all()
+    assert db.session.get(Medewerker, mw.id).gearchiveerd_vanaf == date(2026, 12, 1)
+
+
+# ---------------------------------------------------------------------------
+# L6 · sync_dag buiten de sync-periode
+# ---------------------------------------------------------------------------
+
+def test_l6_sync_dag_buiten_periode_maakt_geen_afspraken(app, gekoppeld, nep):
+    from app.services import sync_planning
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    ver = date.today() + timedelta(days=800)  # ver na de sync-periode (standaard 12 maanden)
+    wijzig_cellen([Wijziging(gekoppeld.id, ver, "code", "4")])
+    _wachtrij_nu()
+    assert nep.agendas["agenda-a"] == {}  # net als sync_volledig: niets buiten de periode
+    # Maar een gewiste dienst met een (oude) afspraak wordt daar wel opgeruimd
+    dienst = Dienst.query.one()
+    nep.agendas["agenda-a"]["oud"] = {"id": "oud"}
+    dienst.google_event_id = "oud"
+    db.session.commit()
+    wijzig_cellen([Wijziging(gekoppeld.id, ver, "code", "")])
+    sync_planning.plan_dag(dienst.medewerker, ver)
+    _wachtrij_nu()
+    assert nep.agendas["agenda-a"] == {} and Dienst.query.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# L7 · Begin = eind: uren, Google-afspraak en overlappen niet consistent
+# ---------------------------------------------------------------------------
+
+def test_l7_begin_gelijk_aan_eind_wordt_geweigerd(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4")])  # 07:15-15:45
+    _, fouten = wijzig_cellen([Wijziging(mw.id, MAANDAG, "eind", "07:15")])
+    assert fouten and "gelijk" in fouten[0]["melding"]
+    db.session.expire_all()
+    assert Dienst.query.one().eind == "15:45"
+
+
+def test_l7_dienstcode_met_gelijke_standaardtijden_geweigerd(app, als_beheerder):
+    from app.models import Dienstcode
+
+    antwoord = als_beheerder.post("/beheer/dienstcodes/nieuw", data={
+        "nummer": "88", "omschrijving": "Raar", "std_begin": "08:00", "std_eind": "08:00"})
+    assert antwoord.status_code == 400 and Dienstcode.query.filter_by(nummer=88).first() is None
+
+
+def test_l7_een_betekenis_overal(app):
+    """Begin = eind (bijv. uit een oude import) betekent overal: duur 0."""
+    from types import SimpleNamespace
+
+    from app.services.google_agenda import afspraak_voor
+    from app.services.urenberekening import bereken_uren
+    from app.services.weekrooster import overlappen
+
+    def dienst(begin, eind):
+        return SimpleNamespace(begin=begin, eind=eind)
+
+    assert bereken_uren("08:00", "08:00") == 0
+    assert not overlappen(dienst("08:00", "08:00"), dienst("10:00", "12:00"))
+    nul = SimpleNamespace(begin="08:00", eind="08:00", datum=MAANDAG, dienstcode=None, dienstnaam="X",
+                          opmerking_tekst="", id=1, medewerker_id=1)
+    body = afspraak_voor(nul).body
+    assert body["start"]["dateTime"] == body["end"]["dateTime"]
+
+
+# ---------------------------------------------------------------------------
+# L8 · Telefoonkaart toont opmerkingtijden alleen met een begintijd
+# ---------------------------------------------------------------------------
+
+def test_l8_kaart_toont_opmerkingtijd_met_alleen_eind(app):
+    from app.services.weekrooster import dienst_naar_dict
+    from app.services.weekweergave import kaart
+
+    d = dienst_naar_dict(None)
+    d.update(opmerking="Training", opm_begin="", opm_eind="17:00", tweede=None)
+    assert "17:00" in str(kaart(1, "2026-03-02", d, "ma", False))
+
+
+def test_l8_raster_js_zelfde_regel():
+    import os
+
+    pad = os.path.join(os.path.dirname(__file__), "..", "app", "static", "js", "raster.js")
+    with open(pad, encoding="utf-8") as f:
+        js = f.read()
+    assert '(g.opm_begin ? " ("' not in js  # alleen begin telde: ook eind moet meetellen

@@ -364,6 +364,7 @@ def _plan_dag_in_ander_proces(medewerker_id, datum, wijzig_dienst):
 @pytest.fixture
 def gekoppeld(mw, monkeypatch):
     mw.agenda_modus, mw.agenda_id = "B", "agenda-a"
+    instellingen.schrijf("agenda_sync_dagen_terug", "3650")  # vaste datums: zie test_agenda.gekoppeld
     db.session.commit()
     return mw
 

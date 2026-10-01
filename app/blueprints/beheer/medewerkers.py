@@ -203,7 +203,11 @@ def medewerker_archiveer(mid: int):
         medewerker.gearchiveerd_vanaf = None
         flash(f"{medewerker.naam} is weer actief.", "succes")
     else:
-        vanaf = parse_datum(request.form.get("vanaf")) or klok.vandaag()
+        ingevuld = (request.form.get("vanaf") or "").strip()
+        vanaf = parse_datum(ingevuld) if ingevuld else klok.vandaag()
+        if vanaf is None:
+            flash(f"Ongeldige datum '{ingevuld}': {medewerker.naam} is niet gearchiveerd.", "fout")
+            return redirect(url_for("beheer.medewerkers"))
         medewerker.gearchiveerd_vanaf = vanaf
         if medewerker.agenda_modus and request.form.get("agenda") in ("behouden", "verwijderen"):
             sync_planning.plan_ontkoppel(medewerker, request.form.get("agenda") == "verwijderen")

@@ -39,6 +39,9 @@ VELD_NAMEN = {
 # Velden die dienst 2 heeft (de opmerking hoort bij de dag en staat bij dienst 1)
 VELDEN_DIENST2 = ("code", "begin", "eind", "dienstnaam", "uren")
 MAX_OPMERKING = 120
+# Begin = eind is een tikfout (duur 0): we weigeren het. Komt het toch voor (bijv. uit een
+# oude import), dan betekent het overal duur 0: 0 uren, een afspraak van 0 minuten, geen overlap.
+BEGIN_IS_EIND = "Begin- en eindtijd zijn gelijk (duur 0). Een nachtdienst eindigt op een andere tijd."
 # Scheidingsteken tussen twee codes in het code-raster: '/', '+' of een spatie
 CODE_SCHEIDING = re.compile(r"\s*[/+]\s*|\s+")
 log = logging.getLogger(__name__)
@@ -145,7 +148,7 @@ def dienst_naar_dict(dienst: Dienst | None, regels: dict | None = None) -> dict:
 def overlappen(dienst1: Dienst | None, dienst2: Dienst | None) -> bool:
     """True als de tijden van twee diensten op dezelfde dag elkaar overlappen.
 
-    Eind vóór begin = de dienst loopt door tot na middernacht.
+    Eind vóór begin = de dienst loopt door tot na middernacht; begin = eind = duur 0.
     """
     if dienst1 is None or dienst2 is None:
         return False
@@ -154,7 +157,7 @@ def overlappen(dienst1: Dienst | None, dienst2: Dienst | None) -> bool:
         begin, eind = tijd_naar_minuten(dienst.begin), tijd_naar_minuten(dienst.eind)
         if begin is None or eind is None:
             return False
-        vakken.append((begin, eind + 1440 if eind <= begin else eind))
+        vakken.append((begin, eind + 1440 if eind < begin else eind))
     (b1, e1), (b2, e2) = vakken
     return b1 < e2 and b2 < e1
 
@@ -398,7 +401,11 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
 
     if veld in ("begin", "eind"):
         oud = getattr(dienst, veld) or ""
-        setattr(dienst, veld, _tijd(waarde))
+        nieuw = _tijd(waarde)
+        andere = dienst.eind if veld == "begin" else dienst.begin
+        if nieuw is not None and nieuw == andere:
+            raise CelFout(BEGIN_IS_EIND)
+        setattr(dienst, veld, nieuw)
         code = dienst.dienstcode
         standaard = (code.std_begin, code.std_eind) if code else (None, None)
         # Handmatig = afwijkend van de standaardtijden van de code

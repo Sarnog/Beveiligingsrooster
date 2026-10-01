@@ -96,9 +96,7 @@ def kaart(mw_id: int, datum: str, d: dict, titel: str, bewerken: bool) -> Markup
                   f'style="{escape(t["dienst_stijl"])}">{escape(t["dienstnaam"])}</span>'
                   f'<span class="dk-tijden" data-m="tijden2">{tijden2}</span>'
                   f'<span class="dk-uren" data-m="uren2">{escape(t["uren"])}</span></span>')
-    opm = escape(d["opmerking"])
-    if d["opm_begin"]:
-        opm += f" ({escape(d['opm_begin'])}–{escape(d['opm_eind'])})"
+    opm = escape(_opmerking_tekst(d))  # zelfde regel als in het rooster (begin óf eind)
     return Markup(
         f'{open_}<span class="dk-titel">{titel}</span>'
         f'<span class="dk-dienst" data-m="dienstnaam" style="{escape(d["dienst_stijl"])}">'
