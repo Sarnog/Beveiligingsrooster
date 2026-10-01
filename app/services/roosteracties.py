@@ -70,10 +70,6 @@ class Actie:
     bestaand: Dienst | None = None
     nieuw: Inhoud | None = None
 
-    @property
-    def naam(self):  # zoals de import de sleutel noemt
-        return self.sleutel
-
 
 @dataclass
 class Telling:

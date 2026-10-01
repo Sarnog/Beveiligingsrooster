@@ -39,8 +39,8 @@ jobs:
         run: |
           flask --app wsgi:app db upgrade
           flask --app wsgi:app db check
-      - name: Tests (pytest, met branch-coverage)
-        run: pytest -q -m "not browser" --cov=app --cov-branch --cov-report=term-missing:skip-covered
+      - name: Tests (pytest, met branch-coverage; minder dan 100% = rood)
+        run: pytest -q -m "not browser" --cov=app --cov-branch --cov-report=term-missing:skip-covered --cov-fail-under=100
       - name: Lock-bestand hoort bij requirements.txt
         run: |
           # Elk pakket uit requirements.txt moet in requirements.lock staan
