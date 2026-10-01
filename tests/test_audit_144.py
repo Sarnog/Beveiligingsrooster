@@ -297,3 +297,43 @@ def test_m2_lege_tweede_code_wist_een_tweede_dienst_met_code(app, mw):
     wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/")])
     d1, d2 = _dag(mw.id)
     assert d1.dienstcode.nummer == 4 and d2 is None
+
+
+# ---------------------------------------------------------------------------
+# M3 · De worker draait als PID 1 zonder SIGTERM-handler
+# ---------------------------------------------------------------------------
+
+def test_m3_worker_stopt_netjes_na_sigterm(app, klaar, monkeypatch):
+    import os
+    import signal
+
+    from app import worker
+
+    rondes = []
+
+    def ronde(planning, nu=None):
+        rondes.append(1)
+        os.kill(os.getpid(), signal.SIGTERM)  # 'docker stop' midden in een ronde
+
+    monkeypatch.setattr(worker, "create_app", lambda: app)
+    monkeypatch.setattr(worker, "een_ronde", ronde)
+    oud = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        worker.main()  # moet na de lopende ronde zelf stoppen (geen oneindige lus)
+    finally:
+        for sig, handler in oud.items():
+            signal.signal(sig, handler)
+    assert rondes == [1]
+
+
+@pytest.mark.parametrize("bestand", ["docker-compose.yml", "README.md"])
+def test_m3_init_in_docker_compose(bestand):
+    """Een kleine init (tini) als PID 1 geeft signalen door en ruimt zombieprocessen op."""
+    import os
+    import re
+
+    with open(os.path.join(os.path.dirname(__file__), "..", bestand), encoding="utf-8") as f:
+        tekst = f.read()
+    for service in ("web", "worker"):
+        blok = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", tekst, re.M)
+        assert blok and re.search(r"^    init: true", blok.group(1), re.M), service

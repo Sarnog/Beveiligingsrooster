@@ -10,11 +10,15 @@ Elke stap heeft een eigen foutafhandeling: een fout in de agenda-sync houdt de
 back-up dus niet tegen (en andersom). Mislukt de back-up, dan probeert de worker
 het pas na BACKUP_BACKOFF opnieuw (niet elke ronde), met een regel in het logboek.
 
+Stoppen: SIGTERM (docker stop) of SIGINT (Ctrl+C). De lopende ronde (bijv. een sync of
+back-up) wordt eerst afgemaakt; daarna stopt de lus netjes, binnen de 10 s van docker stop.
+
 Starten: python -m app.worker
 """
 
 import logging
-import time
+import signal
+import threading
 from datetime import date, datetime, timedelta
 
 from . import create_app, debuglog
@@ -119,10 +123,19 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
 def main() -> None:
     app = create_app()
     planning = Planning()
+    stoppen = threading.Event()
+
+    def stop_signaal(signum, _frame) -> None:
+        # Alleen een vlag zetten: de lopende ronde mag afmaken wat hij doet
+        log.info("Signaal %s ontvangen: worker stopt na de lopende ronde", signal.Signals(signum).name)
+        stoppen.set()
+
+    signal.signal(signal.SIGTERM, stop_signaal)
+    signal.signal(signal.SIGINT, stop_signaal)
     stand = debuglog.stand(app)
     log.info("Worker gestart (log: %s%s)", stand["niveau"], ", debuglog aan" if stand["aan"] else "")
     with app.app_context():
-        while True:
+        while not stoppen.is_set():
             try:
                 een_ronde(planning)
             except Exception:  # worker mag nooit stoppen door één fout
@@ -131,7 +144,8 @@ def main() -> None:
             finally:
                 # Sessie opruimen zodat we steeds verse data uit de database lezen
                 db.session.remove()
-            time.sleep(INTERVAL_SECONDEN)
+            stoppen.wait(INTERVAL_SECONDEN)  # wordt direct wakker bij een stopsignaal
+    log.info("Worker gestopt")
 
 
 if __name__ == "__main__":
