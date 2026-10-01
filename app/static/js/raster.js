@@ -10,10 +10,10 @@
      data-vn                     "2" bij de tweede dienst van die dag (anders dienst 1)
 
    Twee diensten op één dag: typ in het code-raster bijvoorbeeld 4/7 (ook 4+7 of
-   4 7). In het visuele rooster heeft een medewerker dan twee extra rijen
-   (dienstnaam en tijden van dienst 2). De server stuurt die rijen alleen mee bij
-   wie die week een tweede dienst heeft; komt er tijdens het bewerken een tweede
-   dienst bij, dan voegt dit script ze toe (zorgVoorTweedeRijen).
+   4 7). Elk blok in het visuele rooster heeft per dag vier regels (data-plek a,
+   b1-b3, c, d1-d3). Bij één dienst: opmerking, opmerkingtijden, dienstnaam,
+   tijden. Bij twee diensten: dienst 1 bovenaan (de opmerking achter de
+   dienstnaam), dienst 2 onderaan. vulDag() wisselt die indeling per dag.
 
    Bediening: pijltjes, Tab, Enter, direct typen, F2/dubbelklik, Delete,
    Esc, Shift+pijltjes (selecteren), Ctrl+C / Ctrl+V (ook vanuit Excel),
@@ -30,7 +30,7 @@
 
   // Versie van dit script. Moet gelijk zijn aan VERSIE in app/__init__.py
   // (een test in tests/test_rooster.py controleert dat).
-  var SCRIPT_VERSIE = "1.4.1";
+  var SCRIPT_VERSIE = "1.4.2";
 
   var houder = document.querySelector("[data-api-cellen]");
   if (!houder) return;
@@ -75,6 +75,14 @@
       for (var k = 0; k < cs; k++) zelf.matrix[r][c + k] = cel;
     });
     this.rijen.sort(function (a, b) { return a - b; });
+  };
+
+  // Cel uit het raster halen (een plek die geen bewerkbare cel meer is)
+  Raster.prototype.verwijder = function (cel) {
+    for (var k = 0; k < (cel._cs || 1); k++) {
+      if (this.matrix[cel._r] && this.matrix[cel._r][cel._c + k] === cel) delete this.matrix[cel._r][cel._c + k];
+    }
+    cel._raster = null;
   };
 
   Raster.prototype.op = function (r, c) {
@@ -490,72 +498,103 @@
   var LEEG = { code: "", dienstnaam: "", begin: "", eind: "", uren: "", handmatig: false, uren_handmatig: false,
                opmerking: "", opm_begin: "", opm_eind: "", versie: 0, dienst_stijl: "", opmerking_stijl: "" };
 
-  // Alle cellen van één medewerker/dag bijwerken met de gegevens van de server.
-  // g = dienst 1 (met de opmerking en de code(s) voor het code-raster), g.tweede = dienst 2.
-  function werkBij(mw, datum, g, opgeslagen) {
-    var tweede = g.tweede || LEEG;
-    if (g.tweede) zorgVoorTweedeRijen(mw);
-    var selector = '[data-mw="' + mw + '"][data-datum="' + datum + '"]';
-    document.querySelectorAll(selector).forEach(function (el) {
-      var veld = el.getAttribute("data-veld");
-      var toon = el.getAttribute("data-toon");
-      var d = vnVan(el) === "2" ? tweede : g;
-      if (veld === "code") {
-        el.textContent = g.code;
-        el.setAttribute("style", g.code_stijl || g.dienst_stijl);
-      } else if (veld === "begin" || veld === "eind") {
-        el.textContent = d[veld];
-        el.classList.toggle("handmatig", d.handmatig);
-      } else if (veld === "opmerking") {
-        el.textContent = g.opmerking;
-        el.setAttribute("style", g.opmerking_stijl);
-      } else if (veld === "opm_begin" || veld === "opm_eind") {
-        el.textContent = g[veld];
-      } else if (toon === "dienstnaam") {
-        el.textContent = d.dienstnaam;
-        el.setAttribute("style", d.dienst_stijl);
-        // De versie alleen overnemen na echt opslaan (een voorbeeld is niet bewaard)
-        if (opgeslagen) el.setAttribute("data-versie", d.versie);
-      } else if (toon === "uren") {
-        el.textContent = d.uren;
-        el.classList.toggle("handmatig", !!d.uren_handmatig);
+  // Rol van elke plek in het blok van één dag (zie week.html)
+  var ROLLEN_EEN = {
+    a: { veld: "opmerking", klasse: "opm" },
+    b1: { veld: "opm_begin", klasse: "tijd opmtijd" },
+    b2: { veld: "opm_eind", klasse: "tijd opmtijd" },
+    b3: null,  // lege cel
+    c: { veld: "dienstnaam", toon: "dienstnaam", vn: "1", klasse: "dienstnaam" },
+    d1: { veld: "begin", vn: "1", klasse: "tijd" },
+    d2: { veld: "eind", vn: "1", klasse: "tijd" },
+    d3: { veld: "uren", toon: "uren", vn: "1", klasse: "uren" }
+  };
+  var ROLLEN_TWEE = {
+    a: { veld: "dienstnaam", toon: "dienstnaam", vn: "1", klasse: "dienstnaam" },
+    b1: { veld: "begin", vn: "1", klasse: "tijd" },
+    b2: { veld: "eind", vn: "1", klasse: "tijd" },
+    b3: { veld: "uren", toon: "uren", vn: "1", klasse: "uren" },
+    c: { veld: "dienstnaam", toon: "dienstnaam", vn: "2", klasse: "dienstnaam" },
+    d1: { veld: "begin", vn: "2", klasse: "tijd" },
+    d2: { veld: "eind", vn: "2", klasse: "tijd" },
+    d3: { veld: "uren", toon: "uren", vn: "2", klasse: "uren" }
+  };
+  var TOESTAND = ["actief", "geselecteerd", "bewerken"];  // blijven staan bij het wisselen
+
+  function opmerkingTekst(g) {
+    return g.opmerking + (g.opm_begin || g.opm_eind ? " (" + g.opm_begin + "–" + g.opm_eind + ")" : "");
+  }
+
+  // Eén dag van één medewerker in het visuele rooster vullen; wisselt zo nodig de indeling.
+  // g = dienst 1 (met opmerking en code(s)), g.tweede = dienst 2 (of null).
+  function vulDag(mw, datum, g, opgeslagen) {
+    var twee = !!g.tweede;
+    var rollen = twee ? ROLLEN_TWEE : ROLLEN_EEN;
+    // Versies van vóór dit antwoord: een voorbeeld is niet bewaard, dan blijft de oude versie
+    var versies = { "1": versieVan(mw, datum, "1"), "2": versieVan(mw, datum, "2") };
+    var raster = null;
+    document.querySelectorAll('[data-plek][data-mw="' + mw + '"][data-datum="' + datum + '"]').forEach(function (el) {
+      var rol = rollen[el.getAttribute("data-plek")];
+      var d = rol && rol.vn === "2" ? g.tweede : g;
+      var wasCel = el.classList.contains("cel");
+      var staat = TOESTAND.filter(function (k) { return el.classList.contains(k); });
+      raster = raster || el._raster || rasters.filter(function (r) { return r.tabel.contains(el); })[0];
+      ["data-veld", "data-toon", "data-vn", "data-versie", "data-opm", "title", "style"].forEach(function (a) {
+        el.removeAttribute(a);
+      });
+      if (!rol) {
+        el.className = "leeg";
+        el.textContent = "";
+        el.removeAttribute("tabindex");
+        if (wasCel && raster) raster.verwijder(el);
+        return;
       }
-      if (veld) { el.classList.remove("fout"); el.removeAttribute("title"); }
-      if (veld === "begin" || veld === "eind") el.title = d.handmatig ? "Handmatig aangepast" : "";
-      if (veld === "uren" && d.uren_handmatig) el.title = "Zelf ingevulde uren";
+      el.className = "cel " + rol.klasse + (staat.length ? " " + staat.join(" ") : "");
+      el.setAttribute("data-veld", rol.veld);
+      if (rol.toon) el.setAttribute("data-toon", rol.toon);
+      if (rol.vn === "2") el.setAttribute("data-vn", "2");
+      var tekst = "";
+      if (rol.veld === "dienstnaam") {
+        tekst = d.dienstnaam;
+        el.setAttribute("style", d.dienst_stijl);
+        el.setAttribute("data-versie", opgeslagen ? d.versie : versies[rol.vn]);
+        // Twee diensten: de opmerking van de dag staat achter de dienstnaam van dienst 1 (CSS)
+        if (twee && rol.vn === "1" && opmerkingTekst(g)) {
+          el.setAttribute("data-opm", opmerkingTekst(g));
+          el.title = "Opmerking: " + opmerkingTekst(g);
+        }
+      } else if (rol.veld === "opmerking") {
+        tekst = g.opmerking;
+        el.setAttribute("style", g.opmerking_stijl);
+      } else if (rol.veld === "opm_begin" || rol.veld === "opm_eind") {
+        tekst = g[rol.veld];
+      } else if (rol.veld === "uren") {
+        tekst = d.uren;
+        el.classList.toggle("handmatig", !!d.uren_handmatig);
+        if (d.uren_handmatig) el.title = "Zelf ingevulde uren";
+      } else {  // begin, eind
+        tekst = d[rol.veld];
+        el.classList.toggle("handmatig", !!d.handmatig);
+        if (d.handmatig) el.title = "Handmatig aangepast";
+      }
+      if (!(invoer && el.contains(invoer))) el.textContent = tekst;  // niet midden in het typen
+      if (!wasCel && raster) raster.voegToe([el]);
     });
+  }
+
+  // Alle cellen van één medewerker/dag bijwerken met de gegevens van de server
+  function werkBij(mw, datum, g, opgeslagen) {
+    var code = document.querySelector('[data-veld="code"][data-mw="' + mw + '"][data-datum="' + datum + '"]');
+    if (code) {
+      code.textContent = g.code;
+      code.setAttribute("style", g.code_stijl || g.dienst_stijl);
+      code.classList.remove("fout");
+      code.removeAttribute("title");
+    }
+    vulDag(mw, datum, g, opgeslagen);
     var totaal = document.querySelector('[data-totaal="' + mw + '"]');
     if (totaal) totaal.textContent = g.weektotaal;
     werkKaartenBij(mw, datum, g);
-  }
-
-  // Rijen voor dienst 2 toevoegen bij een medewerker die die week nog geen tweede dienst had:
-  // een kopie van de dienstnaam- en tijdenrij (rij c en d), twee rijnummers lager
-  function zorgVoorTweedeRijen(mw) {
-    var blok = document.querySelector('tbody.blok[data-blok="' + mw + '"]');
-    if (!blok || blok.querySelector("tr.tweede-rij")) return;
-    var nieuweCellen = [];
-    [["tr.r-c", "r-e"], ["tr.r-d", "r-f"]].forEach(function (paar) {
-      var rij = blok.querySelector(paar[0]).cloneNode(true);
-      rij.className = paar[1] + " tweede-rij";
-      rij.setAttribute("data-tweede", mw);
-      rij.querySelectorAll(".urenkol").forEach(function (c) { c.remove(); });  // weektotaal niet dubbel
-      rij.appendChild(document.createElement("td")).className = "urenkol";
-      rij.querySelectorAll("[data-mw]").forEach(function (cel) {
-        cel.setAttribute("data-vn", "2");
-        cel.setAttribute("data-r", String(parseInt(cel.getAttribute("data-r"), 10) + 2));
-        if (cel.hasAttribute("data-versie")) cel.setAttribute("data-versie", "0");
-        cel.textContent = "";
-        cel.removeAttribute("style");
-        cel.removeAttribute("title");
-        cel.classList.remove("handmatig", "gewijzigd", "fout", "actief", "geselecteerd", "bewerken");
-        nieuweCellen.push(cel);
-      });
-      blok.appendChild(rij);
-    });
-    blok.querySelector(".naamkol").rowSpan = 6;
-    var raster = rasters.filter(function (r) { return r.tabel.contains(blok); })[0];
-    if (raster) raster.voegToe(nieuweCellen);
   }
 
   // Kaarten in de telefoonweergave bijwerken (zelfde gegevens als het raster)

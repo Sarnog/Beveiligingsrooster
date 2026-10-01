@@ -7,8 +7,9 @@
    raster (raster.js roept window.bouwPrintRooster aan).
 
    Per dag een witte kolom (opmerking, dienstnaam als gekleurde balk, begin
-   en eind) en een smalle grijze kolom met de uren. Een tweede dienst staat
-   onder de eerste. De rijhoogte vult de pagina; pas als dat niet past wordt
+   en eind) en een smalle grijze kolom met de uren. Op een dag met twee
+   diensten staat dienst 1 bovenaan (met de opmerking achter de naam) en
+   dienst 2 eronder, net als op het scherm. De rijhoogte vult de pagina; pas als dat niet past wordt
    het lettertype kleiner. De reserveregel komt er alleen bij als die past.
    Zonder JavaScript print de browser het gewone schermrooster.
    ========================================================== */
@@ -52,28 +53,49 @@
     return tr;
   }
 
-  // Begin | eind | uren (grijs) per dag
+  // Attributen van de bron (voor raster.js en de tests): medewerker, dag, dienst en veld
+  function kenmerk(bron) {
+    if (!bron || !bron.getAttribute("data-veld")) return {};
+    return { "data-pmw": bron.getAttribute("data-mw"), "data-pdatum": bron.getAttribute("data-datum"),
+             "data-pvn": bron.getAttribute("data-vn") || "1",
+             "data-p": bron.getAttribute("data-toon") || bron.getAttribute("data-veld") };
+  }
+
+  // Begin | eind | uren (grijs) per dag; bronnen: per dag [begin, eind, uren] of null (leeg)
   function tijdRegel(klasse, dagen) {
     var tr = el("tr", klasse);
     dagen.forEach(function (d) {
-      tr.appendChild(kopie("td", "p-tijd", d.begin, d.attr("begin")));
-      tr.appendChild(kopie("td", "p-tijd", d.eind, d.attr("eind")));
-      var uren = kopie("td", "p-grijs p-uren", d.uren, d.attr("uren"));
-      tr.appendChild(uren);
+      d = d || [null, null, null];
+      tr.appendChild(kopie("td", "p-tijd", d[0], kenmerk(d[0])));
+      tr.appendChild(kopie("td", "p-tijd", d[1], kenmerk(d[1])));
+      tr.appendChild(kopie("td", "p-grijs p-uren", d[2], kenmerk(d[2])));
     });
     return tr;
   }
 
-  // Gegevens van één dienst (1 of 2) van een medewerker op een dag, uit het schermrooster
-  function dienstVan(blok, mw, datum, vn) {
-    var sel = '[data-mw="' + mw + '"][data-datum="' + datum + '"]' + (vn === "2" ? '[data-vn="2"]' : ':not([data-vn="2"])');
-    return {
-      naam: blok.querySelector('[data-toon="dienstnaam"]' + sel),
-      begin: blok.querySelector('[data-veld="begin"]' + sel),
-      eind: blok.querySelector('[data-veld="eind"]' + sel),
-      uren: blok.querySelector('[data-toon="uren"]' + sel),
-      attr: function (veld) { return { "data-pmw": mw, "data-pdatum": datum, "data-pvn": vn, "data-p": veld }; }
-    };
+  // Gekleurde dienstnaambalk; bij twee diensten met de opmerking erachter (data-opm)
+  function balk(bron) {
+    var cel = kopie("td", "p-dienst", bron, kenmerk(bron));
+    if (bron && bron.getAttribute("data-opm")) cel.textContent += " – " + bron.getAttribute("data-opm");
+    return cel;
+  }
+
+  // Opmerking met de opmerkingtijden erachter
+  function opmerking(plek) {
+    var cel = kopie("td", "p-opm", plek.a, kenmerk(plek.a));
+    var van = tekstVan(plek.b1), tot = tekstVan(plek.b2);
+    if (van || tot) cel.textContent = (cel.textContent + " (" + van + "–" + tot + ")").trim();
+    return cel;
+  }
+
+  // De cellen van één dag in een blok, op hun vaste plek (zie week.html)
+  function plekken(blok, datum) {
+    var plek = {};
+    blok.querySelectorAll('[data-plek][data-datum="' + datum + '"]').forEach(function (c) {
+      plek[c.getAttribute("data-plek")] = c;
+    });
+    plek.twee = !!(plek.a && plek.a.getAttribute("data-toon") === "dienstnaam");
+    return plek;
   }
 
   function bouw() {
@@ -88,13 +110,18 @@
     var dagopm = rooster.querySelectorAll("thead .dagopm");
     var blokken = rooster.querySelectorAll("tbody.blok");
 
-    // Maat: aantal regels (3 per medewerker, 5 met een tweede dienst)
+    // Per blok de plekken per dag; een blok met een dag met twee diensten krijgt 4 regels
+    var gegevens = Array.prototype.map.call(blokken, function (blok) {
+      var dagen = datums.map(function (datum) { return plekken(blok, datum); });
+      return { blok: blok, dagen: dagen, twee: dagen.some(function (p) { return p.twee; }) };
+    });
+
+    // Maat: aantal regels (3 per medewerker, 4 met een dag met twee diensten)
     var regels = 0;
-    blokken.forEach(function (b) { regels += b.querySelector("tr.tweede-rij") ? 5 : 3; });
+    gegevens.forEach(function (g) { regels += g.twee ? 4 : 3; });
     var reserve = (regels + 3) * RESERVE_MIN_MM <= BESCHIKBAAR_MM;
     var rij = Math.max(Math.min(MAX_RIJ_MM, BESCHIKBAAR_MM / Math.max(regels + (reserve ? 3 : 0), 1)), MIN_RIJ_MM);
     var schaal = Math.min(1, rij / NORMAAL_RIJ_MM);
-
     var tabel = el("table", "print-tabel");
     tabel.style.setProperty("--p-rij", rij.toFixed(2) + "mm");
     tabel.style.setProperty("--p-f", schaal.toFixed(3));
@@ -128,54 +155,44 @@
     kop.appendChild(kopRij);
     tabel.appendChild(kop);
 
-    blokken.forEach(function (blok) {
+    gegevens.forEach(function (g) {
+      var blok = g.blok;
       var mw = blok.getAttribute("data-blok");
-      var tweede = !!blok.querySelector("tr.tweede-rij");
       var body = el("tbody", "p-blok");
       var naamBron = blok.querySelector(".naamkol");
       var naam = el("th", "p-naam");
-      naam.rowSpan = tweede ? 5 : 3;
+      naam.rowSpan = g.twee ? 4 : 3;
       naam.appendChild(document.createTextNode(naamBron.firstChild ? naamBron.firstChild.textContent.trim() : ""));
       var functie = naamBron.querySelector("small");
       if (functie) naam.appendChild(el("small", "", tekstVan(functie)));
 
-      var d1 = datums.map(function (datum) { return dienstVan(blok, mw, datum, "1"); });
-      var d2 = datums.map(function (datum) { return dienstVan(blok, mw, datum, "2"); });
-
-      // Regel a: opmerking (met de opmerkingtijden erachter)
-      var opmerkingen = datums.map(function (datum) {
-        var sel = '[data-mw="' + mw + '"][data-datum="' + datum + '"]';
-        var bron = blok.querySelector('[data-veld="opmerking"]' + sel);
-        var cel = kopie("td", "p-opm", bron, { "data-pmw": mw, "data-pdatum": datum, "data-pvn": "1", "data-p": "opmerking" });
-        var van = tekstVan(blok.querySelector('[data-veld="opm_begin"]' + sel));
-        var tot = tekstVan(blok.querySelector('[data-veld="opm_eind"]' + sel));
-        if (van || tot) cel.textContent = (cel.textContent + " (" + van + "–" + tot + ")").trim();
-        return cel;
-      });
-      var a = dagRegel("p-a", opmerkingen);
+      // Regel a: opmerking, of bij twee diensten de balk van dienst 1
+      var a = dagRegel("p-a", g.dagen.map(function (p) { return p.twee ? balk(p.a) : opmerking(p); }));
       a.insertBefore(naam, a.firstChild);
       var contract = blok.querySelector(".urenkol.contract");
       a.appendChild(el("td", "p-contract", contract ? contract.getAttribute("data-pcontract") || "" : ""));
       body.appendChild(a);
-
-      // Regel c: dienstnaam als gekleurde balk; regel d: begin, eind en uren
-      var c = dagRegel("p-c", d1.map(function (d) { return kopie("td", "p-dienst", d.naam, d.attr("dienstnaam")); }));
-      var totaal = el("td", "p-totaal", tekstVan(blok.querySelector("[data-totaal]")));
-      totaal.rowSpan = tweede ? 4 : 2;
-      totaal.setAttribute("data-ptotaal", mw);
-      c.appendChild(totaal);
-      body.appendChild(c);
-      body.appendChild(tijdRegel("p-d", d1));
-      if (tweede) {
-        body.appendChild(dagRegel("p-e", d2.map(function (d) { return kopie("td", "p-dienst", d.naam, d.attr("dienstnaam")); })));
-        body.appendChild(tijdRegel("p-f", d2));
+      // Regel b (alleen in een blok met twee diensten): tijden van dienst 1
+      if (g.twee) {
+        body.appendChild(tijdRegel("p-b", g.dagen.map(function (p) { return p.twee ? [p.b1, p.b2, p.b3] : null; })));
       }
+      // Regel c: dienstnaambalk; regel d: begin, eind en uren
+      var c = dagRegel("p-c", g.dagen.map(function (p) { return balk(p.c); }));
+      var totaal = el("td", "p-totaal", tekstVan(blok.querySelector("[data-totaal]")));
+      totaal.rowSpan = g.twee ? 3 : 2;
+      totaal.setAttribute("data-ptotaal", mw);
+      if (g.twee) {
+        body.lastChild.appendChild(totaal);
+      } else {
+        c.appendChild(totaal);
+      }
+      body.appendChild(c);
+      body.appendChild(tijdRegel("p-d", g.dagen.map(function (p) { return [p.d1, p.d2, p.d3]; })));
       tabel.appendChild(body);
     });
 
     // Eén lege reserveregel, om met de hand iemand bij te schrijven (alleen als die past)
     if (reserve) {
-      var leeg = datums.map(function () { return { attr: function () { return {}; } }; });
       var body = el("tbody", "p-blok p-reserve");
       var a = dagRegel("p-a", datums.map(function () { return el("td", "p-opm"); }));
       var naam = el("th", "p-naam", "Reserve 1");
@@ -188,7 +205,7 @@
       totaal.rowSpan = 2;
       c.appendChild(totaal);
       body.appendChild(c);
-      body.appendChild(tijdRegel("p-d", leeg));
+      body.appendChild(tijdRegel("p-d", datums.map(function () { return null; })));
       tabel.appendChild(body);
     }
 

@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.4.0)
+# Handleiding voor de planner (beheerder, versie 1.4.2)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
 
@@ -55,13 +55,15 @@ Typ dan **twee codes** in dezelfde cel van het code-raster, gescheiden door `/`,
 `17/3`, `17+3` of `17 3`. Er kunnen er hooguit **twee** per dag.
 
 - De cel toont `17/3` met een **gesplitste kleur**: links de kleur van dienst 1, rechts die van dienst 2.
-- In het rooster komen bij die medewerker **twee extra regels** (alleen die week en alleen bij
-  wie een tweede dienst heeft): de dienstnaam van dienst 2 als gekleurde balk, en daaronder
-  begin, eind en uren. Dienst 2 staat dus **onder** dienst 1.
+- Er komen **geen extra regels** bij. Op die dag schuift **dienst 1 naar de bovenste twee
+  regels** van het blok (dienstnaam, daaronder begin, eind en uren) en staat **dienst 2 op de
+  onderste twee**. De andere dagen van die week blijven zoals ze waren.
 - Elke dienst heeft **eigen tijden en uren**; je kunt ze los aanpassen in het rooster, net als
   bij één dienst. Pauze-aftrek en weekend-/feestdagtoeslag gelden per dienst. Het dag- en
   weektotaal tellen beide diensten op.
-- De **opmerking** (regel a en b) hoort bij de dag, niet bij een dienst.
+- De **opmerking** hoort bij de dag, niet bij een dienst. Op een dag met twee diensten staat
+  ze achter de dienstnaam van dienst 1, bijvoorbeeld *VW Vroeg – Later op dienst*. Wijzigen
+  kan pas weer als het één dienst is (bijvoorbeeld tijdelijk alleen `4` typen).
 - Overlappen de tijden van de twee diensten? Dan zie je boven het code-raster een **oranje
   waarschuwing**. Opslaan kan gewoon; controleer even of het klopt.
 - In het logboek staat bij wijzigingen aan de tweede dienst **"dienst 2:"** voor het veld.
@@ -115,7 +117,7 @@ Niet elke dienst heeft een code. Bijvoorbeeld een cursus of een extra ronde.
 
 ## 3. Opmerkingen
 
-Elk medewerkerblok heeft vier regels per dag (plus twee bij een tweede dienst, zie 1):
+Elk medewerkerblok heeft vier regels per dag (bij twee diensten op een dag is de indeling anders, zie 1):
 
 | Regel | Inhoud | Telt mee in uren? |
 |---|---|---|
@@ -158,7 +160,7 @@ Klik op **Printen**. De week komt liggend op één A4 (ook met 15 medewerkers, e
 De print ziet eruit als het vertrouwde papieren rooster:
 
 - bovenaan *Weeknummer*, per dag de datum (`ma 28-09-26`) met eventueel de dagopmerking als donker label, en rechts de kolom *Uren*;
-- per medewerker één blok met een dikke lijn ertussen: bovenin de opmerking, daaronder de dienstnaam als gekleurde balk en dan begin en eind; een tweede dienst staat eronder;
+- per medewerker één blok met een dikke lijn ertussen: bovenin de opmerking, daaronder de dienstnaam als gekleurde balk en dan begin en eind; op een dag met twee diensten staat dienst 1 bovenin en dienst 2 eronder (net als op het scherm);
 - de uren per dag in de smalle grijze kolom naast elke dag;
 - rechts de contracturen en, grijs, het weektotaal;
 - zaterdag en zondag staan er altijd op, ook als ze leeg zijn;
