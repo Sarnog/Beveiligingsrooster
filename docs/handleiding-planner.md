@@ -162,6 +162,7 @@ Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of é
 Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer vast in *Beheer → Roosterpatronen* en rol hem uit over meer weken en collega's.
 
 1. **Nieuw patroon**: geef een naam en het aantal weken (1 t/m 12, standaard 8). Vul per week en dag de code in zoals in het code-raster: `4`, twee diensten als `4/7`, leeg = vrij. Klik op *Aantal weken toepassen* als je het aantal weken wijzigt. Een onbekende code geeft een melding; er wordt dan niets opgeslagen.
+   - **Week kopiëren**: onder het raster kies je een bronweek en vink je de weken aan waar hij naartoe moet (bijvoorbeeld week 1 naar 3, 5 en 7) en klik je op *Kopiëren*. Die weken worden precies gelijk aan de bronweek (een lege dag wordt ook leeg). Er is dan nog niets opgeslagen: controleer en klik op *Opslaan*.
 2. Of maak een **sjabloon uit het rooster**: kies een medewerker en de weken (hooguit 12), bijvoorbeeld W10 t/m W17. Je krijgt het patroon eerst te zien en slaat het zelf op. Diensten zonder code (een vrije dienstnaam) tellen als vrij.
 3. **Uitrollen…**: kies de medewerkers en per medewerker de **startpositie** in de cyclus (1 = week 1 van het patroon in de startweek, 2 = week 2, …). Zo draaien acht collega's elk een andere week van hetzelfde patroon. Kies de startweek en een eindweek of -datum, en:
    - **Overschrijven**: elke dag wordt precies het patroon; een vrije dag in het patroon wist de dienst van die dag. **Alleen lege dagen aanvullen**: een dag die al een dienst heeft, wordt overgeslagen.
@@ -170,6 +171,16 @@ Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer v
    - De **opmerking** van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.
 4. **Voorbeeld bijwerken** toont per medewerker hoeveel diensten nieuw, vervangen, verwijderd, ongewijzigd en overgeslagen zijn. Er is dan nog niets gewijzigd.
 5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
+
+### Rooster herhalen (een 8-wekelijks rooster voor het hele team)
+
+Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyclus in (bijvoorbeeld 8 weken voor alle collega's) en klik in *Beheer → Roosterpatronen* op **Rooster herhalen…**:
+
+1. Kies de **eerste bronweek** en de **cyclus** (aantal weken, standaard 8).
+2. Kies vanaf welke week je wilt vullen en t/m welke week of datum, en de collega's (standaard iedereen die dan nog in het rooster staat).
+3. Elke collega krijgt zijn eigen rooster uit de bronweken, steeds herhaald. De cyclus loopt door: 8 weken na bronweek 1 komt weer bronweek 1, ook als je bijvoorbeeld 11 weken later begint (dan begin je in week 4 van de cyclus; dat staat in het voorbeeld). Ook weken vóór de bronweken kunnen zo gevuld worden. De periode mag de bronweken zelf niet overlappen.
+4. Modus, feestdagen, archiefdatum en opmerkingen werken zoals bij uitrollen. Diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld.
+5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst.
 
 ## 5. Printen
 

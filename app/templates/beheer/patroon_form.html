@@ -22,6 +22,15 @@
     </tbody>
   </table>
   </div>
+  <fieldset class="rij-formulier" data-week-kopieren>
+    <legend>Week kopiëren</legend>
+    <label class="veld"><span>Kopieer week</span>
+      <select name="kopieer_van">{% for w in range(1, weken + 1) %}<option value="{{ w }}">{{ w }}</option>{% endfor %}</select></label>
+    <span>naar</span>
+    {% for w in range(1, weken + 1) %}<label class="vink"><input type="checkbox" name="kopieer_naar" value="{{ w }}"><span>{{ w }}</span></label>{% endfor %}
+    <button class="knop" type="submit" name="actie" value="kopieer" formnovalidate>Kopiëren</button>
+    <p class="hulp">De gekozen weken worden precies gelijk aan de bronweek (een lege dag wordt ook leeg). Er wordt nog niets opgeslagen.</p>
+  </fieldset>
   <div class="knoppen">
     <button class="knop primair" type="submit" name="actie" value="opslaan">Opslaan</button>
     <a class="knop" href="{{ url_for('beheer.patronen_lijst') }}">Annuleren</a>

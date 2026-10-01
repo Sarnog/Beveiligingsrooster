@@ -145,6 +145,28 @@ def beschrijving(patroon: RoosterPatroon) -> str:
     return f"{patroon.weken} weken" + (f" – {regels}" if regels else "")
 
 
+def kopieer_week(cellen: dict[tuple[int, int], str], bron: int, naar, weken: int) \
+        -> dict[tuple[int, int], str]:
+    """Kopie van de cellen waarin de weken in 'naar' precies gelijk zijn aan week 'bron'.
+
+    Zo plan je één week en zet je hem in één keer in andere weken van de cyclus (bijvoorbeeld
+    week 1 naar 3, 5 en 7). Een lege dag in de bronweek maakt die dag in de doelweek ook leeg.
+    Ongeldige weken: PatroonFout.
+    """
+    if not 1 <= bron <= weken:
+        raise PatroonFout(f"Kies een bronweek van 1 t/m {weken}.")
+    doelen = set(naar)
+    if not doelen - {bron}:
+        raise PatroonFout("Kies minstens één andere week om naar te kopiëren.")
+    if any(not 1 <= w <= weken for w in doelen):
+        raise PatroonFout(f"Het patroon heeft {weken} weken; kies weken van 1 t/m {weken}.")
+    resultaat = {k: v for k, v in cellen.items() if k[0] not in doelen or k[0] == bron}
+    for dag in range(7):
+        for week in doelen - {bron}:
+            resultaat[(week, dag)] = cellen.get((bron, dag), "")
+    return resultaat
+
+
 def verwijder(patroon: RoosterPatroon) -> None:
     logboek.log("Roosterpatroon verwijderd", veld=patroon.naam, oud=beschrijving(patroon))
     db.session.delete(patroon)
@@ -250,15 +272,16 @@ class UitrolEffect:
     per_medewerker: dict[int, Telling] = field(default_factory=dict)
     namen: dict[int, str] = field(default_factory=dict)
     acties: list[Actie] = field(default_factory=list)
+    waarschuwingen: list[str] = field(default_factory=list)
 
     @property
     def totaal(self) -> Telling:
         return som(self.per_medewerker.values())
 
 
-def patroonweek(keuzes: UitrolKeuzes, patroon: RoosterPatroon, startpositie: int, dag: date) -> int:
-    """De week van het patroon (1..N) op deze dag, voor een medewerker met deze startpositie."""
-    return ((dag - keuzes.van).days // 7 + startpositie - 1) % patroon.weken + 1
+def _cycluspositie(van: date, weken: int, startpositie: int, dag: date) -> int:
+    """De week van de cyclus (1..weken) op deze dag, als de week van 'van' startpositie is."""
+    return ((dag - van).days // 7 + startpositie - 1) % weken + 1
 
 
 def _codes(cel: str, codes: dict[int, Dienstcode]) -> list[Dienstcode | None]:
@@ -272,43 +295,53 @@ def effect(patroon: RoosterPatroon, keuzes: UitrolKeuzes) -> UitrolEffect:
 
     pas_toe() voert exact deze acties uit, zodat de droogloop klopt met het resultaat.
     """
+    cellen = patroon.cellen()
+    return _bereken(keuzes.medewerkers, lambda _medewerker: cellen, patroon.weken, keuzes.van,
+                    keuzes.tot, keuzes.modus, keuzes.feestdagen)
+
+
+def _bereken(plan, cellen_van, weken: int, van: date, tot: date, modus: str,
+             feestdag_keuze: str) -> UitrolEffect:
+    """De acties voor plan ((medewerker_id, startpositie), ...) van van t/m tot.
+
+    cellen_van(medewerker) geeft de cellen van de cyclus voor die medewerker ((week, dag) -> cel).
+    """
     resultaat = UitrolEffect()
-    ids = [mid for mid, _ in keuzes.medewerkers]
+    ids = [mid for mid, _ in plan]
     medewerkers = {m.id: m for m in Medewerker.query.filter(Medewerker.id.in_(ids))} if ids else {}
     codes = {c.nummer: c for c in Dienstcode.query.all()}
-    cellen = patroon.cellen()
-    feestdagen = set(feestdagen_in_periode(keuzes.van, keuzes.tot)) \
-        if keuzes.feestdagen == FEESTDAG_OVERSLAAN else set()
+    feestdagen = set(feestdagen_in_periode(van, tot)) if feestdag_keuze == FEESTDAG_OVERSLAAN else set()
     bestaand: dict[tuple[int, date], dict[int, Dienst]] = {}
     if medewerkers:
         for dienst in (Dienst.query.options(joinedload(Dienst.dienstcode))
-                       .filter(Dienst.medewerker_id.in_(medewerkers), Dienst.datum >= keuzes.van,
-                               Dienst.datum <= keuzes.tot).all()):
+                       .filter(Dienst.medewerker_id.in_(medewerkers), Dienst.datum >= van,
+                               Dienst.datum <= tot).all()):
             bestaand.setdefault((dienst.medewerker_id, dienst.datum), {})[dienst.volgnummer] = dienst
-    dagen = [keuzes.van + timedelta(days=i) for i in range((keuzes.tot - keuzes.van).days + 1)]
+    dagen = [van + timedelta(days=i) for i in range((tot - van).days + 1)]
 
-    for mid, startpositie in keuzes.medewerkers:
+    for mid, startpositie in plan:
         medewerker = medewerkers.get(mid)
         if medewerker is None:
             continue
+        cellen = cellen_van(medewerker)
         telling = resultaat.per_medewerker.setdefault(mid, Telling())
         resultaat.namen[mid] = medewerker.naam
         for dag in dagen:
-            gewenst = _codes(cellen.get((patroonweek(keuzes, patroon, startpositie, dag), dag.weekday()), ""),
+            gewenst = _codes(cellen.get((_cycluspositie(van, weken, startpositie, dag), dag.weekday()), ""),
                              codes)
             oud = bestaand.get((mid, dag), {})
-            for actie in _acties_dag(mid, dag, gewenst, oud, keuzes, medewerker, dag in feestdagen):
+            for actie in _acties_dag(mid, dag, gewenst, oud, modus, medewerker, dag in feestdagen):
                 telling.tel(actie.soort)
                 resultaat.acties.append(actie)
     return resultaat
 
 
 def _acties_dag(mid: int, dag: date, gewenst: list[Dienstcode | None], oud: dict[int, Dienst],
-                keuzes: UitrolKeuzes, medewerker: Medewerker, feestdag: bool) -> list[Actie]:
+                modus: str, medewerker: Medewerker, feestdag: bool) -> list[Actie]:
     """De acties voor één dag van één medewerker (dienst 1 en dienst 2)."""
     met_dienst = {vn for vn, d in oud.items() if Inhoud.van_dienst(d).heeft_dienst}
     overslaan = (not medewerker.is_zichtbaar_op(dag) or feestdag
-                 or (keuzes.modus == MODUS_AANVULLEN and met_dienst))
+                 or (modus == MODUS_AANVULLEN and met_dienst))
     acties = []
     dienst1 = oud.get(1)
     opmerking = (dienst1.opmerking_tekst or "", dienst1.opmerking_begin, dienst1.opmerking_eind) \
@@ -340,23 +373,137 @@ def pas_toe(patroon: RoosterPatroon, keuzes: UitrolKeuzes) -> dict[str, int]:
     """
     if fouten := keuzes.controleer(patroon):
         raise PatroonFout("Er is niets gewijzigd: " + " ".join(fouten))
-    backup.maak_backup("voor-patroon")
+    return _voer_uit(keuzes, lambda: effect(patroon, keuzes), "voor-patroon", "Roosterpatroon toegepast",
+                     f"Roosterpatroon '{patroon.naam}'",
+                     lambda namen: keuzes.beschrijving(patroon, namen))
+
+
+def _voer_uit(keuzes, bereken, backup_label: str, logactie: str, bron: str, beschrijving) -> dict[str, int]:
+    """Gedeeld door uitrollen en herhalen: back-up, acties uitvoeren, logboek, één commit, agenda."""
+    backup.maak_backup(backup_label)
     try:
         # Feestdagen vooraf aanmaken (zonder commit), zodat er nooit halverwege iets opgeslagen wordt
         for jaar in range(keuzes.van.year - 1, keuzes.tot.year + 2):
             zorg_voor_jaar(jaar, commit=False)
-        uitkomst = effect(patroon, keuzes)
+        uitkomst = bereken()
         medewerkers = {m.id: m for m in Medewerker.query.filter(Medewerker.id.in_(uitkomst.namen))}
         aantallen, geraakt = voer_uit(uitkomst.acties, lambda actie: medewerkers[actie.sleutel],
-                                      "Rooster gewijzigd",
-                                      lambda actie: f"Roosterpatroon '{patroon.naam}': dienst {actie.soort}")
-        logboek.log("Roosterpatroon toegepast", keuzes.beschrijving(patroon, uitkomst.namen) + "; "
+                                      "Rooster gewijzigd", lambda actie: f"{bron}: dienst {actie.soort}")
+        logboek.log(logactie, beschrijving(uitkomst.namen) + "; "
                     + ", ".join(f"{s}: {aantallen[s]}" for s in SOORTEN))
         markeer_bijgewerkt()
         db.session.commit()
     except Exception:
         db.session.rollback()
         raise
-    plan_agenda(geraakt, "het roosterpatroon")
-    log.info("Roosterpatroon '%s' toegepast: %s", patroon.naam, aantallen)
+    plan_agenda(geraakt, bron)
+    log.info("%s toegepast: %s", bron, aantallen)
     return aantallen
+
+
+# ---------------------------------------------------------------------------
+# Rooster herhalen: een blok weken uit het rooster (alle gekozen medewerkers) herhalen
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class HerhaalKeuzes:
+    """Herhaal de weken bron .. bron + weken - 1 van het rooster van van t/m tot.
+
+    De cyclus loopt door vanaf de bronweken: met een 8-wekelijks rooster krijgt de week 8 weken na
+    bronweek 1 weer bronweek 1, ook als 'van' midden in de cyclus valt. Per medewerker telt zijn
+    eigen rooster in de bronweken (zoals een sjabloon: de code-cel, met de standaardtijden).
+    """
+
+    medewerkers: tuple[int, ...]
+    bron: date  # maandag van de eerste bronweek
+    weken: int
+    van: date  # maandag van de eerste week die gevuld wordt
+    tot: date  # laatste dag (inclusief)
+    modus: str = MODUS_OVERSCHRIJVEN
+    feestdagen: str = FEESTDAG_INVULLEN
+
+    @property
+    def bron_tot(self) -> date:
+        """Laatste dag (zondag) van de bronweken."""
+        return self.bron + timedelta(weeks=self.weken, days=-1)
+
+    @property
+    def startpositie(self) -> int:
+        """De week van de cyclus (1..weken) in de week van 'van'."""
+        return _cycluspositie(self.bron, self.weken, 1, self.van)
+
+    def controleer(self) -> list[str]:
+        """Foutmeldingen (leeg = in orde). Wordt bij het toepassen opnieuw gedaan."""
+        fouten = []
+        if not self.medewerkers:
+            fouten.append("Kies minstens één medewerker.")
+        if len(set(self.medewerkers)) != len(self.medewerkers):
+            fouten.append("Elke medewerker mag maar één keer gekozen worden.")
+        ids = list(self.medewerkers)
+        bekend = {m.id for m in Medewerker.query.filter(Medewerker.id.in_(ids))} if ids else set()
+        if onbekend := [str(mid) for mid in ids if mid not in bekend]:
+            fouten.append("Onbekende medewerker(s): " + ", ".join(onbekend) + ".")
+        if lees_weken(self.weken) is None:
+            fouten.append(f"Herhaal 1 t/m {MAX_WEKEN} weken.")
+            return fouten
+        if not all(MIN_JAAR <= d.year <= MAX_JAAR for d in (self.bron, self.van, self.tot)):
+            fouten.append(f"Kies weken tussen {MIN_JAAR} en {MAX_JAAR}.")
+        elif self.bron.weekday() != 0 or self.van.weekday() != 0:
+            fouten.append("De bronweek en de startweek moeten op een maandag beginnen.")
+        elif self.tot < self.van:
+            fouten.append("De einddatum moet op of na de startweek liggen.")
+        elif (self.tot - self.van).days >= 7 * MAX_UITROL_WEKEN:
+            fouten.append(f"Herhaal hooguit {MAX_UITROL_WEKEN} weken in één keer.")
+        elif self.van <= self.bron_tot and self.tot >= self.bron:
+            fouten.append(f"De periode om te vullen overlapt de bronweken ({self.bron:%d-%m-%Y} t/m "
+                          f"{self.bron_tot:%d-%m-%Y}); kies een startweek na of vóór de bronweken.")
+        if self.modus not in MODI:
+            fouten.append("Kies een geldige modus (overschrijven of aanvullen).")
+        if self.feestdagen not in FEESTDAG_KEUZES:
+            fouten.append("Kies wat er met feestdagen gebeurt (invullen of overslaan).")
+        return fouten
+
+    def als_dict(self) -> dict:
+        """Voor in de sessie (alleen JSON-waarden)."""
+        return {"medewerkers": list(self.medewerkers), "bron": self.bron.isoformat(), "weken": self.weken,
+                "van": self.van.isoformat(), "tot": self.tot.isoformat(), "modus": self.modus,
+                "feestdagen": self.feestdagen}
+
+    @classmethod
+    def uit_dict(cls, bewaard: dict) -> "HerhaalKeuzes":
+        return cls(tuple(bewaard["medewerkers"]), date.fromisoformat(bewaard["bron"]), bewaard["weken"],
+                   date.fromisoformat(bewaard["van"]), date.fromisoformat(bewaard["tot"]),
+                   bewaard["modus"], bewaard["feestdagen"])
+
+    def beschrijving(self, namen: dict[int, str]) -> str:
+        """Voor het logboek."""
+        wie = ", ".join(str(namen.get(mid, mid)) for mid in self.medewerkers)
+        return (f"bronweken {self.bron:%d-%m-%Y} t/m {self.bron_tot:%d-%m-%Y} ({self.weken} weken), "
+                f"{self.van:%d-%m-%Y} t/m {self.tot:%d-%m-%Y} (start in week {self.startpositie}), "
+                f"modus {self.modus}, feestdagen {self.feestdagen}; {wie}")
+
+
+def herhaal_effect(keuzes: HerhaalKeuzes) -> UitrolEffect:
+    """Precies wat het herhalen met deze keuzes doet. Er wordt niets opgeslagen."""
+    waarschuwingen: list[str] = []
+
+    def cellen_van(medewerker: Medewerker) -> dict[tuple[int, int], str]:
+        laatste = keuzes.bron + timedelta(weeks=keuzes.weken - 1)
+        cellen, _, meldingen = sjabloon(medewerker, keuzes.bron, laatste)
+        waarschuwingen.extend(f"{medewerker.naam}, {melding}" for melding in meldingen)
+        return cellen
+
+    # De cyclus begint bij de bronweek; vanaf 'van' rekenen met de bijbehorende startpositie
+    plan = tuple((mid, keuzes.startpositie) for mid in keuzes.medewerkers)
+    resultaat = _bereken(plan, cellen_van, keuzes.weken, keuzes.van, keuzes.tot, keuzes.modus,
+                         keuzes.feestdagen)
+    resultaat.waarschuwingen = waarschuwingen
+    return resultaat
+
+
+def herhaal_pas_toe(keuzes: HerhaalKeuzes) -> dict[str, int]:
+    """Herhaal de bronweken, in één transactie (alles of niets), met vooraf een back-up."""
+    if fouten := keuzes.controleer():
+        raise PatroonFout("Er is niets gewijzigd: " + " ".join(fouten))
+    return _voer_uit(keuzes, lambda: herhaal_effect(keuzes), "voor-herhalen", "Rooster herhaald",
+                     "Rooster herhaald", keuzes.beschrijving)

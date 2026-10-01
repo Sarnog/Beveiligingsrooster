@@ -44,7 +44,7 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand; de print van het weekrooster lijkt op het papieren rooster (A4 liggend, in kleur) | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
 | **Excel import/export, back-ups in de webinterface** | Het oude `.xlsm` (of een eigen export) inlezen voor een gekozen jaar, alles of alleen bepaalde medewerkers/periode, met droogloop en controle van de weektotalen; een week, periode, jaar of het jaarrooster van één persoon exporteren als `.xlsx` **met formules** (rekent in Excel zoals de app); back-ups downloaden en terugzetten | ✅ |
-| **Roosterpatronen** | Een cyclus van weken (of een sjabloon uit het rooster) uitrollen over medewerkers, elk met een eigen startweek, met droogloop | ✅ |
+| **Roosterpatronen** | Een cyclus van weken (of een sjabloon uit het rooster) uitrollen over medewerkers, elk met een eigen startweek, met droogloop; een week van het patroon naar andere weken kopiëren; een blok weken uit het rooster (bijv. een 8-wekelijks rooster) voor het hele team herhalen | ✅ |
 | **Statistieken** | Mislukte agenda-synchronisatie, back-ups, uren tegenover contracturen, inlogpogingen en API-tokens in één overzicht | ✅ |
 | **Telefoon en app** | Elke pagina werkt op de telefoon; *Mijn rooster* en het weekrooster zijn voor de telefoon gemaakt; de planner wijzigt een dienst met één tik. Te installeren als app (PWA) | ✅ |
 | **API voor een app** | `/api/v1` (alleen lezen) met persoonlijke API-tokens, zie [docs/api.md](docs/api.md) | ✅ |
@@ -294,7 +294,7 @@ Wijzigingen die ná de update zijn gedaan, zitten niet in die back-up.
 ## Back-ups en terugzetten
 
 - **Automatisch:** de worker maakt elke nacht na 02:00 een back-up in `data/backups/`. Het aantal dat bewaard blijft stel je in bij Instellingen (standaard 30). Een back-up wordt eerst gecontroleerd en pas daarna bewaard. Mislukt hij (bijvoorbeeld een volle schijf), dan staat er "Back-up mislukt" in het logboek en probeert de worker het na 30 minuten opnieuw.
-- **Back-ups met een label** (`handmatig`, `voor-update`, `voor-import`, `voor-terugzetten`, `upload`) tellen daar niet bij. Ze blijven 90 dagen staan; de nieuwste 10 blijven altijd bewaard.
+- **Back-ups met een label** (`handmatig`, `voor-update`, `voor-import`, `voor-patroon`, `voor-herhalen`, `voor-terugzetten`, `upload`) tellen daar niet bij. Ze blijven 90 dagen staan; de nieuwste 10 blijven altijd bewaard.
 - **Handmatig:** `docker compose exec -u rooster web flask backup`.
 - **Downloaden, terugzetten en verwijderen in de webinterface:** *Beheer → Back-ups*. Verwijderen vraagt eerst om bevestiging en komt in het logboek. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`). Een beschadigde back-up, of een back-up van een nieuwere versie van de app, wordt geweigerd. Lukt het bijwerken van een oude back-up niet, dan zet de app automatisch de vorige stand terug.
 - **Terugzetten via de command line** (als de webinterface niet werkt, maar de container nog wel draait):

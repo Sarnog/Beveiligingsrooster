@@ -2,6 +2,22 @@
 
 ## [Onuitgebracht]
 
+### Toegevoegd
+- **Roosterpatronen: week kopiëren.** In het patroon kopieer je een week in één keer naar één of
+  meer andere weken van de cyclus (bijvoorbeeld week 1 naar 3, 5 en 7). De doelweken worden precies
+  gelijk aan de bronweek; er wordt pas opgeslagen als je op *Opslaan* klikt.
+- **Beheer → Roosterpatronen → Rooster herhalen.** Plan een vast rooster van bijvoorbeeld 8 weken
+  in het gewone weekrooster en herhaal het voor het hele team (of gekozen collega's) naar latere of
+  eerdere weken. De cyclus loopt door vanaf de bronweken: 8 weken na bronweek 1 komt weer
+  bronweek 1, ook als je midden in de cyclus begint. Zelfde werkwijze als uitrollen: droogloop,
+  overschrijven of aanvullen, feestdagen invullen of overslaan, niets op of na een archiefdatum,
+  vooraf een back-up (*voor-herhalen*), logboek en Google-synchronisatie alleen voor de geraakte
+  collega's. Diensten zonder code tellen als vrij (met een waarschuwing in het voorbeeld). De
+  periode mag de bronweken niet overlappen.
+
+### Gewijzigd
+- `services/patronen.py`: uitrollen en herhalen delen dezelfde berekening en uitvoering.
+
 ## [1.6.0] – 2026-10-01
 
 ### Toegevoegd

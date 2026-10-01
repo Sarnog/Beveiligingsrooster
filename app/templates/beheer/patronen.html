@@ -26,6 +26,12 @@
   {% else %}<p>Er zijn nog geen patronen.</p>{% endif %}
 </section>
 
+<section class="kaart" data-herhalen-kaart>
+  <h2>Rooster herhalen</h2>
+  <p class="hulp">Werk je met een vast rooster van bijvoorbeeld 8 weken? Plan die weken één keer in het weekrooster en herhaal ze voor het hele team naar latere weken. De cyclus loopt door: 8 weken na bronweek 1 komt weer bronweek 1.</p>
+  <a class="knop" href="{{ url_for('beheer.rooster_herhalen') }}">Rooster herhalen…</a>
+</section>
+
 <section class="kaart">
   <h2>Sjabloon uit het rooster</h2>
   <p class="hulp">Maak een patroon van een bestaande periode van één medewerker (hooguit {{ max_weken }} weken). Je controleert het patroon daarna nog voordat het wordt opgeslagen. Diensten zonder code tellen als vrij.</p>

@@ -1,5 +1,6 @@
-"""Beheer → Roosterpatronen: patronen maken/wijzigen/verwijderen, een sjabloon uit het rooster,
-en uitrollen met een droogloop (zie services/patronen.py).
+"""Beheer → Roosterpatronen: patronen maken/wijzigen/verwijderen, een week van een patroon naar
+andere weken kopiëren, een sjabloon uit het rooster, uitrollen met een droogloop en een blok weken
+uit het rooster herhalen (zie services/patronen.py).
 
 Uitrollen gaat als de import: eerst 'Voorbeeld bijwerken' (er wordt niets opgeslagen), dan
 'Definitief toepassen', alleen met precies de keuzes van het getoonde voorbeeld. Bij het
@@ -16,7 +17,7 @@ from ...extensions import db
 from ...models import Medewerker, RoosterPatroon
 from ...services import klok, patronen
 from ...services.kalender import aantal_weken
-from ...services.patronen import PatroonFout, UitrolKeuzes
+from ...services.patronen import HerhaalKeuzes, PatroonFout, UitrolKeuzes
 from ...services.tijden import parse_datum
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
@@ -87,6 +88,18 @@ def patroon_bewerken(pid: int | None = None):
     if request.form.get("actie") == "weken":  # alleen het aantal weken aanpassen, nog niet opslaan
         if patronen.lees_weken(gevraagd) is None:
             flash(f"Een patroon heeft 1 t/m {patronen.MAX_WEKEN} weken.", "fout")
+        return _formulier(patroon, naam, weken, cellen)
+    if request.form.get("actie") == "kopieer":  # een week naar andere weken kopiëren, nog niet opslaan
+        bron = request.form.get("kopieer_van", "")
+        naar = [int(w) for w in request.form.getlist("kopieer_naar") if w.isdigit() and len(w) <= 3]
+        try:
+            cellen = patronen.kopieer_week(cellen, int(bron) if bron.isdigit() and len(bron) <= 3 else 0,
+                                           naar, weken)
+        except PatroonFout as fout:
+            flash(str(fout), "fout")
+            return _formulier(patroon, naam, weken, cellen, 400)
+        flash(f"Week {bron} gekopieerd naar week {', '.join(map(str, sorted(set(naar) - {int(bron)})))}. "
+              "Controleer het patroon en sla het op.", "info")
         return _formulier(patroon, naam, weken, cellen)
     # Cellen van weken die er niet (meer) zijn, tellen niet mee
     opgeslagen, fouten = patronen.sla_op(patroon, naam, gevraagd,
@@ -227,3 +240,101 @@ def patroon_uitrollen(pid: int):
         van=_weektekst(keuzes.van if keuzes else huidig),
         tot_datum=keuzes.tot.isoformat() if keuzes else "",
         tot_week=_weektekst(huidig + timedelta(weeks=patroon.weken - 1)))
+
+
+# ---------------------------------------------------------------------------
+# Rooster herhalen: een blok weken (bijv. een 8-wekelijks rooster) herhalen
+# ---------------------------------------------------------------------------
+
+def _herhaal_uit_formulier() -> tuple[HerhaalKeuzes | None, list[str]]:
+    formulier = request.form
+    fouten = []
+    gekozen = []
+    for tekst in formulier.getlist("mw"):
+        if not tekst.isdigit() or len(tekst) > 9:
+            fouten.append("Onbekende medewerker.")
+            continue
+        gekozen.append(int(tekst))
+    bron, van = _maandag(formulier.get("bron")), _maandag(formulier.get("van"))
+    if bron is None:
+        fouten.append("Kies een geldige eerste bronweek.")
+    if van is None:
+        fouten.append("Kies een geldige startweek.")
+    weken = patronen.lees_weken(formulier.get("weken", ""))
+    if weken is None:
+        fouten.append(f"Herhaal 1 t/m {patronen.MAX_WEKEN} weken.")
+    tot = parse_datum(formulier.get("tot_datum", "")) if formulier.get("tot_datum", "").strip() else None
+    if tot is None:
+        eindweek = _maandag(formulier.get("tot_week"))
+        tot = eindweek + timedelta(days=6) if eindweek else None
+    if tot is None:
+        fouten.append("Kies een eindweek of een einddatum.")
+    if fouten:
+        return None, fouten
+    keuzes = HerhaalKeuzes(tuple(gekozen), bron, weken, van, tot, formulier.get("modus", ""),
+                           formulier.get("feestdagen", ""))
+    return keuzes, keuzes.controleer()
+
+
+def _herhaal_uit_sessie() -> HerhaalKeuzes | None:
+    bewaard = session.get("herhaal_keuzes")
+    return HerhaalKeuzes.uit_dict(bewaard) if bewaard else None
+
+
+@bp.route("/patronen/herhalen", methods=["GET", "POST"])
+@beheerder_vereist
+def rooster_herhalen():
+    """Plan een blok weken in het weekrooster en herhaal het voor het hele team (met droogloop)."""
+    terug = redirect(url_for("beheer.rooster_herhalen"))
+    if request.method == "POST":
+        keuzes, fouten = _herhaal_uit_formulier()
+        if fouten:
+            for fout in fouten:
+                flash(fout, "fout")
+            return terug
+        getoond = session.get("herhaal_keuzes")
+        session["herhaal_keuzes"] = keuzes.als_dict()
+        if request.form.get("actie") != "toepassen":
+            return terug  # alleen het voorbeeld bijwerken
+        if getoond != keuzes.als_dict():
+            flash("Je keuzes zijn gewijzigd sinds het voorbeeld. Controleer het bijgewerkte voorbeeld "
+                  "hieronder en bevestig opnieuw.", "fout")
+            return terug
+        if not vinkje(request.form, "bevestig"):
+            flash("Vink eerst de bevestiging aan.", "fout")
+            return terug
+        try:
+            resultaat = patronen.herhaal_pas_toe(keuzes)  # controleert de keuzes opnieuw
+        except PatroonFout as fout:
+            flash(str(fout), "fout")
+            return terug
+        except Exception as fout:  # nooit een kale foutpagina
+            log.exception("Rooster herhalen mislukt")
+            flash(f"Het herhalen is mislukt; er is niets gewijzigd ({type(fout).__name__}).", "fout")
+            return terug
+        session.pop("herhaal_keuzes", None)
+        flash("Rooster herhaald: " + ", ".join(f"{v} {k}" for k, v in resultaat.items())
+              + ". Er is vooraf een back-up gemaakt.", "succes")
+        jaar, week, _ = keuzes.van.isocalendar()
+        return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
+
+    keuzes = _herhaal_uit_sessie()
+    effect = None
+    if keuzes is not None and not keuzes.controleer():
+        effect = patronen.herhaal_effect(keuzes)
+    else:
+        session.pop("herhaal_keuzes", None)
+        keuzes = None
+    huidig = klok.vandaag() - timedelta(days=klok.vandaag().weekday())
+    weken = keuzes.weken if keuzes else patronen.STANDAARD_WEKEN
+    bron = keuzes.bron if keuzes else huidig
+    van = keuzes.van if keuzes else bron + timedelta(weeks=weken)
+    medewerkers = _medewerkers()
+    gekozen = set(keuzes.medewerkers) if keuzes else \
+        {m.id for m in medewerkers if m.is_zichtbaar_op(van)}  # standaard: wie er dan nog is
+    return render_template(
+        "beheer/rooster_herhalen.html", keuzes=keuzes, effect=effect, medewerkers=medewerkers,
+        gekozen=gekozen, modi=patronen.MODI, feestdag_keuzes=patronen.FEESTDAG_KEUZES, weken=weken,
+        max_weken=patronen.MAX_WEKEN, bron=_weektekst(bron), van=_weektekst(van),
+        tot_datum=keuzes.tot.isoformat() if keuzes else "",
+        tot_week=_weektekst(van + timedelta(weeks=2 * weken - 1)))
