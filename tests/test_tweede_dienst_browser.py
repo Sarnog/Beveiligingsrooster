@@ -40,7 +40,7 @@ def test_twee_diensten_typen_opslaan_en_tonen(server, browser, sessies):
     cel = pagina.locator(".code-paneel td.code").nth(2 * 7)
     mw, datum = cel.get_attribute("data-mw"), cel.get_attribute("data-datum")
     tweede_rijen = pagina.locator(f'tr[data-tweede="{mw}"]')
-    assert tweede_rijen.first.is_hidden()  # nog geen tweede dienst deze week
+    assert tweede_rijen.count() == 0  # nog geen tweede dienst deze week
 
     cel.click()
     pagina.keyboard.type("17/3")
@@ -96,7 +96,7 @@ def test_pijltjes_slaan_verborgen_rijen_over_en_ctrl_z(server, browser, sessies)
     pagina.goto(server.url + "/week")
     blokken = pagina.locator(".rooster tbody.blok")
     eerste, tweede = blokken.nth(5), blokken.nth(6)
-    assert eerste.locator("tr.tweede-rij").first.is_hidden()
+    assert eerste.locator("tr.tweede-rij").count() == 0
     # Van de tijdenregel (rij d) van de ene medewerker naar de opmerking (rij a) van de volgende
     eerste.locator('td[data-veld="begin"]:not([data-vn="2"])').first.click()
     pagina.keyboard.press("ArrowDown")
@@ -114,6 +114,11 @@ def test_pijltjes_slaan_verborgen_rijen_over_en_ctrl_z(server, browser, sessies)
     sync_api.expect(cel).to_have_text("17/3")
     sync_api.expect(cel).to_have_class(re.compile("gewijzigd"))  # oranje: nog niet opgeslagen
     sync_api.expect(eerste.locator("tr.tweede-rij").first).to_be_visible()
+    # De nieuwe rijen doen mee in het raster: pijltje omlaag vanuit de tijden van dienst 1
+    eerste.locator('td[data-veld="begin"]:not([data-vn="2"])').first.click()
+    pagina.keyboard.press("ArrowDown")
+    assert actief.get_attribute("data-vn") == "2" and actief.get_attribute("data-toon") == "dienstnaam"
+    cel.click()
     cel.click()
     pagina.keyboard.press("Control+z")
     sync_api.expect(cel).to_have_text(oud)

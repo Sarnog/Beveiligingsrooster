@@ -544,12 +544,13 @@ def test_weekpagina_toont_tweede_dienst(als_beheerder, rooster):
     cel(als_beheerder, a, MAANDAG, "code", "17/3")
     pagina = als_beheerder.get("/week/2026/10").data.decode()
     assert ">17/3</td>" in pagina  # code-raster
-    assert f'<tr class="r-e tweede-rij" data-tweede="{a.id}">' in pagina  # zichtbaar
-    assert f'<tr class="r-e tweede-rij" data-tweede="{rooster["b"].id}" hidden>' in pagina
-    assert 'data-vn="2" data-toon="dienstnaam"' in pagina and "VW Avond" in pagina
-    # Printversie: ook beide diensten
-    assert f'<tr class="p-e" data-ptweede="{a.id}">' in pagina
-    assert pagina.count('data-pvn="2" data-p="dienstnaam"') == 14  # 2 medewerkers x 7 dagen
+    # Rijen voor dienst 2 alleen bij wie die week een tweede dienst heeft
+    assert f'<tr class="r-e tweede-rij" data-tweede="{a.id}">' in pagina
+    assert f'data-tweede="{rooster["b"].id}"' not in pagina
+    assert pagina.count('data-vn="2" data-toon="dienstnaam"') == 7 and "VW Avond" in pagina
+    # Plek voor de printversie (die bouwt print.js in de browser op)
+    assert '<section class="print-rooster" data-print-rooster data-week="10"' in pagina
+    assert "js/print.js" in pagina
 
 
 def test_gebruiker_ziet_tweede_dienst_maar_kan_niets_wijzigen(app, client, rooster, klaar):
