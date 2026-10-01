@@ -25,10 +25,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 from flask import current_app
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
 from . import instellingen, logboek
+from .feestdagen import zorg_voor_jaar
 from .kalender import aantal_weken, maandag_van_week
 from .medewerkers import uniek_voorstel
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
@@ -162,6 +164,10 @@ class ImportMedewerker:
     initialen: str
     contracturen: float | None
     bestaand_id: int | None = None
+    # Hoe deze medewerker gekoppeld wordt: 'naam' (bestaande medewerker met dezelfde naam),
+    # 'initialen' (alleen de initialen zijn bezet: er komt een NIEUWE medewerker) of 'nieuw'
+    koppeling: str = "nieuw"
+    toelichting: str = ""
 
 
 @dataclass
@@ -229,6 +235,15 @@ class ImportPlan:
                               f"tijden geven {berekend:.2f}, Excel {handmatig:.2f} (overgenomen)")
         return regels
 
+    def dubbele_diensten(self) -> list[str]:
+        """(medewerker, datum)-combinaties die meer dan eens in het bestand staan."""
+        gezien: dict[tuple[str, date], int] = {}
+        for d in self.diensten:
+            gezien[(d.naam, d.datum)] = gezien.get((d.naam, d.datum), 0) + 1
+        return [f"{naam} op {datum:%d-%m-%Y} ({aantal}×)"
+                for (naam, datum), aantal in sorted(gezien.items(), key=lambda x: (x[0][1], x[0][0]))
+                if aantal > 1]
+
     def weektotaal_verschillen(self) -> list[str]:
         za = self.toeslag_zaterdag or 1.5
         zo = self.toeslag_zondag or 2.0
@@ -265,6 +280,7 @@ def lees_bestand(pad: str) -> ImportPlan:
         jaar = int(_getal(boek["Kalender"]["E2"].value) or 0) or None
     plan = ImportPlan(jaar=jaar or date.today().year)
     _lees_lijsten(boek["Lijsten"], plan)
+    _bepaal_koppelingen(plan)
     if "Vakanties" in boek.sheetnames:
         _lees_vakanties(boek["Vakanties"], plan)
 
@@ -276,7 +292,36 @@ def lees_bestand(pad: str) -> ImportPlan:
                 plan.waarschuwingen.append(f"{naam} overgeslagen: {plan.jaar} heeft geen week {week}.")
             continue
         _lees_weekblad(boek[naam], week, plan)
+    if dubbel := plan.dubbele_diensten():
+        plan.waarschuwingen.append(
+            "Dubbele diensten (zelfde medewerker en dag staan er meer dan eens in): "
+            + "; ".join(dubbel) + ". Pas het Excel-bestand aan; zo kan het niet geïmporteerd worden.")
     return plan
+
+
+def _bepaal_koppelingen(plan: ImportPlan) -> None:
+    """Bepaal per Excel-medewerker of hij aan een bestaande medewerker gekoppeld wordt.
+
+    Alleen een gelijke naam koppelt automatisch. Zijn alleen de initialen gelijk, dan
+    is het waarschijnlijk iemand anders: er komt een nieuwe medewerker (met unieke
+    initialen) en de droogloop toont een waarschuwing.
+    """
+    for im in plan.medewerkers:
+        bestaand = Medewerker.query.filter_by(naam=im.naam).first()
+        if bestaand is not None:
+            im.bestaand_id, im.koppeling = bestaand.id, "naam"
+            im.toelichting = "bestaande medewerker (zelfde naam)"
+            continue
+        andere = Medewerker.query.filter_by(initialen=im.initialen).first() if im.initialen else None
+        if andere is not None:
+            im.koppeling = "initialen"
+            im.toelichting = f"nieuw; initialen {im.initialen} zijn al van {andere.naam}"
+            plan.waarschuwingen.append(
+                f"'{im.naam}' heeft dezelfde initialen ({im.initialen}) als de bestaande medewerker "
+                f"'{andere.naam}'. Er wordt een nieuwe medewerker aangemaakt met andere initialen. "
+                "Is het dezelfde persoon? Pas dan eerst de naam in de app of in Excel aan.")
+        else:
+            im.toelichting = "nieuwe medewerker"
 
 
 def _lees_lijsten(blad, plan: ImportPlan) -> None:
@@ -374,9 +419,36 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
 # ---------------------------------------------------------------------------
 
 def importeer(plan: ImportPlan) -> dict:
-    """Schrijf het plan naar de database. Bestaande diensten in de geïmporteerde weken
-    worden overschreven; bestaande medewerkers en codes worden hergebruikt."""
+    """Schrijf het plan naar de database, in één transactie (alles of niets).
+
+    Bestaande diensten in de geïmporteerde weken worden overschreven; bestaande
+    medewerkers (zelfde naam) en codes (zelfde nummer) worden hergebruikt.
+    Gaat er iets mis, dan wordt alles teruggedraaid en volgt een ImportFout.
+    """
+    if dubbel := plan.dubbele_diensten():
+        raise ImportFout("Er is niets geïmporteerd: dubbele diensten in het bestand ("
+                         + "; ".join(dubbel) + ").")
+    try:
+        resultaat = _importeer(plan)
+        db.session.commit()
+    except IntegrityError as fout:
+        db.session.rollback()
+        raise ImportFout("Er is niets geïmporteerd: het bestand bevat gegevens die botsen "
+                         f"(bijvoorbeeld een dubbele dienst). Details: {fout.orig}") from fout
+    except Exception:
+        db.session.rollback()
+        raise
+    return resultaat
+
+
+def _importeer(plan: ImportPlan) -> dict:
+    """Het eigenlijke importeren; er wordt hier nergens gecommit."""
     resultaat = {"medewerkers": 0, "codes": 0, "vakanties": 0, "diensten": 0, "dagopmerkingen": 0}
+
+    # Feestdagen vooraf aanmaken (zonder commit), zodat de berekeningen hieronder
+    # nooit halverwege iets opslaan. Een week kan over de jaargrens lopen.
+    for jaar in (plan.jaar - 1, plan.jaar, plan.jaar + 1):
+        zorg_voor_jaar(jaar, commit=False)
 
     # Toeslagen
     if plan.toeslag_zaterdag:
@@ -406,13 +478,11 @@ def importeer(plan: ImportPlan) -> dict:
     for code in codes.values():
         per_naam_code.setdefault(code.omschrijving.casefold(), []).append(code)
 
-    # Medewerkers (op naam of initialen hergebruiken)
+    # Medewerkers: alleen op naam hergebruiken (zie _bepaal_koppelingen)
     medewerkers: dict[str, Medewerker] = {}
     volgorde = db.session.query(db.func.max(Medewerker.volgorde)).scalar() or 0
     for im in plan.medewerkers:
         medewerker = Medewerker.query.filter_by(naam=im.naam).first()
-        if medewerker is None and im.initialen:
-            medewerker = Medewerker.query.filter_by(initialen=im.initialen).first()
         if medewerker is None:
             volgorde += 1
             initialen = im.initialen if im.initialen and not Medewerker.query.filter_by(
@@ -492,5 +562,5 @@ def importeer(plan: ImportPlan) -> dict:
 
     logboek.log("Excel-import", ", ".join(f"{k}: {v}" for k, v in resultaat.items()))
     markeer_bijgewerkt()
-    db.session.commit()
+    db.session.flush()
     return resultaat

@@ -293,11 +293,12 @@ class SyncTaak(db.Model):
     )
     datum = db.Column(db.Date, nullable=True)  # leeg = volledige synchronisatie
     soort = db.Column(db.String(20), nullable=False, default="dag")  # dag/volledig/ontkoppel
-    # Niet eerder uitvoeren dan dit tijdstip (debounce en backoff)
-    niet_voor = db.Column(db.DateTime, nullable=False, default=nu, index=True)
+    # Niet eerder uitvoeren dan dit tijdstip (debounce en backoff), in UTC.
+    # Bij status 'bezig' is dit het moment waarop de worker begon.
+    niet_voor = db.Column(db.DateTime, nullable=False, default=klok.utc_nu, index=True)
     pogingen = db.Column(db.Integer, nullable=False, default=0)
     laatste_fout = db.Column(db.Text, nullable=False, default="")
-    status = db.Column(db.String(12), nullable=False, default="wacht", index=True)
+    status = db.Column(db.String(12), nullable=False, default="wacht", index=True)  # wacht/bezig/fout
     aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
     # Extra gegevens, bijvoorbeeld een event-id dat verwijderd moet worden
     extra = db.Column(db.Text, nullable=False, default="")

@@ -6,6 +6,8 @@ verwerkt die later; de webpagina wacht dus nooit op Google.
 Samenvoegen (debounce): staat er voor dezelfde medewerker + datum al een
 wachtende taak, dan schuiven we die een paar seconden op in plaats van een
 nieuwe toe te voegen. Tien snelle wijzigingen leveren zo één API-call op.
+Is de worker al met een taak bezig (status 'bezig'), dan komt er een nieuwe
+taak bij: de wijziging mag niet verloren gaan. Tijden (niet_voor) zijn in UTC.
 """
 
 import json
@@ -26,7 +28,7 @@ def plan_dag(medewerker: Medewerker, datum: date, commit: bool = True) -> None:
     """Plan een synchronisatie van één dag van één medewerker."""
     if not _is_gekoppeld(medewerker):
         return
-    straks = klok.nu() + timedelta(seconds=DEBOUNCE_SECONDEN)
+    straks = klok.utc_nu() + timedelta(seconds=DEBOUNCE_SECONDEN)
     bestaand = SyncTaak.query.filter_by(
         medewerker_id=medewerker.id, datum=datum, soort="dag", status="wacht"
     ).first()
@@ -65,7 +67,7 @@ def plan_volledig(medewerker: Medewerker) -> None:
     ).first()
     if not bestaand:
         db.session.add(SyncTaak(medewerker_id=medewerker.id, soort="volledig",
-                                niet_voor=klok.nu()))
+                                niet_voor=klok.utc_nu()))
     db.session.commit()
 
 
@@ -84,10 +86,10 @@ def plan_ontkoppel(medewerker: Medewerker, verwijder: bool) -> None:
     De koppeling zelf wordt direct losgemaakt; de afspraak-ID's in het rooster ook.
     """
     extra = {"agenda_id": medewerker.agenda_id, "modus": medewerker.agenda_modus,
-             "verwijder": verwijder}
+             "verwijder": verwijder, "medewerker_id": medewerker.id}
     if medewerker.agenda_id and verwijder:
         db.session.add(SyncTaak(medewerker_id=medewerker.id, soort="ontkoppel",
-                                niet_voor=klok.nu(), extra=json.dumps(extra)))
+                                niet_voor=klok.utc_nu(), extra=json.dumps(extra)))
     # Openstaande taken voor deze medewerker zijn niet meer nodig
     SyncTaak.query.filter(SyncTaak.medewerker_id == medewerker.id,
                           SyncTaak.soort != "ontkoppel", SyncTaak.status == "wacht").delete()

@@ -61,9 +61,17 @@ class NepKlant:
     def verwijder_afspraak(self, agenda_id, event_id):
         self.agendas.get(agenda_id, {}).pop(event_id, None)
 
-    def eigen_afspraken(self, agenda_id, van=None, tot=None):
-        return [e for e in self.agendas.get(agenda_id, {}).values()
-                if e.get("extendedProperties", {}).get("private", {}).get("bron") == "beveiligingsrooster"]
+    def eigen_afspraken(self, agenda_id, van=None, tot=None, medewerker_id=None):
+        """Zelfde filters als Google: bron=beveiligingsrooster (en eventueel medewerker_id)."""
+        resultaat = []
+        for e in self.agendas.get(agenda_id, {}).values():
+            privé = e.get("extendedProperties", {}).get("private", {})
+            if privé.get("bron") != "beveiligingsrooster":
+                continue
+            if medewerker_id is not None and privé.get("medewerker_id") != str(medewerker_id):
+                continue
+            resultaat.append(e)
+        return resultaat
 
 
 @pytest.fixture
@@ -186,7 +194,9 @@ def test_handmatig_verwijderde_afspraak_wordt_opnieuw_gemaakt(app, gekoppeld, ne
 def test_volledige_sync_ruimt_wezen_op(app, gekoppeld, nep):
     # Een oude afspraak van de app zonder dienst ('wees') en een afspraak van de collega zelf
     nep.agendas["agenda-a"]["wees"] = {"id": "wees", "start": {"date": "2026-03-03"},
-                                       "extendedProperties": {"private": {"bron": "beveiligingsrooster"}}}
+                                       "extendedProperties": {"private": {
+                                           "bron": "beveiligingsrooster", "dienst_id": "999",
+                                           "medewerker_id": str(gekoppeld.id)}}}
     nep.agendas["agenda-a"]["eigen"] = {"id": "eigen", "summary": "Tandarts"}
     vandaag = date.today()
     db.session.add(Dienst(medewerker_id=gekoppeld.id, datum=vandaag + timedelta(days=3),

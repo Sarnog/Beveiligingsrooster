@@ -4,6 +4,7 @@ Stap 1: bestand uploaden -> droogloop met voorbeeld (er wordt nog niets opgeslag
 Stap 2: bevestigen -> definitief importeren. Het bestand wordt daarna verwijderd.
 """
 
+import logging
 import os
 import secrets
 
@@ -15,6 +16,7 @@ from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
 TOEGESTAAN = (".xlsm", ".xlsx")
+log = logging.getLogger(__name__)
 
 
 def _opgeslagen_pad() -> str | None:
@@ -68,8 +70,16 @@ def excel_import_voorbeeld():
         if not vinkje(request.form, "bevestig"):
             flash("Vink eerst de bevestiging aan.", "fout")
         else:
-            backup.maak_backup("voor-import")  # altijd eerst een back-up
-            resultaat = importeer(plan)
+            try:
+                backup.maak_backup("voor-import")  # altijd eerst een back-up
+                resultaat = importeer(plan)
+            except ImportFout as fout:
+                flash(str(fout), "fout")
+                return redirect(url_for("beheer.excel_import_voorbeeld"))
+            except Exception as fout:  # noqa: BLE001 - nooit een kale foutpagina
+                log.exception("Excel-import mislukt")
+                flash(f"De import is mislukt; er is niets geïmporteerd ({type(fout).__name__}).", "fout")
+                return redirect(url_for("beheer.excel_import_voorbeeld"))
             _ruim_op()
             flash("Import klaar: " + ", ".join(f"{v} {k}" for k, v in resultaat.items())
                   + ". Er is vooraf een back-up gemaakt.", "succes")

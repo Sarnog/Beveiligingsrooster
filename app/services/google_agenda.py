@@ -171,13 +171,21 @@ class AgendaKlant:
             if fout.status not in (404, 410):  # al weg is ook goed
                 raise
 
-    def eigen_afspraken(self, agenda_id: str, van: date | None = None,
-                        tot: date | None = None) -> list[dict]:
-        """Alle afspraken die door deze app gemaakt zijn (optioneel binnen een periode)."""
+    def eigen_afspraken(self, agenda_id: str, van: date | None = None, tot: date | None = None,
+                        medewerker_id: int | None = None) -> list[dict]:
+        """Alle afspraken die door deze app gemaakt zijn (optioneel binnen een periode).
+
+        Met medewerker_id: alleen de afspraken van die medewerker. Nodig bij een gedeelde
+        agenda (modus B), waar meer collega's hun diensten in dezelfde agenda hebben.
+        Google accepteert privateExtendedProperty meerdere keren (alle filters gelden).
+        """
+        filters = [f"bron={BRON}"]
+        if medewerker_id is not None:
+            filters.append(f"medewerker_id={medewerker_id}")
         afspraken, pagina = [], None
         while True:
             parameters = {"calendarId": agenda_id, "maxResults": 2500, "singleEvents": True,
-                          "privateExtendedProperty": f"bron={BRON}", "pageToken": pagina}
+                          "privateExtendedProperty": filters, "pageToken": pagina}
             if van:
                 parameters["timeMin"] = datetime.combine(van, datetime.min.time()).isoformat() + "Z"
             if tot:

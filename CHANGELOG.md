@@ -16,6 +16,29 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   - na een mislukte back-up wacht de worker 30 minuten en zet een regel in het logboek
     ("Back-up mislukt");
   - het opruimen telt alleen geldige automatische back-ups.
+- **Weekrooster:** dezelfde dienstcode opnieuw invoeren (bijv. 4 → 5 → terug naar 4 en dan
+  Opslaan) zette zelf aangepaste tijden stilletjes terug naar de standaardtijden, zonder
+  logboekregel en zonder agenda-update. Een ongewijzigde code verandert nu niets meer.
+- **Excel-import:** de import gebeurt nu in één keer. Ging er halverwege iets mis (bijvoorbeeld
+  bij een verse installatie), dan kon er een half rooster achterblijven. Nu wordt alles
+  teruggedraaid en zie je een duidelijke melding in plaats van een foutpagina.
+  Dubbele diensten (zelfde medewerker en dag) worden al in de droogloop gemeld.
+- **Excel-import:** een medewerker werd ook op alleen dezelfde initialen gekoppeld, waardoor
+  diensten bij de verkeerde collega terecht konden komen. Alleen een gelijke naam koppelt nog;
+  bij alleen gelijke initialen komt er een nieuwe medewerker en toont de droogloop een
+  waarschuwing. De droogloop laat per medewerker zien hoe hij gekoppeld wordt.
+- **Google Agenda:** een wijziging die binnenkwam terwijl de worker met dezelfde dag bezig was,
+  kon verloren gaan. De worker zet een taak nu eerst op "bezig"; een nieuwe wijziging krijgt
+  een eigen taak. Taken die na een crash op "bezig" blijven staan, gaan na 10 minuten terug
+  in de wachtrij.
+- **Google Agenda, gedeelde agenda (modus B):** een volledige synchronisatie of ontkoppelen van
+  één collega verwijderde ook de afspraken van andere collega's in dezelfde agenda. Nu worden
+  alleen de eigen afspraken van die medewerker aangeraakt.
+- **Back-up terugzetten:** een back-up van een nieuwere versie van de app terugzetten legde de
+  app plat (ook na een herstart). Nu wordt dat vooraf geweigerd met een duidelijke melding.
+  Mislukt het bijwerken van een oudere back-up, dan wordt de vorige stand automatisch
+  teruggezet. Een beschadigde back-up wordt geweigerd (de integriteitscontrole telt nu echt).
+  Een mislukte upload wordt altijd opgeruimd.
 
 ### Beveiliging
 - **Inloggen:** een bezoeker zonder account kon de database onbeperkt laten groeien met extreem

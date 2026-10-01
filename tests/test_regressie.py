@@ -201,3 +201,422 @@ def _geen_echte_google(monkeypatch):
         raise AgendaFout("geen Google in tests")
 
     monkeypatch.setattr(google_agenda, "klant", geen)
+
+
+# ---------------------------------------------------------------------------
+# H1 · Zelfde dienstcode opnieuw invoeren reset handmatige tijden stil
+# ---------------------------------------------------------------------------
+
+MAANDAG = datetime(2026, 3, 2).date()  # week 10 van 2026
+
+
+@pytest.fixture
+def mw(klaar):
+    from app.models import Medewerker
+    from app.services.voorbeeldpakket import laad_voorbeeldpakket
+
+    laad_voorbeeldpakket()
+    medewerker = Medewerker(naam="Medewerker A", initialen="MA", volgorde=1)
+    db.session.add(medewerker)
+    db.session.commit()
+    return medewerker
+
+
+def test_h1_zelfde_code_opnieuw_laat_handmatige_tijden_staan(app, mw):
+    from app.models import Dienst
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"), Wijziging(mw.id, MAANDAG, "eind", "18:00")])
+    dienst = Dienst.query.one()
+    voor = (dienst.eind, dienst.tijden_handmatig, dienst.uren_berekend, dienst.versie)
+    regels = Logboek.query.count()
+    assert voor[0] == "18:00" and voor[1] is True
+
+    _, fouten = wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4", versie=dienst.versie)])
+    assert fouten == []
+    db.session.expire_all()
+    dienst = Dienst.query.one()
+    assert (dienst.eind, dienst.tijden_handmatig, dienst.uren_berekend, dienst.versie) == voor
+    assert Logboek.query.count() == regels
+
+
+# ---------------------------------------------------------------------------
+# H2 · Excel-import is niet atomair
+# ---------------------------------------------------------------------------
+
+def _import_dienst(naam, dag, **extra):
+    from app.services.excel_import import ImportDienst
+
+    waarden = dict(naam=naam, datum=dag, code=None, dienstnaam="Cursus", begin="08:00",
+                   eind="16:00", opmerking="", opm_begin=None, opm_eind=None, excel_uren=None)
+    waarden.update(extra)
+    return ImportDienst(**waarden)
+
+
+def _bestaande_dienst(mw):
+    from app.models import Dienst
+
+    db.session.add(Dienst(medewerker_id=mw.id, datum=MAANDAG, dienstnaam_override="Oud",
+                          begin="07:00", eind="15:00", opmerking_tekst=""))
+    db.session.commit()
+
+
+def test_h2_dubbele_dienst_laat_oud_rooster_heel(app, mw):
+    from app.models import Dienst, Feestdag
+    from app.services.excel_import import ImportMedewerker, ImportPlan, importeer
+
+    _bestaande_dienst(mw)
+    Feestdag.query.delete()  # verse installatie: feestdagen bestaan nog niet
+    db.session.commit()
+    dinsdag = MAANDAG + timedelta(days=1)
+    plan = ImportPlan(jaar=2026, weken=[10],
+                      medewerkers=[ImportMedewerker("Medewerker A", "MA", None)],
+                      diensten=[_import_dienst("Medewerker A", dinsdag),
+                                _import_dienst("Medewerker A", dinsdag)])
+    with pytest.raises(Exception):  # noqa: B017 - oude code: IntegrityError, nieuw: ImportFout
+        importeer(plan)
+    db.session.rollback()
+    assert Dienst.query.filter_by(datum=MAANDAG).one().dienstnaam_override == "Oud"
+
+
+def test_h2_fout_halverwege_draait_alles_terug(app, mw, monkeypatch):
+    from app.models import Dienst, Feestdag
+    from app.services import excel_import
+    from app.services.excel_import import ImportMedewerker, ImportPlan
+
+    _bestaande_dienst(mw)
+    Feestdag.query.delete()
+    db.session.commit()
+
+    def kapot():
+        raise RuntimeError("onverwacht")
+
+    monkeypatch.setattr(excel_import, "markeer_bijgewerkt", kapot)
+    plan = ImportPlan(jaar=2026, weken=[10],
+                      medewerkers=[ImportMedewerker("Medewerker A", "MA", None)],
+                      diensten=[_import_dienst("Medewerker A", MAANDAG + timedelta(days=2))])
+    with pytest.raises(Exception):  # noqa: B017
+        excel_import.importeer(plan)
+    db.session.rollback()
+    assert Dienst.query.filter_by(datum=MAANDAG).one().dienstnaam_override == "Oud"
+    assert Dienst.query.count() == 1
+
+
+def test_h2_droogloop_meldt_dubbele_diensten_en_scherm_geeft_nette_fout(app, als_beheerder, tmp_path):
+    import io
+
+    import openpyxl
+
+    boek = openpyxl.Workbook()
+    lijsten = boek.active
+    lijsten.title = "Lijsten"
+    lijsten.cell(2, 2, "MD")
+    lijsten.cell(2, 3, "Medewerker Dubbel")
+    boek.create_sheet("Kalender")["E2"] = 2026
+    week = boek.create_sheet("W10")
+    for blok in (0, 1):  # dezelfde naam twee keer in één week
+        week.cell(4 + 4 * blok, 2, "Medewerker Dubbel")
+        week.cell(6 + 4 * blok, 4, "Cursus")
+        week.cell(7 + 4 * blok, 4, datetime(1900, 1, 1, 8, 0).time())
+        week.cell(7 + 4 * blok, 5, datetime(1900, 1, 1, 16, 0).time())
+    pad = str(tmp_path / "dubbel.xlsx")
+    boek.save(pad)
+
+    from app.services.excel_import import lees_bestand
+
+    plan = lees_bestand(pad)
+    assert any("dubbel" in w.lower() for w in plan.waarschuwingen)
+
+    with open(pad, "rb") as f:
+        als_beheerder.post("/beheer/importeren", data={"bestand": (io.BytesIO(f.read()), "x.xlsx")},
+                           content_type="multipart/form-data")
+    antwoord = als_beheerder.post("/beheer/importeren/voorbeeld", data={"bevestig": "1"},
+                                  follow_redirects=True)
+    assert antwoord.status_code == 200
+    assert "niet geïmporteerd" in antwoord.data.decode()
+
+
+# ---------------------------------------------------------------------------
+# H3 · Wijziging tijdens een lopende agenda-sync gaat verloren
+# ---------------------------------------------------------------------------
+
+def _plan_dag_in_ander_proces(medewerker_id, datum, wijzig_dienst):
+    """Doet wat een webverzoek doet (dienst wijzigen + plan_dag), in een eigen sessie."""
+    from sqlalchemy.orm import Session
+
+    from app.models import Dienst, SyncTaak
+
+    with Session(db.engine) as sessie:
+        dienst = sessie.query(Dienst).filter_by(medewerker_id=medewerker_id, datum=datum).one()
+        wijzig_dienst(dienst)
+        dienst.versie += 1
+        straks = klok.utc_nu() + timedelta(seconds=10)
+        bestaand = sessie.query(SyncTaak).filter_by(
+            medewerker_id=medewerker_id, datum=datum, soort="dag", status="wacht").first()
+        if bestaand:
+            bestaand.niet_voor = straks
+        else:
+            sessie.add(SyncTaak(medewerker_id=medewerker_id, datum=datum, soort="dag",
+                                niet_voor=straks))
+        sessie.commit()
+
+
+@pytest.fixture
+def gekoppeld(mw, monkeypatch):
+    mw.agenda_modus, mw.agenda_id = "B", "agenda-a"
+    db.session.commit()
+    return mw
+
+
+def _wachtrij_nu():
+    from app.models import SyncTaak
+    from app.services import sync
+
+    SyncTaak.query.update({"niet_voor": datetime(2000, 1, 1)})
+    db.session.commit()
+    return sync.verwerk_wachtrij()
+
+
+def test_h3_wijziging_tijdens_sync_blijft_in_wachtrij(app, gekoppeld, monkeypatch):
+    from app.models import SyncTaak
+    from app.services import google_agenda
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    from .test_agenda import NepKlant
+
+    class GelijktijdigeKlant(NepKlant):
+        def maak_afspraak(self, agenda_id, body):
+            def later(dienst):
+                dienst.eind = "18:00"
+
+            _plan_dag_in_ander_proces(gekoppeld.id, MAANDAG, later)
+            return super().maak_afspraak(agenda_id, body)
+
+    klant = GelijktijdigeKlant()
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    _wachtrij_nu()
+    db.session.expire_all()
+    wachtend = SyncTaak.query.filter_by(status="wacht").count()
+    afspraak = next(iter(klant.agendas["agenda-a"].values()))
+    assert wachtend == 1 or afspraak["end"]["dateTime"].endswith("18:00:00")
+
+    # En de volgende ronde zet de nieuwe tijd in Google
+    monkeypatch.setattr(google_agenda, "klant", lambda: NepKlant.__new__(NepKlant))
+    klant2 = NepKlant()
+    klant2.agendas = klant.agendas
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant2)
+    _wachtrij_nu()
+    afspraak = next(iter(klant.agendas["agenda-a"].values()))
+    assert afspraak["end"]["dateTime"].endswith("18:00:00")
+    assert len(klant.agendas["agenda-a"]) == 1
+
+
+def test_h3_blijven_hangen_op_bezig_wordt_hersteld(app, gekoppeld, monkeypatch):
+    from app.models import SyncTaak
+    from app.services import google_agenda, sync
+
+    from .test_agenda import NepKlant
+
+    monkeypatch.setattr(google_agenda, "klant", NepKlant)
+    db.session.add(SyncTaak(medewerker_id=gekoppeld.id, datum=MAANDAG, soort="dag",
+                            status="bezig", niet_voor=klok.utc_nu() - timedelta(minutes=11)))
+    db.session.add(SyncTaak(medewerker_id=gekoppeld.id, datum=MAANDAG + timedelta(days=1),
+                            soort="dag", status="bezig", niet_voor=klok.utc_nu()))
+    db.session.commit()
+    sync.verwerk_wachtrij()
+    db.session.expire_all()
+    # De oude 'bezig'-taak is opnieuw opgepakt en klaar; de verse loopt nog (ander proces)
+    assert [t.status for t in SyncTaak.query.all()] == ["bezig"]
+
+
+# ---------------------------------------------------------------------------
+# H4 · Gedeelde agenda (modus B): sync verwijdert afspraken van collega's
+# ---------------------------------------------------------------------------
+
+def _team(monkeypatch):
+    from app.models import Medewerker
+    from app.services import google_agenda, sync
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    from .test_agenda import NepKlant
+
+    klant = NepKlant()
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    a = Medewerker(naam="Collega A", initialen="CA", agenda_modus="B", agenda_id="team")
+    b = Medewerker(naam="Collega B", initialen="CB", agenda_modus="B", agenda_id="team")
+    db.session.add_all([a, b])
+    db.session.commit()
+    dag = sync.sync_periode()[0] + timedelta(days=14)  # binnen de sync-periode
+    wijzig_cellen([Wijziging(a.id, dag, "code", "4"), Wijziging(b.id, dag, "code", "5")])
+    _wachtrij_nu()
+    assert len(klant.agendas["team"]) == 2
+    return klant, a, b
+
+
+def _van(klant, medewerker):
+    return [e for e in klant.agendas["team"].values()
+            if e["extendedProperties"]["private"]["medewerker_id"] == str(medewerker.id)]
+
+
+def test_h4_volledige_sync_laat_collega_met_rust(app, mw, monkeypatch):
+    from app.services import sync_planning
+
+    klant, a, b = _team(monkeypatch)
+    sync_planning.plan_volledig(a)
+    _wachtrij_nu()
+    assert len(_van(klant, b)) == 1 and len(_van(klant, a)) == 1
+
+
+def test_h4_ontkoppelen_modus_b_wist_alleen_eigen_afspraken(app, mw, monkeypatch):
+    from app.services import sync_planning
+
+    klant, a, b = _team(monkeypatch)
+    sync_planning.plan_ontkoppel(a, verwijder=True)
+    db.session.commit()
+    _wachtrij_nu()
+    assert _van(klant, a) == [] and len(_van(klant, b)) == 1
+
+
+def test_h4_oude_afspraak_zonder_medewerker_id(app, mw, monkeypatch):
+    """Afspraken van vóór de medewerker-markering: alleen weg als de dienst van A is."""
+    from app.models import Dienst
+    from app.services import sync
+
+    klant, a, b = _team(monkeypatch)
+    dienst_b = Dienst.query.filter_by(medewerker_id=b.id).one()
+    klant.agendas["team"]["oud-b"] = {"id": "oud-b", "extendedProperties": {"private": {
+        "bron": "beveiligingsrooster", "dienst_id": str(dienst_b.id)}}}
+    klant.agendas["team"]["oud-a"] = {"id": "oud-a", "extendedProperties": {"private": {
+        "bron": "beveiligingsrooster", "dienst_id": "999999"}}}
+    dienst_a = Dienst.query.filter_by(medewerker_id=a.id).one()
+    klant.agendas["team"]["oud-a2"] = {"id": "oud-a2", "extendedProperties": {"private": {
+        "bron": "beveiligingsrooster", "dienst_id": str(dienst_a.id)}}}
+    sync.sync_volledig(klant, a)
+    assert "oud-b" in klant.agendas["team"] and "oud-a" in klant.agendas["team"]
+    assert "oud-a2" not in klant.agendas["team"]
+
+
+# ---------------------------------------------------------------------------
+# H5 · Excel-import koppelt op initialen aan de verkeerde medewerker
+# ---------------------------------------------------------------------------
+
+def test_h5_alleen_initialen_gelijk_geeft_nieuwe_medewerker(app, klaar, tmp_path):
+    from app.models import Dienst, Medewerker
+    from app.services.excel_import import importeer, lees_bestand
+
+    from .test_import_backup import maak_testbestand
+
+    bestaand = Medewerker(naam="Iemand Anders", initialen="MVA")  # zelfde initialen
+    zelfde_naam = Medewerker(naam="Medewerker Vijf B", initialen="XYZ")
+    db.session.add_all([bestaand, zelfde_naam])
+    db.session.commit()
+    pad = str(tmp_path / "oud.xlsx")
+    maak_testbestand(pad)
+
+    plan = lees_bestand(pad)
+    koppeling = {m.naam: (m.koppeling, m.bestaand_id) for m in plan.medewerkers}
+    assert koppeling["Medewerker Vijf A"] == ("initialen", None)
+    assert koppeling["Medewerker Vijf B"] == ("naam", zelfde_naam.id)
+    assert any("MVA" in w and "Iemand Anders" in w for w in plan.waarschuwingen)
+
+    importeer(plan)
+    nieuw = Medewerker.query.filter_by(naam="Medewerker Vijf A").one()
+    assert nieuw.id != bestaand.id and nieuw.initialen not in ("MVA", "")
+    assert Dienst.query.filter_by(medewerker_id=bestaand.id).count() == 0
+    assert Dienst.query.filter_by(medewerker_id=zelfde_naam.id).count() == 1
+
+
+# ---------------------------------------------------------------------------
+# H6 · Back-up van een nieuwere versie terugzetten legt de app plat
+# M6 · Uitkomst van integrity_check werd genegeerd
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def gemigreerd(app):
+    from flask_migrate import upgrade
+
+    db.drop_all()
+    upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
+    instellingen.schrijf("setup_voltooid", "1")
+    db.session.commit()
+    return app
+
+
+def _revisie() -> str:
+    with db.engine.connect() as verbinding:
+        return verbinding.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+
+
+def test_h6_backup_van_nieuwere_versie_wordt_geweigerd(gemigreerd):
+    from app.models import Medewerker
+
+    pad = backup.maak_backup("test")
+    verbinding = sqlite3.connect(pad)
+    verbinding.execute("UPDATE alembic_version SET version_num = '0009_toekomst'")
+    verbinding.commit()
+    verbinding.close()
+    db.session.add(Medewerker(naam="Na de back-up", initialen="NB"))
+    db.session.commit()
+    revisie = _revisie()
+
+    with pytest.raises(ValueError, match="nieuwere versie"):
+        backup.zet_terug(pad)
+    db.session.remove()
+    assert Medewerker.query.filter_by(initialen="NB").count() == 1
+    assert _revisie() == revisie
+
+
+def test_h6_mislukte_upgrade_zet_veiligheidsbackup_terug(gemigreerd, monkeypatch):
+    import flask_migrate
+
+    from app.models import Medewerker
+
+    pad = backup.maak_backup("test")
+    db.session.add(Medewerker(naam="Na de back-up", initialen="NB"))
+    db.session.commit()
+
+    def kapotte_upgrade(*args, **kwargs):
+        raise SystemExit(1)  # zo stopt Flask-Migrate bij een fout
+
+    monkeypatch.setattr(flask_migrate, "upgrade", kapotte_upgrade)
+    with pytest.raises(ValueError, match="teruggezet"):
+        backup.zet_terug(pad)
+    db.session.remove()
+    assert Medewerker.query.filter_by(initialen="NB").count() == 1
+
+
+def test_m6_beschadigde_backup_wordt_geweigerd(gemigreerd):
+    from app.models import Medewerker
+
+    db.session.add_all([Medewerker(naam=f"Medewerker {i}", initialen=f"M{i}", ics_token=f"t{i}")
+                        for i in range(20)])
+    db.session.commit()
+    pad = backup.maak_backup("test")
+    verbinding = sqlite3.connect(pad)
+    verbinding.execute("PRAGMA writable_schema = ON")
+    verbinding.execute("UPDATE sqlite_master SET sql = 'CREATE INDEX ix_medewerker_ics_token "
+                       "ON medewerker (naam)' WHERE name = 'ix_medewerker_ics_token'")
+    verbinding.commit()
+    verbinding.close()
+    with pytest.raises(ValueError, match="beschadigd"):
+        backup.controleer_backupbestand(pad)
+
+
+def test_h6_scherm_ruimt_upload_op_bij_elke_fout(gemigreerd, client, monkeypatch):
+    import io
+
+    from .conftest import login, maak_gebruiker
+
+    maak_gebruiker("beheerder", "beheerder")
+    login(client, "beheerder")
+
+    def kapot(pad):
+        raise RuntimeError("onverwacht")
+
+    monkeypatch.setattr(backup, "zet_terug", kapot)
+    antwoord = client.post("/beheer/backups/terugzetten", data={
+        "bevestig": "1", "bestand": (io.BytesIO(b"x"), "x.db")},
+        content_type="multipart/form-data", follow_redirects=True)
+    assert antwoord.status_code == 200 and "Terugzetten mislukt" in antwoord.data.decode()
+    assert not [b for b in backup.lijst_backups() if b["naam"].endswith("-upload.db")]

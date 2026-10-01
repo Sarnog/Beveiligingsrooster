@@ -9,7 +9,8 @@
   <ul class="hulp">
     <li>Eerst krijg je een <strong>voorbeeld</strong>; er wordt dan nog niets opgeslagen.</li>
     <li>Wachtwoorden en rechten uit het Excel-bestand worden <strong>niet</strong> overgenomen.</li>
-    <li>Bestaande medewerkers (zelfde naam of initialen) en dienstcodes (zelfde nummer) worden hergebruikt. Diensten in de geïmporteerde weken worden overschreven.</li>
+    <li>Bestaande medewerkers (zelfde naam) en dienstcodes (zelfde nummer) worden hergebruikt. Zijn alleen de initialen gelijk, dan komt er een nieuwe medewerker. Diensten in de geïmporteerde weken worden overschreven.</li>
+    <li>De import gebeurt in één keer: gaat er iets mis, dan wordt er niets opgeslagen.</li>
     <li>Het bestand wordt na de import (of bij annuleren) direct verwijderd.</li>
   </ul>
   <form method="post" enctype="multipart/form-data" class="rij-formulier">
@@ -45,8 +46,8 @@
   {% endif %}
 
   <table class="tabel compact">
-    <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th></tr></thead>
-    <tbody>{% for m in plan.medewerkers %}<tr><td>{{ m.naam }}</td><td>{{ m.initialen }}</td><td class="getal">{{ m.contracturen|uren }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th><th>Koppeling</th></tr></thead>
+    <tbody>{% for m in plan.medewerkers %}<tr><td>{{ m.naam }}</td><td>{{ m.initialen }}</td><td class="getal">{{ m.contracturen|uren }}</td><td>{% if m.koppeling == 'initialen' %}⚠️ {% endif %}{{ m.toelichting }}</td></tr>{% endfor %}</tbody>
   </table>
 
   <form method="post" class="knoppen">

@@ -7,11 +7,12 @@ from ..models import Feestdag, Vakantie
 from .kalender import nederlandse_feestdagen
 
 
-def zorg_voor_jaar(jaar: int) -> None:
+def zorg_voor_jaar(jaar: int, commit: bool = True) -> None:
     """Maak de standaard feestdagen van een jaar aan als die er nog niet zijn.
 
     Bestaande regels (ook uitgezette) blijven ongemoeid, zodat keuzes van de
-    beheerder bewaard blijven.
+    beheerder bewaard blijven. commit=False: alleen in de sessie zetten (flush),
+    zodat de aanroeper alles in één transactie kan opslaan of terugdraaien.
     """
     bestaande = {f.sleutel for f in Feestdag.query.filter_by(jaar=jaar).all() if f.sleutel}
     nieuw = False
@@ -20,7 +21,10 @@ def zorg_voor_jaar(jaar: int) -> None:
             db.session.add(Feestdag(jaar=jaar, datum=datum, naam=naam, sleutel=sleutel))
             nieuw = True
     if nieuw:
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
 
 
 def feestdagen_in_periode(van: date, tot: date) -> dict[date, str]:

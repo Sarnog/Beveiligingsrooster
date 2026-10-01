@@ -257,6 +257,8 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
     if veld == "code":
         oud = str(dienst.dienstcode.nummer) if dienst.dienstcode else ""
         code = _lees_code(waarde)
+        if (str(code.nummer) if code else "") == oud:
+            return oud, oud  # zelfde code: niets wijzigen (handmatige tijden blijven staan)
         dienst.dienstcode = code
         dienst.dienstcode_id = code.id if code else None
         dienst.dienstnaam_override = ""
