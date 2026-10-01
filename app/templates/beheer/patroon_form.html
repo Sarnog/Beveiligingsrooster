@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}{{ 'Patroon wijzigen' if patroon else 'Nieuw patroon' }}{% endblock %}
+{% block inhoud %}
+<h1>{{ 'Patroon wijzigen' if patroon else 'Nieuw patroon' }}</h1>
+{% if waarschuwingen %}<ul class="hulp" data-waarschuwingen>{% for w in waarschuwingen %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+<form method="post" action="{{ url_for('beheer.patroon_bewerken', pid=patroon.id) if patroon else url_for('beheer.patroon_bewerken') }}" class="kaart" data-patroon-formulier>
+  {{ csrf() }}
+  <div class="rij-formulier">
+    <label class="veld"><span>Naam *</span><input name="naam" value="{{ naam }}" maxlength="60" required></label>
+    <label class="veld"><span>Cyclus (weken)</span><input type="number" name="weken" value="{{ weken }}" min="1" max="{{ max_weken }}" inputmode="numeric" class="klein"></label>
+    <button class="knop" type="submit" name="actie" value="weken" formnovalidate>Aantal weken toepassen</button>
+  </div>
+  <p class="hulp">Per dag de code zoals in het code-raster: <code>4</code>, twee diensten als <code>4/7</code>, leeg = vrij. Diensten krijgen bij het uitrollen de standaardtijden van hun code.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact patroon-raster" data-patroon-raster>
+    <thead><tr><th>Week</th>{% for d in dagen %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for w in range(1, weken + 1) %}
+      <tr><th>{{ w }}</th>{% for d in range(7) %}<td><input name="c-{{ w }}-{{ d }}" value="{{ cellen.get((w, d), '') }}" size="5" maxlength="20" inputmode="text" aria-label="Week {{ w }} {{ dagen[d] }}"></td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="knoppen">
+    <button class="knop primair" type="submit" name="actie" value="opslaan">Opslaan</button>
+    <a class="knop" href="{{ url_for('beheer.patronen_lijst') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

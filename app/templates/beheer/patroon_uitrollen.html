@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Patroon uitrollen{% endblock %}
+{% block inhoud %}
+<h1>Patroon '{{ patroon.naam }}' uitrollen</h1>
+<details class="kaart"><summary>Het patroon ({{ patroon.weken }} weken)</summary>
+  <div class="tabel-schuif">
+  <table class="tabel compact">
+    <thead><tr><th>Week</th>{% for d in dagen %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for w in range(1, patroon.weken + 1) %}<tr><th>{{ w }}</th>{% for d in range(7) %}<td>{{ cellen.get((w, d), '') }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  <a class="knop klein" href="{{ url_for('beheer.patroon_bewerken', pid=patroon.id) }}">Patroon wijzigen</a>
+</details>
+
+<form method="post" class="kaart" data-uitrol-keuzes>
+  {{ csrf() }}
+  <h2>Keuzes</h2>
+  <fieldset>
+    <legend>Medewerkers en startpositie in de cyclus</legend>
+    <p class="hulp">Startpositie 1 = week 1 van het patroon in de startweek, 2 = week 2, enzovoort. Zo draaien collega's elk een andere week van hetzelfde patroon. Gearchiveerde medewerkers krijgen niets op of na hun archiefdatum.</p>
+    <div class="keuze-medewerkers">
+    {% for m in medewerkers %}
+      <div class="rij">
+        <label class="vink"><input type="checkbox" name="mw" value="{{ m.id }}"{% if m.id in starts %} checked{% endif %}><span>{{ m.naam }}{% if m.gearchiveerd_vanaf %} <small>(gearchiveerd vanaf {{ m.gearchiveerd_vanaf|datum_nl }})</small>{% endif %}</span></label>
+        <label class="veld"><span>Start</span><input type="number" name="start-{{ m.id }}" value="{{ starts.get(m.id, 1) }}" min="1" max="{{ patroon.weken }}" inputmode="numeric" class="klein"></label>
+      </div>
+    {% endfor %}
+    </div>
+  </fieldset>
+  <div class="rij-formulier">
+    <label class="veld"><span>Startweek</span><input type="week" name="van" value="{{ van }}" required></label>
+    <label class="veld"><span>t/m week</span><input type="week" name="tot_week" value="{{ tot_week }}"></label>
+    <label class="veld"><span>of t/m datum</span><input type="date" name="tot_datum" value="{{ tot_datum }}"><small>Gaat voor de eindweek.</small></label>
+  </div>
+  <fieldset>
+    <legend>Modus</legend>
+    {% for waarde, tekst in modi.items() %}<label class="vink"><input type="radio" name="modus" value="{{ waarde }}"{% if (keuzes.modus if keuzes else 'overschrijven') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+    <p class="hulp">De opmerking van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.</p>
+  </fieldset>
+  <fieldset>
+    <legend>Feestdagen</legend>
+    {% for waarde, tekst in feestdag_keuzes.items() %}<label class="vink"><input type="radio" name="feestdagen" value="{{ waarde }}"{% if (keuzes.feestdagen if keuzes else 'invullen') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+  </fieldset>
+  <button class="knop" type="submit" name="actie" value="voorbeeld">Voorbeeld bijwerken</button>
+
+  {% if effect %}
+  {% set t = effect.totaal %}
+  <h2>Wat er gebeurt met deze keuzes ({{ keuzes.van|datum_nl }} t/m {{ keuzes.tot|datum_nl }})</h2>
+  <p data-totaal-effect>Totaal: <strong>{{ t.nieuw }}</strong> nieuw, <strong>{{ t.vervangen }}</strong> vervangen, <strong>{{ t.verwijderd }}</strong> verwijderd, {{ t.gelijk }} ongewijzigd, {{ t.overgeslagen }} overgeslagen.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact" data-effect>
+    <thead><tr><th>Medewerker</th><th class="getal">Nieuw</th><th class="getal">Vervangen</th><th class="getal">Verwijderd</th><th class="getal">Ongewijzigd</th><th class="getal">Overgeslagen</th></tr></thead>
+    <tbody>{% for mid, n in effect.per_medewerker.items() %}<tr><td>{{ effect.namen[mid] }}</td><td class="getal">{{ n.nieuw }}</td><td class="getal">{{ n.vervangen }}</td><td class="getal">{% if n.verwijderd %}<strong>{{ n.verwijderd }}</strong>{% else %}0{% endif %}</td><td class="getal">{{ n.gelijk }}</td><td class="getal">{{ n.overgeslagen }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  <p class="hulp">Overgeslagen: een feestdag (bij overslaan), een dag op of na de archiefdatum, of bij aanvullen een dag die al een dienst heeft.</p>
+  <div class="knoppen">
+    <label class="vink"><input type="checkbox" name="bevestig" value="1"><span>Ik wil het patroon definitief toepassen met deze keuzes (er wordt eerst automatisch een back-up gemaakt)</span></label>
+    <button class="knop primair" type="submit" name="actie" value="toepassen">Definitief toepassen</button>
+  </div>
+  {% else %}
+  <p class="hulp">Kies medewerkers en een periode en klik op <em>Voorbeeld bijwerken</em>; er wordt dan nog niets gewijzigd.</p>
+  {% endif %}
+</form>
+<a class="knop" href="{{ url_for('beheer.patronen_lijst') }}">Terug naar de patronen</a>
+{% endblock %}

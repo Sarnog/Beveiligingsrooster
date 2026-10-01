@@ -372,3 +372,43 @@ class ApiToken(db.Model):
     laatst_gebruikt = db.Column(db.DateTime, nullable=True)
 
     gebruiker = db.relationship("Gebruiker")
+
+
+class RoosterPatroon(db.Model):
+    """Een roosterpatroon: een cyclus van N weken met per dag de code(s), om uit te rollen.
+
+    Zie services/patronen.py. Een dag zonder regel in rooster_patroon_dag is vrij.
+    """
+
+    __tablename__ = "rooster_patroon"
+
+    id = db.Column(db.Integer, primary_key=True)
+    naam = db.Column(db.String(60), unique=True, nullable=False)
+    weken = db.Column(db.Integer, nullable=False, default=8)  # lengte van de cyclus (1..12)
+    aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
+    gewijzigd_op = db.Column(db.DateTime, nullable=False, default=nu, onupdate=nu)
+
+    dagen = db.relationship("RoosterPatroonDag", back_populates="patroon", cascade="all, delete-orphan",
+                            order_by="(RoosterPatroonDag.week, RoosterPatroonDag.dag)")
+
+    def cellen(self) -> dict[tuple[int, int], str]:
+        """(week 1..N, dag 0..6) -> code-cel ('4' of '4/7'); ontbrekend = vrij."""
+        return {(d.week, d.dag): d.codes for d in self.dagen}
+
+
+class RoosterPatroonDag(db.Model):
+    """Eén dag van een roosterpatroon: de code-cel zoals in het code-raster ('4', '4/7')."""
+
+    __tablename__ = "rooster_patroon_dag"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patroon_id = db.Column(
+        db.Integer, db.ForeignKey("rooster_patroon.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    week = db.Column(db.Integer, nullable=False)  # 1..patroon.weken
+    dag = db.Column(db.Integer, nullable=False)  # 0 = maandag ... 6 = zondag
+    codes = db.Column(db.String(20), nullable=False)
+
+    patroon = db.relationship("RoosterPatroon", back_populates="dagen")
+
+    __table_args__ = (db.UniqueConstraint("patroon_id", "week", "dag", name="uq_patroon_week_dag"),)

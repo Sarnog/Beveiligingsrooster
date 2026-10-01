@@ -26,6 +26,7 @@
     <a class="tegel" href="{{ url_for(endpoint) }}"><strong>{{ titel }}</strong><span>{{ uitleg }}</span></a>
     {% endif %}
   {% endfor %}
+  <a class="tegel" href="{{ url_for('beheer.patronen_lijst') }}"><strong>Roosterpatronen</strong><span>Vaste cycli en sjablonen uitrollen over medewerkers</span></a>
   <a class="tegel" href="{{ url_for('beheer.statistieken_scherm') }}"><strong>Statistieken</strong><span>Agenda, back-ups, uren en beveiliging in één oogopslag</span></a>
   <a class="tegel" href="{{ url_for('beheer.herberekenen') }}"><strong>Uren herberekenen</strong><span>Na wijziging van toeslagen</span></a>
 </div>

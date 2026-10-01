@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, post_knop %}
+{% block titel %}Roosterpatronen{% endblock %}
+{% block inhoud %}
+<div class="kop-rij">
+  <h1>Roosterpatronen</h1>
+  <a class="knop primair" href="{{ url_for('beheer.patroon_bewerken') }}">Nieuw patroon</a>
+</div>
+<p class="hulp">Een patroon is een cyclus van een aantal weken met per dag de dienstcode(s), zoals in het code-raster. Rol het uit over één of meer medewerkers, elk met een eigen startweek in de cyclus. Je ziet eerst een voorbeeld; pas daarna wordt er iets gewijzigd (met vooraf een back-up).</p>
+
+<section class="kaart">
+  <h2>Patronen</h2>
+  {% if patronen %}
+  <div class="tabel-schuif">
+  <table class="tabel" data-patronen>
+    <thead><tr><th>Naam</th><th class="getal">Weken</th><th class="getal">Dagen met dienst</th><th></th></tr></thead>
+    <tbody>{% for p in patronen %}<tr>
+      <td><strong>{{ p.naam }}</strong></td><td class="getal">{{ p.weken }}</td><td class="getal">{{ p.dagen|length }}</td>
+      <td class="nowrap">
+        <a class="knop klein primair" href="{{ url_for('beheer.patroon_uitrollen', pid=p.id) }}">Uitrollen…</a>
+        <a class="knop klein" href="{{ url_for('beheer.patroon_bewerken', pid=p.id) }}">Wijzigen</a>
+        {{ post_knop(url_for('beheer.patroon_verwijderen', pid=p.id), 'Verwijderen', 'knop klein gevaar', bevestig='Patroon ' ~ p.naam ~ ' verwijderen? Het rooster zelf verandert niet.') }}
+      </td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% else %}<p>Er zijn nog geen patronen.</p>{% endif %}
+</section>
+
+<section class="kaart">
+  <h2>Sjabloon uit het rooster</h2>
+  <p class="hulp">Maak een patroon van een bestaande periode van één medewerker (hooguit {{ max_weken }} weken). Je controleert het patroon daarna nog voordat het wordt opgeslagen. Diensten zonder code tellen als vrij.</p>
+  <form method="post" action="{{ url_for('beheer.patroon_sjabloon') }}" class="rij-formulier" data-sjabloon>
+    {{ csrf() }}
+    <label class="veld"><span>Medewerker</span>
+      <select name="medewerker" required><option value="">–</option>{% for m in medewerkers %}<option value="{{ m.id }}">{{ m.naam }}</option>{% endfor %}</select></label>
+    <label class="veld"><span>Van week</span><input type="week" name="van" value="{{ van }}" required></label>
+    <label class="veld"><span>t/m week</span><input type="week" name="tot" value="{{ tot }}" required></label>
+    <label class="veld"><span>Naam (optioneel)</span><input name="naam" maxlength="60"></label>
+    <button class="knop" type="submit">Sjabloon maken</button>
+  </form>
+</section>
+{% endblock %}
