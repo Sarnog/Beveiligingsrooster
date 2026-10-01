@@ -337,3 +337,46 @@ def test_m3_init_in_docker_compose(bestand):
     for service in ("web", "worker"):
         blok = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", tekst, re.M)
         assert blok and re.search(r"^    init: true", blok.group(1), re.M), service
+
+
+# ---------------------------------------------------------------------------
+# M4 · Na het terugzetten van een back-up worden de agenda's niet bijgewerkt
+# ---------------------------------------------------------------------------
+
+def _gekoppelde_backup():
+    from app.services import backup, instellingen
+
+    instellingen.schrijf("setup_voltooid", "1")
+    db.session.add_all([Medewerker(naam="Medewerker A", initialen="MA", agenda_modus="B",
+                                   agenda_id="agenda-a"),
+                        Medewerker(naam="Medewerker B", initialen="MB")])
+    db.session.commit()
+    return backup.maak_backup("handmatig")
+
+
+def test_m4_terugzetten_via_scherm_plant_agenda_sync(gemigreerd, client):
+    import os
+
+    from .conftest import login, maak_gebruiker
+
+    pad = _gekoppelde_backup()
+    maak_gebruiker("beheerder", "beheerder")
+    login(client, "beheerder")
+    antwoord = client.post("/beheer/backups/terugzetten",
+                           data={"naam": os.path.basename(pad), "bevestig": "1"}, follow_redirects=True)
+    db.session.remove()
+    taken = SyncTaak.query.all()
+    assert [(t.soort, t.medewerker_id) for t in taken] == \
+        [("volledig", Medewerker.query.filter_by(initialen="MA").one().id)]
+    assert "Google Agenda" in antwoord.data.decode()
+
+
+def test_m4_terugzetten_via_cli_plant_agenda_sync(gemigreerd):
+    import os
+
+    pad = _gekoppelde_backup()
+    resultaat = gemigreerd.test_cli_runner().invoke(args=["terugzetten", os.path.basename(pad), "--yes"])
+    assert resultaat.exit_code == 0, resultaat.output
+    db.session.remove()
+    assert [t.soort for t in SyncTaak.query.all()] == ["volledig"]
+    assert "Google Agenda" in resultaat.output

@@ -241,3 +241,27 @@ def zet_terug(pad: str) -> str:
     log.info("Back-up %s teruggezet; vorige stand in %s", os.path.basename(pad),
              os.path.basename(veiligheid))
     return os.path.basename(veiligheid)
+
+
+def plan_agenda_sync() -> int:
+    """Na het terugzetten: alle gekoppelde agenda's gelijk maken aan het teruggezette rooster.
+
+    De afspraken in Google horen nog bij de stand van vóór het terugzetten. Een volledige
+    synchronisatie per gekoppelde medewerker ruimt afspraken op die niet meer kloppen en
+    zet ontbrekende terug. Geeft het aantal geplande medewerkers terug.
+    """
+    from ..models import Medewerker
+    from . import sync_planning
+
+    gekoppeld = Medewerker.query.filter(Medewerker.agenda_modus != "", Medewerker.agenda_id != "").all()
+    for medewerker in gekoppeld:
+        sync_planning.plan_volledig(medewerker)
+    return len(gekoppeld)
+
+
+def agenda_melding(aantal: int) -> str:
+    """Zin voor de melding na het terugzetten ('' als er niets gekoppeld is)."""
+    if not aantal:
+        return ""
+    return (f"De Google Agenda van {aantal} gekoppelde medewerker{'s' if aantal != 1 else ''} "
+            "wordt opnieuw gesynchroniseerd.")

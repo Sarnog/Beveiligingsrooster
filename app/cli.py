@@ -130,8 +130,9 @@ def registreer_commando_s(app: Flask) -> None:
             raise click.ClickException(str(fout)) from fout
         logboek.log("Back-up teruggezet", f"{naam} (via command line)", gebruiker="cli", oud=veiligheid)
         db.session.commit()
+        agenda = backup.agenda_melding(backup.plan_agenda_sync())
         click.echo(f"Back-up {naam} is teruggezet. De vorige stand is bewaard als {veiligheid}. "
-                   "Iedereen moet opnieuw inloggen.")
+                   f"Iedereen moet opnieuw inloggen. {agenda}".strip())
 
     @app.cli.command("logboek-opschonen")
     def logboek_opschonen():
