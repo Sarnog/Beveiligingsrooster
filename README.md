@@ -43,7 +43,7 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 | **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf. Twee diensten op één dag: typ `4/7` | ✅ |
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand; de print van het weekrooster lijkt op het papieren rooster (A4 liggend, in kleur) | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
-| **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen (met droogloop en controle van de weektotalen); back-ups downloaden en terugzetten | ✅ |
+| **Excel-import en -export, back-ups in de webinterface** | Het oude `.xlsm` (of een eigen export) inlezen voor een gekozen jaar, alles of alleen bepaalde medewerkers/periode, met droogloop en controle van de weektotalen; het rooster exporteren als `.xlsx`; back-ups downloaden en terugzetten | ✅ |
 | **Telefoon en app** | Elke pagina werkt op de telefoon; *Mijn rooster* en het weekrooster zijn voor de telefoon gemaakt; de planner wijzigt een dienst met één tik. Te installeren als app (PWA) | ✅ |
 | **API voor een app** | `/api/v1` (alleen lezen) met persoonlijke API-tokens, zie [docs/api.md](docs/api.md) | ✅ |
 
@@ -130,6 +130,7 @@ services:
     image: ghcr.io/sarnog/beveiligingsrooster:latest
     container_name: beveiligingsrooster
     command: web
+    init: true  # kleine init als PID 1: geeft 'docker stop' netjes door
     restart: unless-stopped
     ports:
       # 0.0.0.0 = bereikbaar in het LAN; 127.0.0.1 = alleen via een reverse proxy op deze host
@@ -155,6 +156,7 @@ services:
     image: ghcr.io/sarnog/beveiligingsrooster:latest
     container_name: beveiligingsrooster-worker
     command: worker
+    init: true
     restart: unless-stopped
     environment:
       TZ: Europe/Amsterdam
@@ -224,13 +226,15 @@ Daarna is `/setup` niet meer bereikbaar en is de code ongeldig.
 
 ## Het oude Excel-rooster overzetten
 
-*Beheer → Excel-import* leest het oude `Rooster_2026.xlsm` in. Dat zijn:
+*Beheer → Excel-import* leest het oude `Rooster_2026.xlsm` in (of een `.xlsx` die je met *Exporteren (Excel)* uit de app hebt gehaald). Dat zijn:
 - medewerkers en contracturen;
 - dienstcodes en toeslagen;
 - vakanties;
 - alle weken met diensten, tijden, opmerkingen en dagopmerkingen.
 
-Je krijgt eerst een **droogloop** met een voorbeeld en een controle van alle weektotalen tegen kolom Z in Excel. Pas na bevestiging wordt er iets opgeslagen, en de app maakt daarvóór automatisch een back-up.
+Je kiest eerst voor **welk jaar** het rooster is (voorstel uit het bestand); alleen dat jaar wordt gevuld, andere jaren blijven ongemoeid. Daarna krijg je een **droogloop** met per medewerker wat er nieuw is, vervangen of verwijderd wordt, en een controle van alle weektotalen tegen kolom Z in Excel. Je kiest wat er overschreven wordt: **alles** (alleen de weken uit het bestand), **gedeeltelijk** (medewerkers en/of een periode) of **alleen lege dagen aanvullen**, en of toeslagen, vakanties, contracturen en nieuwe dienstcodes overgenomen worden. Pas na bevestiging wordt er iets opgeslagen, en de app maakt daarvóór automatisch een back-up. Zie de [handleiding voor de planner](docs/handleiding-planner.md#8-een-excel-bestand-importeren).
+
+**Exporteren:** met *Exporteren (Excel)* (weekpagina, kalender, urenoverzicht) download je het rooster als `.xlsx` in dezelfde opbouw, dus ook weer te importeren.
 
 Wachtwoorden en rechten uit het Excel-bestand worden **niet** overgenomen. Het geüploade bestand wordt na afloop direct verwijderd.
 
@@ -296,7 +300,8 @@ Wijzigingen die ná de update zijn gedaan, zitten niet in die back-up.
   ls data/backups/
   docker compose exec -u rooster web flask terugzetten rooster-JJJJMMDD-HHMMSS.db
   ```
-  Dit doet hetzelfde als de knop in de webinterface: eerst een veiligheidsback-up, dan terugzetten, en iedereen moet opnieuw inloggen.
+  Dit doet hetzelfde als de knop in de webinterface: eerst een veiligheidsback-up, dan terugzetten, en iedereen moet opnieuw inloggen. Gekoppelde Google-agenda's worden daarna opnieuw gesynchroniseerd.
+- Een back-up met eigen *triggers* of *views* (die de app zelf nooit maakt) wordt niet teruggezet.
 - **Terugzetten met de hand** (als de container niet meer start):
   ```sh
   docker compose down
@@ -321,7 +326,8 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 ### Inlogblokkade en reverse proxy
 
 - **Per gebruiker + IP-adres:** na 5 foute pogingen binnen 15 minuten kan die gebruiker vanaf dat adres 15 minuten niet inloggen.
-- **Per IP-adres:** na 20 foute pogingen (met verschillende namen) vanaf één adres krijgt elke gebruikersnaam vanaf dat adres nog precies één poging. Een collega die meteen het juiste wachtwoord geeft, komt er dus nog in.
+- **Per IP-adres:** na 20 foute pogingen (met verschillende namen) vanaf één adres krijgt elke gebruikersnaam vanaf dat adres nog precies één poging. Een collega die meteen het juiste wachtwoord geeft, komt er dus nog in. Tijdens zo'n blokkade komt er één regel in het logboek, niet één per poging.
+- **Harde grens per IP-adres:** na 40 foute pogingen binnen 15 minuten wordt vanaf dat adres alles geweigerd, zonder wachtwoordcontrole (die kost veel rekenkracht) en zonder nieuwe regels in de database.
 - **Achter een reverse proxy of tunnel** ziet de app zonder `PROXY_VERTROUWEN=1` het adres van de proxy in plaats van dat van de bezoeker. Dan telt de blokkade voor het hele team samen. De app zet een waarschuwing in de log als er een `X-Forwarded-For`-header binnenkomt terwijl `PROXY_VERTROUWEN` uit staat.
 - **Zet `PROXY_VERTROUWEN=1` alleen als er écht een proxy voor staat.** Anders kan een bezoeker zelf een `X-Forwarded-For`-header meesturen en zo de blokkade omzeilen.
 - De geheime tokens van de ICS-feed en de deellink worden in de toegangslog vervangen door `***`.

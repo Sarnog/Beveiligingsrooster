@@ -105,6 +105,32 @@ def maak_testbestand(pad: str) -> None:
     boek.save(pad)
 
 
+def upload(client, pad: str, jaar: int | None = 2026, naam: str = "Rooster.xlsm"):
+    """Bestand uploaden via het scherm (stap 1), eventueel meteen met 'Rooster voor jaar'."""
+    with open(pad, "rb") as f:
+        return client.post("/beheer/importeren", data={
+            "bestand": (io.BytesIO(f.read()), naam), "jaar": "" if jaar is None else str(jaar)},
+            content_type="multipart/form-data")
+
+
+def keuzeformulier(keuzes=None, jaar: int = 2026, actie: str = "importeren", bevestig: bool = True) -> dict:
+    """De velden van het droogloopformulier voor deze keuzes (standaard: de standaardkeuzes)."""
+    from app.services import klok
+    from app.services.excel_import import ImportKeuzes
+
+    keuzes = keuzes or ImportKeuzes(toeslagen=jaar == klok.vandaag().year)
+    data = {"modus": keuzes.modus, "medewerkers": list(keuzes.medewerkers), "actie": actie,
+            "van": keuzes.van.isoformat() if keuzes.van else "",
+            "tot": keuzes.tot.isoformat() if keuzes.tot else ""}
+    if keuzes.dagopmerkingen_bij_selectie:
+        data["dagopmerkingen_bij_selectie"] = "1"
+    for onderdeel in ("contracturen", "toeslagen", "vakanties", "codes"):
+        data[onderdeel] = "ja" if getattr(keuzes, onderdeel) else "nee"
+    if bevestig:
+        data["bevestig"] = "1"
+    return data
+
+
 @pytest.fixture
 def bestand(tmp_path):
     pad = str(tmp_path / "oud_rooster.xlsx")
@@ -153,14 +179,16 @@ def test_definitief_importeren(app, klaar, bestand):
 
 
 def test_import_via_scherm(app, als_beheerder, bestand):
-    with open(bestand, "rb") as f:
-        inhoud = f.read()
-    antwoord = als_beheerder.post("/beheer/importeren", data={
-        "bestand": (io.BytesIO(inhoud), "Rooster.xlsm")}, content_type="multipart/form-data")
+    # Sinds 1.5.0: na het uploaden eerst 'Rooster voor jaar' kiezen (voorstel uit Kalender!E2)
+    antwoord = upload(als_beheerder, bestand, jaar=None)
+    assert antwoord.headers["Location"].endswith("/beheer/importeren")
+    pagina = als_beheerder.get("/beheer/importeren").data.decode()
+    assert 'name="jaar" value="2026"' in pagina
+    antwoord = als_beheerder.post("/beheer/importeren/jaar", data={"jaar": "2026"})
     assert antwoord.headers["Location"].endswith("/beheer/importeren/voorbeeld")
     pagina = als_beheerder.get("/beheer/importeren/voorbeeld").data.decode()
     assert "Voorbeeld (droogloop)" in pagina and "Excel 99.00" in pagina
-    als_beheerder.post("/beheer/importeren/voorbeeld", data={"bevestig": "1"})
+    als_beheerder.post("/beheer/importeren/voorbeeld", data=keuzeformulier())
     assert Dienst.query.count() == 5
     # Het geüploade bestand is weer weg, en er is vooraf een back-up gemaakt
     assert os.listdir(os.path.join(app.config["DATA_MAP"], "import")) == []

@@ -107,3 +107,42 @@ def test_weekrooster_geen_n_plus_1(app, klaar):
     db.session.expire_all()
     _duur, veel = _meet(client, "/week/2026/23")
     assert veel == weinig, f"{weinig} query's met 3 medewerkers, {veel} met 15 (N+1)"
+
+
+def test_urenoverzicht_geen_n_plus_1(app, klaar):
+    """Contracturen per medewerker mogen geen extra query per medewerker kosten (audit 1.4.4)."""
+    from .conftest import login
+
+    client = app.test_client()
+    login(client, "beheerder")
+    _vul(3)
+    client.get("/overzicht/uren?jaar=2026")
+    db.session.expire_all()
+    _duur, weinig = _meet(client, "/overzicht/uren?jaar=2026")
+    for i in range(3, 15):
+        medewerker = Medewerker(naam=f"Extra {i}", initialen=f"E{i}", volgorde=i)
+        db.session.add(medewerker)
+        db.session.flush()
+        db.session.add(Contracturen(medewerker_id=medewerker.id, jaar=2026, uren=1500))
+    db.session.commit()
+    db.session.expire_all()
+    _duur, veel = _meet(client, "/overzicht/uren?jaar=2026")
+    assert veel == weinig, f"{weinig} query's met 3 medewerkers, {veel} met 15 (N+1)"
+
+
+MAX_EXPORT_S = 5  # 'binnen een paar seconden'
+
+
+def test_excel_export_15_medewerkers_vol_jaar(app, klaar):
+    """Excel-export van een jaar met 15 medewerkers (5475 diensten) binnen een paar seconden."""
+    from .conftest import login
+
+    _vul(15)
+    client = app.test_client()
+    login(client, "collega")
+    start = time.perf_counter()
+    antwoord = client.get("/export/rooster.xlsx?jaar=2026")
+    duur = time.perf_counter() - start
+    assert antwoord.status_code == 200 and len(antwoord.data) > 10_000
+    print(f"\nExcel-export (15 medewerkers, 5475 diensten): {duur:.2f} s")
+    assert duur < MAX_EXPORT_S, f"export duurt {duur:.1f} s (eis: < {MAX_EXPORT_S} s)"

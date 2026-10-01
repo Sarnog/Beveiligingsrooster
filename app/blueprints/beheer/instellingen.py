@@ -9,6 +9,7 @@ from ...models import Dienst, Dienstcode, Medewerker
 from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import herbereken_alle
 from ...services.tijden import is_cijfers
+from ...services.validatie import MAX_GETAL
 from ..hulp import MAX_FACTOR, beheerder_vereist, factor, vinkje
 from . import bp
 
@@ -49,7 +50,7 @@ def instellingen_scherm():
                 nieuw[veld] = tekst
 
         blanco = formulier.get("blanco_code", "").strip()
-        if blanco and not is_cijfers(blanco):
+        if blanco and (not is_cijfers(blanco) or int(blanco) > MAX_GETAL):
             fouten.append("De blanco-code moet een getal zijn (of leeg).")
         elif blanco and Dienstcode.query.filter_by(nummer=int(blanco)).first():
             fouten.append(f"De blanco-code {blanco} is al een dienstcode. Kies een ander nummer, "

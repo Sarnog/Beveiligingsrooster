@@ -18,14 +18,18 @@ de melding in het logboek en bij de medewerker (Beheer -> Google Agenda).
 Alle wachttijden (niet_voor) zijn in UTC (klok.utc_nu).
 """
 
+import base64
+import hashlib
 import json
 import logging
 from datetime import date, timedelta
 
+from sqlalchemy.orm.attributes import set_committed_value
+
 from ..extensions import db
 from ..models import Dienst, Medewerker, SyncTaak
 from . import google_agenda, instellingen, klok, logboek
-from .google_agenda import AgendaFout, afspraak_voor, dagtekst_voor
+from .google_agenda import BRON, AgendaFout, afspraak_voor, dagtekst_voor
 
 log = logging.getLogger(__name__)
 MAX_POGINGEN = 6
@@ -49,42 +53,99 @@ def sync_periode() -> tuple[date, date]:
 # Losse acties
 # ---------------------------------------------------------------------------
 
+def event_id_voor(dienst: Dienst) -> str:
+    """Vaste Google-event-ID van een dienst: altijd dezelfde voor medewerker + dag + volgnummer.
+
+    Zo is aanmaken idempotent: mislukt een sync halverwege (of gaat het antwoord van Google
+    verloren), dan maakt de volgende poging geen tweede afspraak maar vindt hij de eerste
+    terug (Google antwoordt 409 'bestaat al'). Google eist base32hex (0-9, a-v), 5-1024 tekens.
+    """
+    sleutel = f"{BRON}|{dienst.medewerker_id}|{dienst.datum.isoformat()}|{dienst.volgnummer or 1}"
+    code = base64.b32hexencode(hashlib.sha256(sleutel.encode()).digest()).decode()
+    return "br" + code.rstrip("=").lower()
+
+
 def _zet_afspraak(klant, agenda_id: str, dienst: Dienst, gewenst, bestaande_id: str) -> None:
     """Maak, wijzig of verwijder de afspraak van één dienst."""
     if gewenst is None:
         if bestaande_id:
             klant.verwijder_afspraak(agenda_id, bestaande_id)
-        dienst.google_event_id = ""
+        _bewaar_event_id(dienst, "")
         return
     if bestaande_id:
         try:
-            dienst.google_event_id = klant.wijzig_afspraak(agenda_id, bestaande_id, gewenst.body)
+            _bewaar_event_id(dienst, klant.wijzig_afspraak(agenda_id, bestaande_id, gewenst.body))
             return
         except AgendaFout as fout:
             if fout.status not in (404, 410):
                 raise
             # Afspraak is handmatig weggehaald: opnieuw aanmaken
-    dienst.google_event_id = klant.maak_afspraak(agenda_id, gewenst.body)
+    event_id = event_id_voor(dienst)
+    try:
+        _bewaar_event_id(dienst, klant.maak_afspraak(agenda_id, dict(gewenst.body, id=event_id)))
+    except AgendaFout as fout:
+        if fout.status != 409:
+            raise
+        # Bestaat al: aangemaakt bij een eerdere (half mislukte) poging, of ooit verwijderd
+        # (Google bewaart het ID dan als geannuleerd). Bijwerken zet hem weer goed.
+        _bewaar_event_id(dienst, klant.wijzig_afspraak(agenda_id, event_id, gewenst.body))
 
 
-def _ruim_lege_dienst_op(dienst: Dienst) -> None:
-    """Een lege regel die alleen nog bestond voor de agenda-afspraak mag nu weg."""
-    if dienst.is_leeg and not dienst.google_event_id:
-        db.session.delete(dienst)
+def _bewaar_event_id(dienst: Dienst, event_id: str) -> None:
+    """Schrijf het event-ID alleen weg als de dienst sinds het lezen niet gewijzigd is.
+
+    Een voorwaardelijke UPDATE ... WHERE versie = <gelezen versie>: heeft de planner de
+    dienst intussen aangepast, dan staat er al een nieuwe taak klaar en overschrijft de
+    worker niets. (Het vaste event-ID zorgt dat die taak de afspraak terugvindt.)
+    """
+    tabel = Dienst.__table__
+    db.session.execute(tabel.update().where(tabel.c.id == dienst.id, tabel.c.versie == dienst.versie)
+                       .values(google_event_id=event_id))
+    set_committed_value(dienst, "google_event_id", event_id)
+
+
+def _dagen_met_tweede_dienst(diensten: list[Dienst]) -> set[tuple[int, date]]:
+    """(medewerker, datum) met een gevulde dienst 2: daar blijft een lege dienst 1 staan."""
+    return {(d.medewerker_id, d.datum) for d in diensten if d.volgnummer == 2 and not d.is_leeg}
+
+
+def _ruim_lege_dienst_op(dienst: Dienst, met_tweede: set[tuple[int, date]]) -> None:
+    """Een lege regel die alleen nog bestond voor de agenda-afspraak mag nu weg.
+
+    Behalve een lege dienst 1 naast een gevulde dienst 2 (zie weekrooster.ruim_dag_op).
+
+    Voorwaardelijk (zelfde versie als bij het lezen, nog steeds zonder afspraak): heeft de
+    planner de dag intussen opnieuw ingevuld, dan is de versie hoger en blijft de dienst staan.
+    """
+    if not dienst.is_leeg or dienst.google_event_id \
+            or (dienst.volgnummer == 1 and (dienst.medewerker_id, dienst.datum) in met_tweede):
+        return
+    tabel = Dienst.__table__
+    resultaat = db.session.execute(tabel.delete().where(
+        tabel.c.id == dienst.id, tabel.c.versie == dienst.versie, tabel.c.google_event_id == ""))
+    if resultaat.rowcount:
+        db.session.expunge(dienst)
 
 
 def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:
     """Zet de afspraken van één dag goed: één afspraak per dienst (dus twee bij een 2e dienst).
 
     Geen dienst betekent ook geen afspraak (die houden we bij in de dienstregel).
+    Buiten de sync-periode (zie sync_volledig) wordt niets aangemaakt of gewijzigd; daar
+    worden alleen afspraken van gewiste diensten nog opgeruimd.
     """
+    van, tot = sync_periode()
+    binnen = van <= datum <= tot
     diensten = (Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum)
                 .order_by(Dienst.volgnummer).all())
-    dagtekst = dagtekst_voor(datum) if diensten else ""
+    dagtekst = dagtekst_voor(datum) if diensten and binnen else ""
+    met_tweede = _dagen_met_tweede_dienst(diensten)
     for dienst in diensten:
         gewenst = afspraak_voor(dienst, dagtekst)
+        if not binnen and gewenst is not None:
+            continue  # buiten de periode: bestaande afspraak laten zoals hij is
         _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, dienst.google_event_id)
-        _ruim_lege_dienst_op(dienst)
+        _ruim_lege_dienst_op(dienst, met_tweede)
 
 
 def _privé(afspraak: dict) -> dict:
@@ -115,6 +176,7 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
     per_dienst = {_privé(e).get("dienst_id"): e["id"] for e in bestaande.values()}
     gebruikt: set[str] = set()
     aantal = 0
+    met_tweede = _dagen_met_tweede_dienst(diensten)
     for dienst in diensten:
         huidig = dienst.google_event_id if dienst.google_event_id in bestaande else ""
         huidig = huidig or per_dienst.get(str(dienst.id), "")
@@ -123,7 +185,7 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
         if dienst.google_event_id:
             gebruikt.add(dienst.google_event_id)
             aantal += 1
-        _ruim_lege_dienst_op(dienst)
+        _ruim_lege_dienst_op(dienst, met_tweede)
     # 'Wezen': afspraken van deze app zonder bijbehorende dienst
     for event_id in bestaande:
         if event_id not in gebruikt:

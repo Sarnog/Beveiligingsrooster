@@ -37,7 +37,7 @@ def controleer():
 
 
 def dienst_json(dienst: Dienst | None) -> dict | None:
-    if dienst is None:
+    if dienst is None or dienst.is_leeg:  # ook een lege plaatshouder naast een dienst 2
         return None
     code = dienst.dienstcode
     return {
@@ -106,7 +106,8 @@ def mijn_rooster():
                                     Dienst.datum <= tot)
                 .order_by(Dienst.datum, Dienst.volgnummer).all())
     return jsonify({"medewerker": medewerker_json(medewerker), "van": van.isoformat(),
-                    "tot": tot.isoformat(), "diensten": [dienst_json(d) for d in diensten]})
+                    "tot": tot.isoformat(),
+                    "diensten": [dienst_json(d) for d in diensten if not d.is_leeg]})
 
 
 @bp.route("/week/<int:jaar>/<int:week>")

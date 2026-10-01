@@ -32,22 +32,30 @@ def _bestaande_sleutels(jaar: int) -> set[str]:
 
 
 def feestdagen_in_periode(van: date, tot: date) -> dict[date, str]:
-    """Actieve feestdagen tussen van en tot (inclusief) als {datum: naam}."""
-    for jaar in range(van.year, tot.year + 1):
-        zorg_voor_jaar(jaar)
+    """Actieve feestdagen tussen van en tot (inclusief) als {datum: naam}.
+
+    Schrijft niets in de database (geen verborgen commit): standaard feestdagen die nog
+    niet in de tabel staan, tellen gewoon mee zoals zorg_voor_jaar() ze zou aanmaken.
+    Uitgezette of eigen dagen komen uit de tabel.
+    """
     rijen = (
-        Feestdag.query.filter(Feestdag.actief.is_(True))
-        .filter(Feestdag.datum >= van, Feestdag.datum <= tot)
+        Feestdag.query.filter(Feestdag.jaar >= van.year, Feestdag.jaar <= tot.year)
         .order_by(Feestdag.datum)
         .all()
     )
+    aanwezig = {(r.jaar, r.sleutel) for r in rijen if r.sleutel}
+    dagen = [(r.datum, r.naam) for r in rijen if r.actief and van <= r.datum <= tot]
+    for jaar in range(van.year, tot.year + 1):
+        for sleutel, naam, datum in nederlandse_feestdagen(jaar):
+            if (jaar, sleutel) not in aanwezig and van <= datum <= tot:
+                dagen.append((datum, naam))
     resultaat: dict[date, str] = {}
-    for rij in rijen:
+    for datum, naam in sorted(dagen, key=lambda d: d[0]):
         # Twee feestdagen op één dag: namen samenvoegen
-        if rij.datum in resultaat:
-            resultaat[rij.datum] += " / " + rij.naam
+        if datum in resultaat:
+            resultaat[datum] += " / " + naam
         else:
-            resultaat[rij.datum] = rij.naam
+            resultaat[datum] = naam
     return resultaat
 
 

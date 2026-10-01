@@ -470,7 +470,9 @@ def test_ongeldige_dubbele_invoer_wijzigt_niets(als_beheerder, rooster):
 def test_alleen_een_tweede_dienst(als_beheerder, rooster):
     a = rooster["a"]
     antwoord = cel(als_beheerder, a, MAANDAG, "code", "/3")
-    assert set(diensten(a, MAANDAG)) == {2}
+    # Sinds 1.5.0 (audit L3) nooit een dienst 2 zonder dienst 1: dienst 1 is een lege plaatshouder
+    per_vn = diensten(a, MAANDAG)
+    assert set(per_vn) == {1, 2} and per_vn[1].is_leeg and per_vn[2].dienstcode.nummer == 3
     assert antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]["code"] == "/3"
 
 

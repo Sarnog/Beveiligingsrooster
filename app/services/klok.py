@@ -36,7 +36,10 @@ def is_geldige_tijdzone(naam: str) -> bool:
 
 # Per database: (tijdstip van lezen, tijdzone). Zo lezen we de instelling hooguit
 # één keer per CACHE_SECONDEN, via een eigen verbinding (los van de sessie).
-CACHE_SECONDEN = 60
+# Kort gehouden: de cache geldt per proces, dus de worker en andere Gunicorn-workers
+# zien een nieuwe tijdzone uit Beheer binnen een paar seconden (wis_cache werkt alleen
+# in het proces dat de wijziging deed). Eén kleine query per 5 s is verwaarloosbaar.
+CACHE_SECONDEN = 5
 _cache: dict[str, tuple[float, str]] = {}
 
 

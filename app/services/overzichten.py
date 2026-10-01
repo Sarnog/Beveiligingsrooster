@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy.orm import selectinload
+
 from ..extensions import db
 from ..models import Dienst, Dienstcode, Feestdag, Medewerker
 from . import klok
@@ -31,7 +33,9 @@ def medewerkers_in_jaar(jaar: int) -> list[Medewerker]:
         mid for (mid,) in db.session.query(Dienst.medewerker_id)
         .filter(Dienst.datum >= eerste, Dienst.datum <= laatste).distinct()
     }
-    alle = Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()
+    # Contracturen in één keer meeladen (anders één query per medewerker)
+    alle = (Medewerker.query.options(selectinload(Medewerker.contracturen))
+            .order_by(Medewerker.volgorde, Medewerker.naam).all())
     return [m for m in alle if m.is_zichtbaar_op(eerste) or m.id in met_diensten]
 
 
@@ -115,13 +119,21 @@ def weken_lijst(jaar: int) -> list[int]:
 # ---------------------------------------------------------------------------
 
 MIN_NAAM = 3
+MAX_RESULTATEN = 5000  # meer toont zoeken (en de CSV-export) niet; dat wordt dan gemeld
+
+
+def zoek_met_grens(**filters) -> tuple[list[Dienst], bool]:
+    """Zoek met de grens MAX_RESULTATEN. Geeft (diensten, afgekapt): afgekapt = er waren er meer."""
+    diensten = zoek_diensten(**filters, limiet=MAX_RESULTATEN + 1)
+    return diensten[:MAX_RESULTATEN], len(diensten) > MAX_RESULTATEN
 
 
 def zoek_diensten(naam: str = "", code: int | None = None, van: date | None = None,
-                  tot: date | None = None, limiet: int = 5000) -> list[Dienst]:
+                  tot: date | None = None, limiet: int | None = None) -> list[Dienst]:
     """Zoek diensten op naam/initialen (deelmatch), dienstcode en periode.
 
     Alleen regels met een dienst (code of vrije dienstnaam) tellen mee, zoals in Excel.
+    Hooguit `limiet` resultaten (standaard MAX_RESULTATEN); zie zoek_met_grens.
     """
     query = Dienst.query.join(Medewerker, Dienst.medewerker_id == Medewerker.id).outerjoin(
         Dienstcode, Dienst.dienstcode_id == Dienstcode.id)
@@ -140,5 +152,6 @@ def zoek_diensten(naam: str = "", code: int | None = None, van: date | None = No
         query = query.filter(Dienst.datum >= van)
     if tot:
         query = query.filter(Dienst.datum <= tot)
-    return query.order_by(Dienst.datum, Medewerker.volgorde, Dienst.volgnummer).limit(limiet).all()
+    return (query.order_by(Dienst.datum, Medewerker.volgorde, Dienst.volgnummer)
+            .limit(limiet or MAX_RESULTATEN).all())
 

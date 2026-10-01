@@ -26,6 +26,16 @@ class NepKlant:
         self.agendas: dict[str, dict] = {}
         self.teller = 0
         self.gedeeld: list[tuple[str, str]] = []
+        # Tijdelijke fout (503) bij de n-de aanroep van een methode: {"maak_afspraak": {2}}
+        self.faal_bij: dict[str, set[int]] = {}
+        self.aanroepen: dict[str, int] = {}
+        # Verwijderde afspraken houden bij Google hun ID ('cancelled'): opnieuw invoegen geeft 409
+        self.verwijderd: dict[str, dict] = {}
+
+    def _tel(self, methode):
+        self.aanroepen[methode] = self.aanroepen.get(methode, 0) + 1
+        if self.aanroepen[methode] in self.faal_bij.get(methode, set()):
+            raise AgendaFout("Google even weg (503)", tijdelijk=True, status=503)
 
     def _nieuw_id(self, soort):
         self.teller += 1
@@ -48,18 +58,27 @@ class NepKlant:
         self.agendas.pop(agenda_id, None)
 
     def maak_afspraak(self, agenda_id, body):
-        event_id = self._nieuw_id("event")
+        self._tel("maak_afspraak")
+        event_id = body.get("id") or self._nieuw_id("event")
+        if event_id in self.agendas.get(agenda_id, {}) or event_id in self.verwijderd:
+            raise AgendaFout("Afspraak bestaat al (409)", status=409)
         self.agendas.setdefault(agenda_id, {})[event_id] = dict(body, id=event_id)
         return event_id
 
     def wijzig_afspraak(self, agenda_id, event_id, body):
+        self._tel("wijzig_afspraak")
+        if event_id in self.verwijderd:  # een geannuleerde afspraak wordt weer actief
+            self.agendas.setdefault(agenda_id, {})[event_id] = self.verwijderd.pop(event_id)
         if event_id not in self.agendas.get(agenda_id, {}):
             raise AgendaFout("niet gevonden", status=404)
         self.agendas[agenda_id][event_id] = dict(body, id=event_id)
         return event_id
 
     def verwijder_afspraak(self, agenda_id, event_id):
-        self.agendas.get(agenda_id, {}).pop(event_id, None)
+        self._tel("verwijder_afspraak")
+        weg = self.agendas.get(agenda_id, {}).pop(event_id, None)
+        if weg is not None:
+            self.verwijderd[event_id] = weg
 
     def eigen_afspraken(self, agenda_id, van=None, tot=None, medewerker_id=None):
         """Zelfde filters als Google: bron=beveiligingsrooster (en eventueel medewerker_id)."""
@@ -84,7 +103,12 @@ def nep(app, monkeypatch):
 
 @pytest.fixture
 def gekoppeld(klaar, nep):
+    from app.services import instellingen
+
     laad_voorbeeldpakket()
+    # De tests gebruiken vaste datums (maart 2026); sinds 1.5.0 synchroniseert sync_dag alleen
+    # binnen de sync-periode (audit L6). Daarom hier een ruime periode terug.
+    instellingen.schrijf("agenda_sync_dagen_terug", "3650")
     medewerker = Medewerker(naam="Medewerker A", initialen="TSA", email="a@voorbeeld.nl",
                             agenda_modus="B", agenda_id="agenda-a")
     db.session.add(medewerker)

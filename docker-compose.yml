@@ -14,6 +14,7 @@ services:
     image: ghcr.io/sarnog/beveiligingsrooster:latest
     container_name: beveiligingsrooster
     command: web
+    init: true  # kleine init als PID 1: geeft 'docker stop' netjes door
     restart: unless-stopped
     ports:
       # 0.0.0.0 = bereikbaar in het LAN; 127.0.0.1 = alleen via een reverse proxy op deze host
@@ -39,6 +40,7 @@ services:
     image: ghcr.io/sarnog/beveiligingsrooster:latest
     container_name: beveiligingsrooster-worker
     command: worker
+    init: true
     restart: unless-stopped
     environment:
       TZ: Europe/Amsterdam

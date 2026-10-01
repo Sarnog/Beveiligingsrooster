@@ -1,6 +1,5 @@
 """Beheer van gebruikersaccounts (vervangt de Excel-bladen Rechten en Beveiliging)."""
 
-import re
 import secrets
 
 from flask import flash, redirect, render_template, request, url_for
@@ -9,11 +8,10 @@ from flask_login import current_user, login_user
 from ...extensions import db
 from ...models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker, Medewerker
 from ...services import logboek
+from ...services.validatie import MAX_NAAM, gebruikersnaam_fout, lengte_fout
 from ...services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
-from ..hulp import beheerder_vereist, vinkje
+from ..hulp import begrensd_getal, beheerder_vereist, vinkje
 from . import bp
-
-GEBRUIKERSNAAM_PATROON = re.compile(r"^[a-z0-9._-]{2,64}$")
 
 
 def _aantal_actieve_beheerders(behalve_id: int | None = None) -> int:
@@ -21,6 +19,21 @@ def _aantal_actieve_beheerders(behalve_id: int | None = None) -> int:
     if behalve_id is not None:
         query = query.filter(Gebruiker.id != behalve_id)
     return query.count()
+
+
+def _nog_een_beheerder() -> bool:
+    """Controle binnen de schrijftransactie: is er na deze wijziging nog een actieve beheerder?
+
+    De flush schrijft onze wijziging en pakt daarmee de schrijfvergrendeling van SQLite;
+    niemand kan daarna tussendoor nog een beheerder wijzigen. Is er geen beheerder meer
+    over (bijv. omdat een ander tegelijk de andere beheerder degradeerde), dan wordt alles
+    teruggedraaid. De controle vooraf blijft voor een nette melding in het formulier.
+    """
+    db.session.flush()
+    if Gebruiker.query.filter_by(rol=ROL_BEHEERDER, actief=True).count() > 0:
+        return True
+    db.session.rollback()
+    return False
 
 
 def _medewerkers():
@@ -38,8 +51,8 @@ def _lees_formulier(gebruiker: Gebruiker | None) -> tuple[dict, list[str]]:
     formulier = request.form
     fouten = []
     gebruikersnaam = formulier.get("gebruikersnaam", "").strip().lower()
-    if not GEBRUIKERSNAAM_PATROON.match(gebruikersnaam):
-        fouten.append("Gebruikersnaam: 2-64 tekens, alleen a-z, 0-9, punt, streepje of underscore.")
+    if fout := gebruikersnaam_fout(gebruikersnaam):
+        fouten.append(fout)
     else:
         bestaand = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
         if bestaand and (gebruiker is None or bestaand.id != gebruiker.id):
@@ -47,11 +60,14 @@ def _lees_formulier(gebruiker: Gebruiker | None) -> tuple[dict, list[str]]:
     weergavenaam = formulier.get("weergavenaam", "").strip()
     if not weergavenaam:
         fouten.append("Vul een weergavenaam in.")
+    elif fout := lengte_fout(weergavenaam, MAX_NAAM, "Weergavenaam"):
+        fouten.append(fout)
     rol = formulier.get("rol", ROL_GEBRUIKER)
     if rol not in (ROL_BEHEERDER, ROL_GEBRUIKER):
         fouten.append("Ongeldige rol.")
-    medewerker_id = formulier.get("medewerker_id", type=int) or None
-    if medewerker_id and db.session.get(Medewerker, medewerker_id) is None:
+    medewerker_id = formulier.get("medewerker_id", type=begrensd_getal) or None
+    if (formulier.get("medewerker_id") and medewerker_id is None) or (
+            medewerker_id and db.session.get(Medewerker, medewerker_id) is None):
         fouten.append("Onbekende medewerker.")
     return {
         "gebruikersnaam": gebruikersnaam,
@@ -114,6 +130,11 @@ def gebruiker_bewerk(gid: int):
                 setattr(gebruiker, veld, waarde)
                 if veld in ("actief", "rol"):
                     gebruiker.maak_sessies_ongeldig()  # direct uitloggen
+        if not _nog_een_beheerder():
+            fout = "Dit is de laatste beheerder. Maak eerst een andere beheerder aan."
+            flash(fout, "fout")
+            return render_template("beheer/gebruiker_form.html", g=gebruiker, w=waarden,
+                                   medewerkers=_medewerkers()), 400
         db.session.commit()
         if gebruiker.id == current_user.id:
             login_user(gebruiker)  # eigen sessie geldig houden
@@ -150,6 +171,9 @@ def gebruiker_verwijder(gid: int):
     else:
         logboek.log("Account verwijderd", oud=gebruiker.gebruikersnaam)
         db.session.delete(gebruiker)
-        db.session.commit()
-        flash("Account verwijderd.", "succes")
+        if _nog_een_beheerder():
+            db.session.commit()
+            flash("Account verwijderd.", "succes")
+        else:
+            flash("De laatste beheerder kan niet verwijderd worden.", "fout")
     return redirect(url_for("beheer.gebruikers"))

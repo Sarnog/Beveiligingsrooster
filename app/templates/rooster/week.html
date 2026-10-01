@@ -19,6 +19,8 @@
     <a class="knop" href="{{ u.week_url(huidig[0], huidig[1]) }}">Vandaag</a>
     <a class="knop" href="{{ u.kalender_url(jaar) }}">Kalender</a>
     <button class="knop" type="button" data-print>Printen</button>
+    {% if not deel_token %}<a class="knop" href="{{ url_for('export.rooster_xlsx', van=dagen[0].isoformat(), tot=dagen[-1].isoformat()) }}" data-export-excel title="Deze week als Excel-bestand">Exporteren (Excel)</a>
+    <a class="knop" href="{{ url_for('export.kiezen', jaar=jaar) }}" title="Heel jaar, periode of één medewerker">Excel…</a>{% endif %}
     <button class="knop weergave-wissel" type="button" data-weergave-wissel aria-pressed="false">Telefoonweergave</button>
     {% if bewerken %}<button class="knop primair opslaan-knop" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>{% endif %}
   </nav>
@@ -75,7 +77,8 @@
       <tr class="r-a">
         <th rowspan="4" class="naamkol">{{ mw.naam }}{% if mw.functie_opmerking %}<small>{{ mw.functie_opmerking }}</small>{% endif %}</th>
         {{ regels[0] }}
-        {% set c = rij.contracturen %}<td class="urenkol contract" title="Contracturen {{ jaar }}"{% if c is not none %} data-pcontract="{{ c|int if c == c|int else c|uren }}"{% endif %}>{{ c|uren }}</td>
+        {#- Deellink (zonder account): geen contracturen en weektotalen (privacy) -#}
+        {% set c = rij.contracturen if not deel_token else none %}<td class="urenkol contract"{% if not deel_token %} title="Contracturen {{ jaar }}"{% endif %}{% if c is not none %} data-pcontract="{{ c|int if c == c|int else c|uren }}"{% endif %}>{{ c|uren }}</td>
       </tr>
       <tr class="r-b">
         {{ regels[1] }}
@@ -83,7 +86,7 @@
       </tr>
       <tr class="r-c">
         {{ regels[2] }}
-        <td rowspan="2" class="urenkol totaal" data-totaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</td>
+        <td rowspan="2" class="urenkol totaal" data-totaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten and not deel_token }}</td>
       </tr>
       <tr class="r-d">
         {{ regels[3] }}

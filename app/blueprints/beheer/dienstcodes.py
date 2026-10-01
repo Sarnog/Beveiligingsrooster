@@ -8,7 +8,9 @@ from ...models import Dienst, Dienstcode, OpmerkingKleurregel
 from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import diensten_met_afwijkende_std_tijden, pas_std_tijden_toe
 from ...services.tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
+from ...services.validatie import MAX_OMSCHRIJVING, is_codenummer, lengte_fout
 from ...services.voorbeeldpakket import laad_voorbeeldpakket
+from ...services.weekrooster import BEGIN_IS_EIND
 from ..hulp import beheerder_vereist, getal, kleur, vinkje
 from . import bp
 
@@ -36,7 +38,7 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
     formulier = request.form
     fouten = []
     nummer_tekst = formulier.get("nummer", "").strip()
-    if not is_cijfers(nummer_tekst) or int(nummer_tekst) < 1:
+    if not is_cijfers(nummer_tekst) or not is_codenummer(int(nummer_tekst)):
         fouten.append("Het nummer moet een positief geheel getal zijn.")
         nummer = None
     else:
@@ -50,6 +52,8 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
     omschrijving = formulier.get("omschrijving", "").strip()
     if not omschrijving:
         fouten.append("Vul een omschrijving in.")
+    elif fout := lengte_fout(omschrijving, MAX_OMSCHRIJVING, "Omschrijving"):
+        fouten.append(fout)
 
     try:
         begin = normaliseer_tijd(formulier.get("std_begin"))
@@ -59,6 +63,8 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
         begin = eind = None
     if (begin is None) != (eind is None):
         fouten.append("Vul zowel een begin- als eindtijd in, of geen van beide.")
+    elif begin is not None and begin == eind:
+        fouten.append(BEGIN_IS_EIND)
 
     waarden = {
         "nummer": nummer,
@@ -110,6 +116,7 @@ def dienstcode_bewerk(cid: int):
         # Naam of agenda-instellingen gewijzigd: toekomstige afspraken bijwerken
         agenda_velden = ("nummer", "omschrijving", "in_agenda", "hele_dag_zonder_tijden")
         agenda_geraakt = any(getattr(code, v) != waarden[v] for v in agenda_velden)
+        oude_naam = code.omschrijving
         # Standaardtijden gelden alleen voor NIEUWE invoer; bestaande diensten blijven gelijk
         for veld in VELDEN:
             oud = getattr(code, veld)
@@ -117,6 +124,8 @@ def dienstcode_bewerk(cid: int):
                 logboek.log("Dienstcode gewijzigd", f"Code {code.nummer}", veld=veld,
                             oud=oud, nieuw=waarden[veld])
                 setattr(code, veld, waarden[veld])
+        if oude_naam != code.omschrijving:
+            _hernoem_aanvullingen(code, oude_naam)
         db.session.commit()
         if agenda_geraakt:
             sync_planning.plan_code(code)
@@ -124,6 +133,25 @@ def dienstcode_bewerk(cid: int):
         return redirect(url_for("beheer.dienstcodes"))
     waarden = {veld: getattr(code, veld) for veld in VELDEN}
     return render_template("beheer/dienstcode_form.html", c=code, w=waarden)
+
+
+def _hernoem_aanvullingen(code: Dienstcode, oude_naam: str) -> None:
+    """Na hernoemen: 'VW Vroeg tot 12:00' wordt 'VW Ochtend tot 12:00' (de aanvulling blijft).
+
+    Zonder dit zou de oude naam blijven staan, en vervalt de code bij de volgende bewerking
+    van de dienstnaam (de tekst begint dan niet meer met de naam van de code).
+    """
+    from ...services.weekrooster import begint_met_dienstnaam
+
+    met_aanvulling = Dienst.query.filter(Dienst.dienstcode_id == code.id, Dienst.dienstnaam_override != "")
+    for dienst in met_aanvulling.all():
+        if begint_met_dienstnaam(dienst.dienstnaam_override, oude_naam):
+            oud = dienst.dienstnaam_override
+            dienst.dienstnaam_override = (code.omschrijving + oud[len(oude_naam):])[:MAX_OMSCHRIJVING]
+            dienst.versie += 1
+            logboek.log("Rooster gewijzigd", f"Dienstcode {code.nummer} hernoemd", datum=dienst.datum,
+                        medewerker=dienst.medewerker.naam, veld="dienstnaam", oud=oud,
+                        nieuw=dienst.dienstnaam_override)
 
 
 @bp.route("/dienstcodes/<int:cid>/verwijder", methods=["POST"])

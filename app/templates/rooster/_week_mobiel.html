@@ -48,7 +48,7 @@
     {% for rij in rijen %}{% set mw = rij.medewerker %}
     <section class="mobiel-pagina" data-mwpagina="{{ mw.id }}" aria-label="{{ mw.naam }}">
       <h2>{{ mw.naam }}{% if mw.functie_opmerking %} <small>{{ mw.functie_opmerking }}</small>{% endif %}</h2>
-      <p class="hulp">Weektotaal <strong data-mtotaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</strong>{% if rij.contracturen %} · contracturen {{ jaar }}: {{ rij.contracturen|uren }}{% endif %}</p>
+      {% if not deel_token %}<p class="hulp">Weektotaal <strong data-mtotaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</strong>{% if rij.contracturen %} · contracturen {{ jaar }}: {{ rij.contracturen|uren }}{% endif %}</p>{% endif %}
       <ul class="dagkaarten">
         {% for dag in dagen %}<li>{{ dagkaart(mw.id, dag_iso[loop.index0], rij.dagen[loop.index0], dagnamen[loop.index0] ~ ' ' ~ dag|datum_nl, bewerken) }}</li>{% endfor %}
       </ul>

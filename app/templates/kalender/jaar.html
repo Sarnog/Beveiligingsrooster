@@ -21,6 +21,10 @@
     <label class="veld"><span>Zoek datum</span><input name="datum" placeholder="dd-mm of dd-mm-jjjj" size="12" required></label>
     <button class="knop" type="submit">Zoek</button>
   </form>
+  <span class="knoppen">
+    <a class="knop" href="{{ url_for('export.rooster_xlsx', jaar=jaar) }}" data-export-excel>Exporteren (Excel)</a>
+    <a class="knop" href="{{ url_for('export.kiezen', jaar=jaar) }}">Meer exportkeuzes…</a>
+  </span>
   {% endif %}
 </div>
 

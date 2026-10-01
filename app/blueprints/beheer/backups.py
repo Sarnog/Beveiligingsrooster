@@ -102,6 +102,7 @@ def backup_terugzetten():
 
     logboek.log("Back-up teruggezet", naam, oud=veiligheid)
     db.session.commit()
+    agenda = backup.agenda_melding(backup.plan_agenda_sync())
     flash(f"Back-up {naam} is teruggezet. De vorige stand is bewaard als {veiligheid}. "
-          "Iedereen moet nu opnieuw inloggen.", "succes")
+          f"Iedereen moet nu opnieuw inloggen. {agenda}".strip(), "succes")
     return redirect(url_for("beheer.backups"))

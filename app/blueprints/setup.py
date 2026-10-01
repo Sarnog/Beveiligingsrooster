@@ -17,6 +17,7 @@ from ..models import ROL_BEHEERDER, Contracturen, Gebruiker, Medewerker
 from ..services import instellingen, klok, logboek, setup_code
 from ..services.medewerkers import uniek_voorstel
 from ..services.tijden import is_cijfers
+from ..services.validatie import MAX_NAAM, gebruikersnaam_fout, initialen_fout, lengte_fout
 from ..services.voorbeeldpakket import laad_voorbeeldpakket
 from ..services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
 from .hulp import factor, getal
@@ -92,7 +93,10 @@ def _stap_beheerder():
         if not gebruikersnaam or not weergavenaam:
             fout = "Vul een gebruikersnaam en weergavenaam in."
         else:
-            fout = wachtwoord_fout(wachtwoord, herhaling)
+            # Zelfde regels als in Beheer → Gebruikers
+            fout = (gebruikersnaam_fout(gebruikersnaam)
+                    or lengte_fout(weergavenaam, MAX_NAAM, "Weergavenaam")
+                    or wachtwoord_fout(wachtwoord, herhaling))
         if fout:
             flash(fout, "fout")
             return render_template("setup/stap1.html", stap=1), 400
@@ -167,12 +171,14 @@ def _stap_medewerkers():
         toegevoegd = 0
         for regel in regels:
             naam, _, uren_tekst = regel.partition(";")
-            naam = naam.strip()
+            naam = naam.strip()[:MAX_NAAM]
             if not naam:
                 continue
             volgorde += 1
-            medewerker = Medewerker(naam=naam, initialen=uniek_voorstel(naam) or f"M{volgorde}",
-                                    volgorde=volgorde)
+            initialen = uniek_voorstel(naam)
+            if initialen_fout(initialen):  # bijv. een naam zonder letters of cijfers
+                initialen = f"M{volgorde}"
+            medewerker = Medewerker(naam=naam, initialen=initialen, volgorde=volgorde)
             db.session.add(medewerker)
             db.session.flush()  # zodat de volgende uniek_voorstel deze ook ziet
             uren = getal(uren_tekst)

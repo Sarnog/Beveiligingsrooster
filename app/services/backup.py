@@ -84,6 +84,14 @@ def maak_backup(label: str = "") -> str:
     return doel
 
 
+def automatische_van(datum) -> bool:
+    """Is er al een (geldige) automatische back-up van deze dag? Zo maakt een herstarte
+    worker geen tweede nachtelijke back-up (het geheugen van de worker is dan leeg)."""
+    stempel = f"{VOORVOEGSEL}{datum:%Y%m%d}-"
+    return any(AUTOMATISCH.match(b["naam"]) and b["naam"].startswith(stempel) and b["grootte"] > 0
+               for b in lijst_backups())
+
+
 def lijst_backups() -> list[dict]:
     """Alle back-ups, nieuwste eerst, met naam, grootte en tijdstip."""
     map_ = backup_map()
@@ -152,6 +160,10 @@ def controleer_backupbestand(pad: str) -> str:
         try:
             tabellen = {r[0] for r in verbinding.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")}
+            # De app maakt zelf nooit triggers of views: die zouden bij elk gebruik code
+            # (SQL) uitvoeren die niet van de app komt
+            extra = [f"{r[0]} '{r[1]}'" for r in verbinding.execute(
+                "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view')")]
             uitkomst = verbinding.execute("PRAGMA integrity_check").fetchall()
             revisie = None
             if "alembic_version" in tabellen:
@@ -163,6 +175,9 @@ def controleer_backupbestand(pad: str) -> str:
         raise ValueError("Dit is geen geldige database-back-up.") from fout
     if not {"medewerker", "dienst", "alembic_version"} <= tabellen:
         raise ValueError("Dit bestand is geen back-up van het Beveiligingsrooster.")
+    if extra:
+        raise ValueError("Deze back-up bevat onderdelen die de app zelf nooit maakt ("
+                         + ", ".join(extra) + ") en wordt daarom niet teruggezet.")
     if [r[0] for r in uitkomst] != ["ok"]:
         raise ValueError("Deze back-up is beschadigd (de integriteitscontrole van SQLite faalt). "
                          "Kies een andere back-up.")
@@ -241,3 +256,27 @@ def zet_terug(pad: str) -> str:
     log.info("Back-up %s teruggezet; vorige stand in %s", os.path.basename(pad),
              os.path.basename(veiligheid))
     return os.path.basename(veiligheid)
+
+
+def plan_agenda_sync() -> int:
+    """Na het terugzetten: alle gekoppelde agenda's gelijk maken aan het teruggezette rooster.
+
+    De afspraken in Google horen nog bij de stand van vóór het terugzetten. Een volledige
+    synchronisatie per gekoppelde medewerker ruimt afspraken op die niet meer kloppen en
+    zet ontbrekende terug. Geeft het aantal geplande medewerkers terug.
+    """
+    from ..models import Medewerker
+    from . import sync_planning
+
+    gekoppeld = Medewerker.query.filter(Medewerker.agenda_modus != "", Medewerker.agenda_id != "").all()
+    for medewerker in gekoppeld:
+        sync_planning.plan_volledig(medewerker)
+    return len(gekoppeld)
+
+
+def agenda_melding(aantal: int) -> str:
+    """Zin voor de melding na het terugzetten ('' als er niets gekoppeld is)."""
+    if not aantal:
+        return ""
+    return (f"De Google Agenda van {aantal} gekoppelde medewerker{'s' if aantal != 1 else ''} "
+            "wordt opnieuw gesynchroniseerd.")

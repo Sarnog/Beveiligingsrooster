@@ -30,7 +30,7 @@
 
   // Versie van dit script. Moet gelijk zijn aan VERSIE in app/__init__.py
   // (een test in tests/test_rooster.py controleert dat).
-  var SCRIPT_VERSIE = "1.4.4";
+  var SCRIPT_VERSIE = "1.5.0";
 
   var houder = document.querySelector("[data-api-cellen]");
   if (!houder) return;
@@ -607,7 +607,7 @@
       kaart.querySelector('[data-m="tijden"]').textContent = g.begin ? g.begin + " – " + g.eind : "";
       kaart.querySelector('[data-m="uren"]').textContent = g.uren;
       var opm = kaart.querySelector('[data-m="opmerking"]');
-      opm.textContent = g.opmerking + (g.opm_begin ? " (" + g.opm_begin + "–" + g.opm_eind + ")" : "");
+      opm.textContent = opmerkingTekst(g);  // zelfde regel als het rooster: begin óf eind
       opm.setAttribute("style", g.opmerking_stijl);
       var blok = kaart.querySelector('[data-m="tweede"]');
       if (!blok && g.tweede) {

@@ -15,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
-VERSIE = "1.4.4"
+VERSIE = "1.5.0"
 verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
@@ -71,6 +71,18 @@ def create_app(config: Config | None = None) -> Flask:
     def logstand_verversen():
         debuglog.ververs(app)  # gewijzigd in Beheer (ander proces)? Hooguit elke 15 s gekeken
 
+    # <int:...> in routes: alleen 0 .. 2^31-1 (groter geeft anders een fout in SQLite -> 500)
+    from werkzeug.routing import IntegerConverter
+
+    from .services.validatie import MAX_GETAL
+
+    class BegrensdGetal(IntegerConverter):
+        def __init__(self, url_map, *args, **kwargs):
+            kwargs.setdefault("max", MAX_GETAL)
+            super().__init__(url_map, *args, **kwargs)
+
+    app.url_map.converters["int"] = BegrensdGetal
+
     _registreer_blueprints(app)
     _registreer_controles(app)
     _registreer_template_helpers(app)
@@ -121,6 +133,7 @@ def _registreer_blueprints(app: Flask) -> None:
         auth,
         beheer,
         deel,
+        export,
         ics,
         kalender,
         overzicht,
@@ -131,7 +144,7 @@ def _registreer_blueprints(app: Flask) -> None:
     )
 
     for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics,
-                   pwa, account, api_v1):
+                   pwa, account, api_v1, export):
         app.register_blueprint(module.bp)
     # De API controleert CSRF zelf: wel bij een sessie, niet bij een API-token (zie controleer_toegang)
     csrf.exempt(api_v1.bp)
@@ -239,7 +252,7 @@ def _registreer_controles(app: Flask) -> None:
 
     @login_manager.unauthorized_handler
     def niet_ingelogd():
-        if request.method != "GET" or request.headers.get("HX-Request") or request.path.startswith(API_PAD):
+        if request.method != "GET" or request.path.startswith(API_PAD):
             abort(401)
         return redirect(url_for("auth.login", volgende=request.full_path))
 
@@ -316,6 +329,17 @@ def _registreer_controles(app: Flask) -> None:
         if request.path.startswith(API_PAD):
             return api_fout(405, "Deze API is alleen-lezen (GET).")
         return fout
+
+    @app.errorhandler(500)
+    def serverfout(fout):
+        """Onverwachte fout: de API's (ook /api/cellen van het raster) antwoorden in JSON."""
+        from flask import render_template
+
+        db.session.rollback()
+        if request.path.startswith("/api/"):
+            return api_fout(500, "Er ging iets mis op de server. Probeer het opnieuw.")
+        return render_template("fout.html", code=500,
+                               melding="Er ging iets mis op de server. Probeer het opnieuw."), 500
 
 
 def _registreer_template_helpers(app: Flask) -> None:
