@@ -57,7 +57,7 @@ def maak_feed(medewerker: Medewerker, dagen_terug: int = 30, maanden_vooruit: in
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         f"X-WR-CALNAME:{_escape('Rooster – ' + medewerker.naam)}",
-        "X-WR-TIMEZONE:Europe/Amsterdam",
+        f"X-WR-TIMEZONE:{klok.tijdzone_naam()}",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
         "X-PUBLISHED-TTL:PT1H",
     ]

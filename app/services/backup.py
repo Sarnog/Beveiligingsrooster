@@ -7,6 +7,7 @@ terwijl de app gewoon in gebruik is. Back-ups staan in <datamap>/backups.
 import logging
 import os
 import re
+import secrets
 import sqlite3
 from datetime import timedelta
 
@@ -229,4 +230,10 @@ def zet_terug(pad: str) -> str:
         _kopieer_naar_live(veiligheid)
         raise ValueError("De back-up kon niet bijgewerkt worden naar deze versie van de app. "
                          "De vorige stand is automatisch teruggezet; er is niets veranderd.") from fout
+    # Iedereen opnieuw laten inloggen: gebruikers-ID's in de back-up kunnen bij iemand
+    # anders horen dan in de oude stand (zie Gebruiker.get_id)
+    from ..extensions import db
+
+    instellingen.schrijf("sessie_generatie", secrets.token_hex(8))
+    db.session.commit()
     return os.path.basename(veiligheid)

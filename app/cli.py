@@ -47,6 +47,7 @@ def registreer_commando_s(app: Flask) -> None:
         gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
         gebruiker.actief = True
         gebruiker.moet_wachtwoord_wijzigen = True
+        gebruiker.maak_sessies_ongeldig()
         logboek.log("Wachtwoord gereset", "Via command line", gebruiker="cli",
                     nieuw=gebruiker.gebruikersnaam)
         db.session.commit()
@@ -67,6 +68,7 @@ def registreer_commando_s(app: Flask) -> None:
             db.session.add(gebruiker)
         gebruiker.rol = ROL_BEHEERDER
         gebruiker.actief = True
+        gebruiker.maak_sessies_ongeldig()
         gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
         gebruiker.moet_wachtwoord_wijzigen = False
         logboek.log("Beheerder aangemaakt", "Via command line", gebruiker="cli",

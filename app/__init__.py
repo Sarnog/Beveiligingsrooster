@@ -108,8 +108,19 @@ def _registreer_controles(app: Flask) -> None:
     from .services import instellingen
 
     @login_manager.user_loader
-    def laad_gebruiker(gebruiker_id: str):
-        return db.session.get(Gebruiker, int(gebruiker_id))
+    def laad_gebruiker(sessiesleutel: str):
+        """Gebruiker uit de sessie, alleen als die sessie nog geldig is (zie Gebruiker.get_id).
+
+        Ongeldig na wachtwoord wijzigen/resetten, deactiveren of terugzetten van een
+        back-up; ook het oude formaat (alleen het ID, vóór 1.2.0) is ongeldig.
+        """
+        delen = (sessiesleutel or "").split(":")
+        if len(delen) != 3 or not delen[0].isdecimal():
+            return None
+        gebruiker = db.session.get(Gebruiker, int(delen[0]))
+        if gebruiker is None or not gebruiker.actief or gebruiker.get_id() != sessiesleutel:
+            return None
+        return gebruiker
 
     @app.before_request
     def controleer_toegang():

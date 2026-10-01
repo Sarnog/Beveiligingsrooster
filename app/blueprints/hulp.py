@@ -1,5 +1,6 @@
 """Kleine hulpfuncties die door meerdere blueprints gebruikt worden."""
 
+import math
 import re
 from functools import wraps
 
@@ -7,6 +8,7 @@ from flask import abort
 from flask_login import current_user, login_required
 
 KLEUR_PATROON = re.compile(r"^#[0-9A-Fa-f]{6}$")
+MAX_FACTOR = 10.0  # hoogste toeslagfactor die we accepteren
 
 
 def beheerder_vereist(functie):
@@ -35,7 +37,7 @@ def vinkje(formulier, naam: str) -> bool:
 
 
 def getal(tekst: str | None) -> float | None:
-    """'1.659,5' / '1659,5' / '1659.5' -> 1659.5; leeg of ongeldig -> None."""
+    """'1.659,5' / '1659,5' / '1659.5' -> 1659.5; leeg, ongeldig, inf of nan -> None."""
     if tekst is None:
         return None
     schoon = tekst.strip().replace(" ", "")
@@ -44,6 +46,15 @@ def getal(tekst: str | None) -> float | None:
     if "," in schoon:
         schoon = schoon.replace(".", "").replace(",", ".")
     try:
-        return float(schoon)
+        waarde = float(schoon)
     except ValueError:
         return None
+    return waarde if math.isfinite(waarde) else None
+
+
+def factor(tekst: str | None) -> float | None:
+    """Een toeslagfactor: groter dan 0 en hooguit MAX_FACTOR. Anders None."""
+    waarde = getal(tekst)
+    if waarde is None or not 0 < waarde <= MAX_FACTOR:
+        return None
+    return waarde

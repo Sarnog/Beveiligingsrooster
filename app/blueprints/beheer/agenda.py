@@ -7,7 +7,7 @@ from flask import flash, redirect, render_template, request, url_for
 
 from ...extensions import db
 from ...models import Dienst, Medewerker, SyncTaak
-from ...services import google_agenda, instellingen, logboek, sync, sync_planning
+from ...services import google_agenda, klok, logboek, sync, sync_planning
 from ...services.google_agenda import AgendaFout
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
@@ -87,7 +87,7 @@ def agenda_koppel(mid: int):
         klant = google_agenda.klant()
         if modus == "A":
             agenda_id = klant.maak_agenda(google_agenda.agenda_titel(medewerker),
-                                          instellingen.lees("tijdzone") or "Europe/Amsterdam")
+                                          klok.tijdzone_naam())
             try:
                 klant.deel_agenda(agenda_id, medewerker.email)
             except AgendaFout:

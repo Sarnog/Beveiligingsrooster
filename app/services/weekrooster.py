@@ -330,9 +330,28 @@ class Wijziging:
     versie: int | None = None  # None = niet controleren
 
 
+def _claim(dienst: Dienst) -> None:
+    """Controleer en vergrendel een bestaande dienst vóór het wijzigen (optimistic locking).
+
+    Een voorwaardelijke UPDATE ... WHERE versie = <gelezen versie>: is de dienst intussen
+    door een ander proces gewijzigd, dan raakt hij 0 rijen en volgt een VersieConflict.
+    Lukt het, dan houdt SQLite de schrijfvergrendeling vast tot de commit; niemand kan de
+    dienst dan nog tussendoor wijzigen (geen 'check-then-write').
+    """
+    tabel = Dienst.__table__
+    with db.session.no_autoflush:  # eerst controleren, dan pas onze wijziging schrijven
+        resultaat = db.session.execute(
+            tabel.update().where(tabel.c.id == dienst.id, tabel.c.versie == dienst.versie)
+            .values(versie=tabel.c.versie))
+    if resultaat.rowcount != 1:
+        raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst. "
+                             "Ververs de pagina en probeer het opnieuw.")
+
+
 def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
     """Pas celwijzigingen toe in de sessie. Geeft (geraakte (mw, datum), fouten)."""
     fouten: list[dict] = []
+    geclaimd: set[tuple[int, date]] = set()
     geraakt: dict[tuple[int, date], Dienst | None] = {}
     gecontroleerd: set[tuple[int, date]] = set()
     medewerkers: dict[int, Medewerker] = {}
@@ -377,7 +396,10 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
             geraakt[sleutel] = None if nieuw_record else dienst
             continue
         if nieuw_record:
-            db.session.add(dienst)
+            db.session.add(dienst)  # tegelijk aangemaakt: de unieke index geeft een conflict
+        elif sleutel not in geclaimd:
+            _claim(dienst)
+            geclaimd.add(sleutel)
 
         # Uren opnieuw berekenen
         if w.datum not in context_cache:
@@ -445,6 +467,9 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
             db.session.commit()
         else:
             db.session.rollback()  # alleen een voorbeeld: niets bewaren
+    except VersieConflict:
+        db.session.rollback()
+        raise
     except IntegrityError as fout:  # tegelijk door een ander aangemaakt
         db.session.rollback()
         raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst.") from fout

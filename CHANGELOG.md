@@ -40,7 +40,36 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   teruggezet. Een beschadigde back-up wordt geweigerd (de integriteitscontrole telt nu echt).
   Een mislukte upload wordt altijd opgeruimd.
 
+- **Toeslagfactoren:** "inf" of "nan" werd geaccepteerd, waarna elke weekenddienst een foutpagina
+  gaf. Factoren moeten nu een gewoon getal groter dan 0 en hooguit 10 zijn (instellingen en setup).
+- **Tijdzone:** een onbekende tijdzone (tikfout) werd opgeslagen, waarna Google elke afspraak
+  weigerde. De tijdzone wordt nu gecontroleerd. Er is nog maar één bron: de instelling
+  (standaard de `TZ` uit docker-compose), voor de klok, de ICS-feed en Google Agenda.
+- **Blanco-code:** mocht gelijk zijn aan een bestaande dienstcode, die daarna niet meer in te
+  voeren was. Dat wordt nu geweigerd.
+- **Worker:** een fout in de agenda-synchronisatie kon stil blijven of de back-up tegenhouden.
+  Elke stap heeft nu een eigen foutafhandeling met een duidelijke regel in de log.
+  `google-auth-httplib2` en `httplib2` staan nu ook echt in `requirements.txt`.
+- **Weekrooster:** twee beheerders die exact tegelijk dezelfde dienst opslaan, kunnen elkaars
+  wijziging niet meer ongemerkt overschrijven; de tweede krijgt een melding (409).
+- **Excel-import:** na de import worden de gekoppelde Google-agenda's automatisch bijgewerkt.
+- De app-log zweeg na het terugzetten van een back-up (de databasemigratie zette de loggers uit).
+
+### Gewijzigd
+- Wachttijden van de agenda-wachtrij en de loginblokkade rekenen in UTC; het dubbele uur bij de
+  overgang naar wintertijd heeft er geen invloed meer op.
+- Databaseversie 0004 (gaat automatisch bij de start): sessieversie per gebruiker, unieke
+  standaard feestdagen per jaar, wachttijden in UTC.
+
 ### Beveiliging
+- **Sessies:** na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of
+  een rolwijziging worden alle andere sessies van die gebruiker direct uitgelogd. Na het
+  terugzetten van een back-up moet iedereen opnieuw inloggen.
+- **Achter een proxy:** zonder `PROXY_VERTROUWEN=1` lijkt iedereen van hetzelfde IP-adres te
+  komen; na 20 foute pogingen werd dan het hele team geblokkeerd. Nu komt een collega met het
+  juiste wachtwoord er nog steeds in (elke naam krijgt dan nog één poging). Komt er een
+  `X-Forwarded-For`-header binnen terwijl `PROXY_VERTROUWEN` uit staat, dan staat er een
+  waarschuwing in de log.
 - **Inloggen:** een bezoeker zonder account kon de database onbeperkt laten groeien met extreem
   lange gebruikersnamen. De gebruikersnaam wordt nu op 64 tekens afgekapt, een blokkade komt
   maar één keer in het logboek, alle logboekvelden zijn begrensd en loginpogingen ouder dan een

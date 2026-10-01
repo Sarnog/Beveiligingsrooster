@@ -4,7 +4,7 @@ import re
 import secrets
 
 from flask import flash, redirect, render_template, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_user
 
 from ...extensions import db
 from ...models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker, Medewerker
@@ -112,7 +112,11 @@ def gebruiker_bewerk(gid: int):
                 logboek.log("Account gewijzigd", gebruiker.gebruikersnaam, veld=veld,
                             oud=oud, nieuw=waarde)
                 setattr(gebruiker, veld, waarde)
+                if veld in ("actief", "rol"):
+                    gebruiker.maak_sessies_ongeldig()  # direct uitloggen
         db.session.commit()
+        if gebruiker.id == current_user.id:
+            login_user(gebruiker)  # eigen sessie geldig houden
         flash("Account opgeslagen.", "succes")
         return redirect(url_for("beheer.gebruikers"))
     waarden = {veld: getattr(gebruiker, veld)
@@ -129,6 +133,7 @@ def gebruiker_reset(gid: int):
     tijdelijk = secrets.token_urlsafe(9)  # 12 tekens
     gebruiker.wachtwoord_hash = hash_wachtwoord(tijdelijk)
     gebruiker.moet_wachtwoord_wijzigen = True
+    gebruiker.maak_sessies_ongeldig()
     logboek.log("Wachtwoord gereset", gebruiker.gebruikersnaam)
     db.session.commit()
     return render_template("beheer/gebruiker_reset.html", g=gebruiker, tijdelijk=tijdelijk)

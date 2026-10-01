@@ -10,4 +10,6 @@ gunicorn>=22
 tzdata>=2024.1
 google-api-python-client>=2.100
 google-auth>=2.23
+google-auth-httplib2>=0.2  # wordt direct geïmporteerd (time-out op Google-verzoeken)
+httplib2>=0.22
 openpyxl>=3.1

@@ -620,3 +620,312 @@ def test_h6_scherm_ruimt_upload_op_bij_elke_fout(gemigreerd, client, monkeypatch
         content_type="multipart/form-data", follow_redirects=True)
     assert antwoord.status_code == 200 and "Terugzetten mislukt" in antwoord.data.decode()
     assert not [b for b in backup.lijst_backups() if b["naam"].endswith("-upload.db")]
+
+
+# ---------------------------------------------------------------------------
+# M1 · inf/nan als toeslagfactor
+# M2 · tijdzone als vrije tekst, drie tijdzonebronnen
+# M3 · blanco-code gelijk aan een bestaande dienstcode
+# ---------------------------------------------------------------------------
+
+def _instellingen_formulier(**anders) -> dict:
+    formulier = {s: instellingen.lees(s) for s in instellingen.STANDAARD}
+    formulier.update({"eerste_jaar": "2026", "tijdzone": "Europe/Amsterdam"})
+    formulier.pop("deellink_actief")
+    formulier.pop("opmerkingtijden_meetellen")
+    formulier.update(anders)
+    return formulier
+
+
+@pytest.mark.parametrize("waarde", ["inf", "nan", "-inf", "1e400", "11", "0"])
+def test_m1_toeslagfactor_moet_eindig_en_redelijk_zijn(app, als_beheerder, waarde):
+    antwoord = als_beheerder.post("/beheer/instellingen",
+                                  data=_instellingen_formulier(toeslag_zaterdag=waarde))
+    assert antwoord.status_code == 400
+    assert instellingen.lees("toeslag_zaterdag") == "1.5"
+
+
+def test_m1_feestdagfactor_inf_geweigerd(app, als_beheerder):
+    antwoord = als_beheerder.post("/beheer/instellingen", data=_instellingen_formulier(
+        feestdagtoeslag_aan="1", toeslag_feestdag="inf"))
+    assert antwoord.status_code == 400
+
+
+def test_m1_getal_en_lees_float_weigeren_inf_nan(app, klaar):
+    from app.blueprints.hulp import getal
+
+    assert getal("inf") is None and getal("nan") is None and getal("1,5") == 1.5
+    instellingen.schrijf("toeslag_zaterdag", "inf")
+    assert instellingen.lees_float("toeslag_zaterdag") is None
+    assert instellingen.toeslagen()["factor_zaterdag"] == 1.5
+
+
+def test_m1_setup_weigert_inf(app, client):
+    from app.services import setup_code
+
+    from .conftest import WACHTWOORD
+
+    client.get("/setup/")
+    client.post("/setup/", data={"code": setup_code.lees_code()})
+    client.post("/setup/stap/1", data={"gebruikersnaam": "planner", "weergavenaam": "P",
+                                       "wachtwoord": WACHTWOORD, "herhaling": WACHTWOORD})
+    formulier = {"teamnaam": "T", "tijdzone": "Europe/Amsterdam", "eerste_jaar": "2026",
+                 "toeslag_zaterdag": "nan", "toeslag_zondag": "2", "logboek_dagen": "31",
+                 "logboek_uren": "0"}
+    assert client.post("/setup/stap/2", data=formulier).status_code == 400
+    formulier.update(toeslag_zaterdag="1,5", tijdzone="Mars/Olympus")
+    assert client.post("/setup/stap/2", data=formulier).status_code == 400
+    assert instellingen.lees("tijdzone") != "Mars/Olympus"
+
+
+def test_m2_ongeldige_tijdzone_geweigerd(app, als_beheerder):
+    antwoord = als_beheerder.post("/beheer/instellingen",
+                                  data=_instellingen_formulier(tijdzone="Mars/Olympus"))
+    assert antwoord.status_code == 400 and "tijdzone" in antwoord.data.decode().lower()
+    assert instellingen.lees("tijdzone") != "Mars/Olympus"
+
+
+def test_m2_een_tijdzonebron_voor_klok_ics_en_agenda(app, als_beheerder, mw):
+    from app.models import Dienst
+    from app.services import ics
+    from app.services.google_agenda import afspraak_voor
+
+    antwoord = als_beheerder.post("/beheer/instellingen",
+                                  data=_instellingen_formulier(tijdzone="Europe/London"))
+    assert antwoord.status_code == 302
+    assert klok.tijdzone_naam() == "Europe/London"
+    db.session.add(Dienst(medewerker_id=mw.id, datum=klok.vandaag(), dienstnaam_override="X",
+                          begin="07:00", eind="15:00", opmerking_tekst=""))
+    db.session.commit()
+    feed = ics.maak_feed(mw)
+    assert "X-WR-TIMEZONE:Europe/London" in feed
+    assert ics._utc("2026-07-01T07:15:00") == "20260701T061500Z"  # Londen: UTC+1 in de zomer
+    assert afspraak_voor(Dienst.query.one()).body["start"]["timeZone"] == "Europe/London"
+
+
+def test_m3_blanco_code_mag_geen_bestaande_dienstcode_zijn(app, als_beheerder, mw):
+    antwoord = als_beheerder.post("/beheer/instellingen", data=_instellingen_formulier(blanco_code="4"))
+    assert antwoord.status_code == 400 and "blanco" in antwoord.data.decode().lower()
+    assert instellingen.lees("blanco_code") == "15"
+
+
+# ---------------------------------------------------------------------------
+# M4 · ImportError slikte echte fouten; een sync-fout blokkeerde de back-up
+# ---------------------------------------------------------------------------
+
+def test_m4_sync_fout_blokkeert_backup_niet(app, klaar, monkeypatch, caplog):
+    from app.services import sync
+
+    def kapot(*args, **kwargs):
+        raise RuntimeError("sync stuk")
+
+    monkeypatch.setattr(sync, "verwerk_wachtrij", kapot)
+    with caplog.at_level("ERROR"):
+        worker.een_ronde(worker.Planning(), datetime(2026, 3, 2, 3, 0))
+    assert len(backup.lijst_backups()) == 1
+    assert "agenda-synchronisatie" in caplog.text
+
+
+def test_m4_importerror_wordt_niet_ingeslikt(app, klaar, monkeypatch, caplog):
+    from app.services import sync
+
+    def kapot(*args, **kwargs):
+        raise ImportError("google_auth_httplib2 ontbreekt")
+
+    monkeypatch.setattr(sync, "verwerk_wachtrij", kapot)
+    with caplog.at_level("ERROR"):
+        worker.een_ronde(worker.Planning(), datetime(2026, 3, 2, 1, 0))
+    assert "google_auth_httplib2" in caplog.text
+
+
+def test_m4_google_afhankelijkheden_in_requirements():
+    import pathlib
+
+    tekst = (pathlib.Path(__file__).parent.parent / "requirements.txt").read_text().lower()
+    assert "google-auth-httplib2" in tekst and "httplib2" in tekst.replace("google-auth-httplib2", "")
+
+
+# ---------------------------------------------------------------------------
+# M5 · Per-IP-limiet blokkeert iedereen achter een proxy
+# ---------------------------------------------------------------------------
+
+def test_m5_juist_wachtwoord_komt_door_een_ip_blokkade(app, client, klaar):
+    from .conftest import login
+
+    for i in range(20):  # veel verschillende (fictieve) namen vanaf hetzelfde IP
+        client.post("/login", data={"gebruikersnaam": f"onbekend{i}", "wachtwoord": "fout"})
+    # Een nieuwe naam met een fout wachtwoord: geblokkeerd
+    assert client.post("/login", data={"gebruikersnaam": "nogeen", "wachtwoord": "fout"}).status_code == 429
+    # Een collega met het juiste wachtwoord komt er wel in
+    assert login(client, "collega").status_code == 302
+
+
+def test_m5_ip_blokkade_geeft_geen_extra_raadpogingen(app, client, klaar):
+    for i in range(20):
+        client.post("/login", data={"gebruikersnaam": f"onbekend{i}", "wachtwoord": "fout"})
+    client.post("/login", data={"gebruikersnaam": "collega", "wachtwoord": "fout1"})
+    # Na één fout tijdens een IP-blokkade helpt zelfs het juiste wachtwoord niet meer
+    from .conftest import login
+
+    assert login(client, "collega").status_code == 429
+
+
+def test_m5_waarschuwing_bij_forwarded_for_zonder_proxy(app, client, klaar, caplog):
+    from app.blueprints import auth
+
+    auth._proxy_gewaarschuwd = False
+    with caplog.at_level("WARNING"):
+        client.post("/login", data={"gebruikersnaam": "x", "wachtwoord": "y"},
+                    headers={"X-Forwarded-For": "203.0.113.9"})
+    assert "PROXY_VERTROUWEN" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# M7 · Wachtwoord wijzigen/resetten en deactiveren logt andere sessies niet uit
+# M10 · Na terugzetten blijven sessies geldig op gebruikers-ID
+# ---------------------------------------------------------------------------
+
+def _uitgelogd(client) -> bool:
+    """True als deze sessie naar het inlogscherm wordt gestuurd."""
+    antwoord = client.get("/kalender/")
+    return antwoord.status_code == 302 and "/login" in antwoord.headers["Location"]
+
+
+def _twee_sessies(app, naam="beheerder"):
+    from .conftest import login
+
+    eerste, tweede = app.test_client(), app.test_client()
+    login(eerste, naam)
+    login(tweede, naam)
+    assert eerste.get("/kalender/").status_code == 200 and tweede.get("/kalender/").status_code == 200
+    return eerste, tweede
+
+
+def test_m7_wachtwoord_wijzigen_logt_andere_sessie_uit(app, klaar):
+    from .conftest import WACHTWOORD
+
+    eerste, tweede = _twee_sessies(app)
+    antwoord = eerste.post("/account/wachtwoord", data={
+        "huidig": WACHTWOORD, "nieuw": "nieuwwachtwoord1", "herhaling": "nieuwwachtwoord1"})
+    assert antwoord.status_code == 302
+    assert eerste.get("/kalender/").status_code == 200  # wie wijzigde blijft ingelogd
+    assert _uitgelogd(tweede)  # de andere sessie niet
+
+
+def test_m7_reset_en_deactiveren_loggen_gebruiker_uit(app, klaar):
+    from app.models import Gebruiker
+
+    from .conftest import login
+
+    beheerder = app.test_client()
+    login(beheerder, "beheerder")
+    collega, _ = _twee_sessies(app, "collega")
+    gid = Gebruiker.query.filter_by(gebruikersnaam="collega").one().id
+    beheerder.post(f"/beheer/gebruikers/{gid}/reset")
+    assert _uitgelogd(collega)
+
+    collega2 = app.test_client()
+    db.session.get(Gebruiker, gid).moet_wachtwoord_wijzigen = False
+    db.session.commit()
+    login(collega2, "collega", "x")  # wachtwoord is nu onbekend: direct via de sessie testen
+    gebruiker = db.session.get(Gebruiker, gid)
+    with collega2.session_transaction() as sessie:
+        sessie["_user_id"] = gebruiker.get_id()
+        sessie["_fresh"] = True
+    assert collega2.get("/kalender/").status_code == 200
+    beheerder.post(f"/beheer/gebruikers/{gid}", data={
+        "gebruikersnaam": "collega", "weergavenaam": "Collega", "rol": "gebruiker"})  # actief uit
+    assert _uitgelogd(collega2)
+
+
+def test_m7_oud_sessieformaat_is_ongeldig(app, klaar):
+    client = app.test_client()
+    with client.session_transaction() as sessie:
+        sessie["_user_id"] = str(klaar["beheerder"].id)  # zoals vóór 1.2.0
+        sessie["_fresh"] = True
+    assert _uitgelogd(client)
+
+
+def test_m10_terugzetten_logt_iedereen_uit(gemigreerd):
+    from .conftest import login, maak_gebruiker
+
+    maak_gebruiker("beheerder", "beheerder")
+    maak_gebruiker("collega", "gebruiker")
+    beheerder, collega = gemigreerd.test_client(), gemigreerd.test_client()
+    login(beheerder, "beheerder")
+    login(collega, "collega")
+    beheerder.post("/beheer/backups/maken")
+    naam = backup.lijst_backups()[0]["naam"]
+    assert collega.get("/kalender/").status_code == 200
+    antwoord = beheerder.post("/beheer/backups/terugzetten", data={"naam": naam, "bevestig": "1"})
+    assert antwoord.status_code == 302
+    assert _uitgelogd(collega) and _uitgelogd(beheerder)
+
+
+# ---------------------------------------------------------------------------
+# M8 · Optimistic locking was check-then-write (TOCTOU)
+# ---------------------------------------------------------------------------
+
+def test_m8_gelijktijdige_wijziging_geeft_conflict(app, mw, monkeypatch):
+    from app.models import Dienst
+    from app.services import weekrooster
+    from app.services.weekrooster import VersieConflict, Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4")])
+    dienst = Dienst.query.one()
+    versie = dienst.versie
+    echt = weekrooster._pas_veld_toe
+
+    def met_tussenkomst(dienst, veld, waarde):
+        # Precies tussen lezen en schrijven wijzigt een ander proces dezelfde dienst
+        with db.engine.begin() as verbinding:
+            verbinding.exec_driver_sql(
+                "UPDATE dienst SET eind = '20:00', versie = versie + 1 WHERE id = ?", (dienst.id,))
+        return echt(dienst, veld, waarde)
+
+    monkeypatch.setattr(weekrooster, "_pas_veld_toe", met_tussenkomst)
+    with pytest.raises(VersieConflict):
+        wijzig_cellen([Wijziging(mw.id, MAANDAG, "eind", "17:00", versie=versie)])
+    db.session.expire_all()
+    assert Dienst.query.one().eind == "20:00"  # de wijziging van de ander blijft staan
+
+
+def test_m8_conflict_via_api_geeft_409(app, als_beheerder, mw, monkeypatch):
+    from app.models import Dienst
+    from app.services import weekrooster
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4")])
+    dienst_id = Dienst.query.one().id
+    echt = weekrooster._pas_veld_toe
+
+    def met_tussenkomst(dienst, veld, waarde):
+        with db.engine.begin() as verbinding:
+            verbinding.exec_driver_sql("UPDATE dienst SET versie = versie + 1 WHERE id = ?", (dienst_id,))
+        return echt(dienst, veld, waarde)
+
+    monkeypatch.setattr(weekrooster, "_pas_veld_toe", met_tussenkomst)
+    antwoord = als_beheerder.post("/api/cellen", json={"opslaan": True, "wijzigingen": [
+        {"mw": mw.id, "datum": MAANDAG.isoformat(), "veld": "eind", "waarde": "17:00", "versie": 1}]})
+    assert antwoord.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# M9 · De Excel-import plande geen agenda-sync
+# ---------------------------------------------------------------------------
+
+def test_m9_import_plant_agenda_sync(app, klaar, tmp_path):
+    from app.models import Medewerker, SyncTaak
+    from app.services.excel_import import importeer, lees_bestand
+
+    from .test_import_backup import maak_testbestand
+
+    db.session.add(Medewerker(naam="Medewerker Vijf A", initialen="MVA", agenda_modus="B",
+                              agenda_id="agenda-a"))
+    db.session.commit()
+    pad = str(tmp_path / "oud.xlsx")
+    maak_testbestand(pad)
+    importeer(lees_bestand(pad))
+    taken = SyncTaak.query.all()
+    assert [(t.soort, db.session.get(Medewerker, t.medewerker_id).naam) for t in taken] \
+        == [("volledig", "Medewerker Vijf A")]

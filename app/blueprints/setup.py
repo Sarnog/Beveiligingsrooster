@@ -18,7 +18,7 @@ from ..services import instellingen, klok, logboek, setup_code
 from ..services.medewerkers import uniek_voorstel
 from ..services.voorbeeldpakket import laad_voorbeeldpakket
 from ..services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
-from .hulp import getal
+from .hulp import factor, getal
 
 bp = Blueprint("setup", __name__, url_prefix="/setup")
 
@@ -114,17 +114,21 @@ def _stap_beheerder():
 def _stap_algemeen():
     if request.method == "POST":
         formulier = request.form
-        za = getal(formulier.get("toeslag_zaterdag"))
-        zo = getal(formulier.get("toeslag_zondag"))
+        za = factor(formulier.get("toeslag_zaterdag"))
+        zo = factor(formulier.get("toeslag_zondag"))
+        tijdzone = formulier.get("tijdzone", "").strip() or klok.standaard_tijdzone()
         dagen = formulier.get("logboek_dagen", "31").strip()
         uren = formulier.get("logboek_uren", "0").strip()
         jaar = formulier.get("eerste_jaar", "").strip()
-        if za is None or zo is None or not dagen.isdigit() or not uren.isdigit() \
-                or not jaar.isdigit() or not (0 <= int(uren) <= 23):
-            flash("Controleer de ingevulde waarden.", "fout")
+        if not klok.is_geldige_tijdzone(tijdzone):
+            flash(f"Onbekende tijdzone '{tijdzone}'. Gebruik een naam zoals Europe/Amsterdam.", "fout")
+            return render_template("setup/stap2.html", stap=2, w=formulier), 400
+        if za is None or zo is None or not dagen.isdecimal() or not uren.isdecimal() \
+                or not jaar.isdecimal() or not (0 <= int(uren) <= 23) or not (2000 <= int(jaar) <= 2100):
+            flash("Controleer de ingevulde waarden (toeslagfactoren tussen 0 en 10).", "fout")
             return render_template("setup/stap2.html", stap=2, w=formulier), 400
         instellingen.schrijf("teamnaam", formulier.get("teamnaam", "").strip() or "Beveiligingsrooster")
-        instellingen.schrijf("tijdzone", formulier.get("tijdzone", "Europe/Amsterdam").strip())
+        instellingen.schrijf("tijdzone", tijdzone)
         instellingen.schrijf("eerste_jaar", jaar)
         instellingen.schrijf("toeslag_zaterdag", za)
         instellingen.schrijf("toeslag_zondag", zo)
@@ -132,9 +136,11 @@ def _stap_algemeen():
         instellingen.schrijf("logboek_uren", uren)
         logboek.log("Instellingen gewijzigd", "Setup: algemene instellingen")
         db.session.commit()
+        klok.wis_cache()
         return _volgende(2)
     waarden = {s: instellingen.lees(s) for s in instellingen.STANDAARD}
     waarden["eerste_jaar"] = waarden["eerste_jaar"] or str(klok.vandaag().year)
+    waarden["tijdzone"] = waarden["tijdzone"] or klok.standaard_tijdzone()
     return render_template("setup/stap2.html", stap=2, w=waarden)
 
 

@@ -39,12 +39,29 @@ class Gebruiker(UserMixin, db.Model):
     moet_wachtwoord_wijzigen = db.Column(db.Boolean, nullable=False, default=False)
     aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
     laatst_ingelogd = db.Column(db.DateTime, nullable=True)
+    # Wordt opgehoogd bij wachtwoord wijzigen/resetten en deactiveren: alle bestaande
+    # sessies van deze gebruiker zijn dan direct ongeldig (zie get_id en laad_gebruiker)
+    sessie_versie = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     medewerker = db.relationship("Medewerker")
 
     @property
     def is_beheerder(self) -> bool:
         return self.rol == ROL_BEHEERDER
+
+    def get_id(self) -> str:
+        """Sessiesleutel voor Flask-Login: '<id>:<sessie_versie>:<sessie_generatie>'.
+
+        De sessie_generatie is één instelling voor de hele app; die verandert na het
+        terugzetten van een back-up, zodat dan iedereen opnieuw moet inloggen.
+        """
+        from .services import instellingen
+
+        return f"{self.id}:{self.sessie_versie or 0}:{instellingen.lees('sessie_generatie')}"
+
+    def maak_sessies_ongeldig(self) -> None:
+        """Log deze gebruiker overal uit (commit doet de aanroeper)."""
+        self.sessie_versie = (self.sessie_versie or 0) + 1
 
     @property
     def is_active(self) -> bool:  # gebruikt door Flask-Login
@@ -197,7 +214,11 @@ class Dienst(db.Model):
 
 
 class Dagopmerking(db.Model):
-    """Handmatige dagopmerking (rij 3). Automatische tekst wordt niet opgeslagen."""
+    """Handmatige dagopmerking (rij 3). Automatische tekst wordt niet opgeslagen.
+
+    De kolom 'handmatig' is altijd True (er worden alleen handmatige teksten bewaard);
+    hij blijft bestaan omdat hij in het databaseschema staat.
+    """
 
     __tablename__ = "dagopmerking"
 
@@ -220,9 +241,16 @@ class Vakantie(db.Model):
 
 
 class Feestdag(db.Model):
-    """Feestdag of eigen roostervrije dag, per jaar."""
+    """Feestdag of eigen roostervrije dag, per jaar.
+
+    Een standaard feestdag (met sleutel) bestaat maar één keer per jaar (unieke index).
+    """
 
     __tablename__ = "feestdag"
+    __table_args__ = (
+        db.Index("uq_feestdag_jaar_sleutel", "jaar", "sleutel", unique=True,
+                 sqlite_where=db.text("sleutel != ''")),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     jaar = db.Column(db.Integer, nullable=False, index=True)

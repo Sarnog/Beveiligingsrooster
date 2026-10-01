@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
-from . import instellingen, logboek
+from . import instellingen, logboek, sync_planning
 from .feestdagen import zorg_voor_jaar
 from .kalender import aantal_weken, maandag_van_week
 from .medewerkers import uniek_voorstel
@@ -429,7 +429,7 @@ def importeer(plan: ImportPlan) -> dict:
         raise ImportFout("Er is niets geïmporteerd: dubbele diensten in het bestand ("
                          + "; ".join(dubbel) + ").")
     try:
-        resultaat = _importeer(plan)
+        resultaat, medewerkers = _importeer(plan)
         db.session.commit()
     except IntegrityError as fout:
         db.session.rollback()
@@ -438,10 +438,13 @@ def importeer(plan: ImportPlan) -> dict:
     except Exception:
         db.session.rollback()
         raise
+    # Gekoppelde agenda's gelijk maken aan het nieuwe rooster
+    for medewerker in medewerkers:
+        sync_planning.plan_volledig(medewerker)
     return resultaat
 
 
-def _importeer(plan: ImportPlan) -> dict:
+def _importeer(plan: ImportPlan) -> tuple[dict, list[Medewerker]]:
     """Het eigenlijke importeren; er wordt hier nergens gecommit."""
     resultaat = {"medewerkers": 0, "codes": 0, "vakanties": 0, "diensten": 0, "dagopmerkingen": 0}
 
@@ -563,4 +566,4 @@ def _importeer(plan: ImportPlan) -> dict:
     logboek.log("Excel-import", ", ".join(f"{k}: {v}" for k, v in resultaat.items()))
     markeer_bijgewerkt()
     db.session.flush()
-    return resultaat
+    return resultaat, list(medewerkers.values())

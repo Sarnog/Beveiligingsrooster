@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from flask import current_app
 
 from ..models import Dienst, Medewerker
-from . import instellingen
+from . import instellingen, klok
 from .weekrooster import dagopmerkingen
 
 BESTANDSNAAM = "google-service-account.json"
@@ -242,7 +242,7 @@ def afspraak_voor(dienst: Dienst | None, dagtekst: str = "") -> Afspraak | None:
     if code is not None and not code.in_agenda:
         return None
 
-    tijdzone = instellingen.lees("tijdzone") or "Europe/Amsterdam"
+    tijdzone = klok.tijdzone_naam()
     titel = (instellingen.lees("agenda_voorvoegsel") or "") + naam
 
     regels = []
