@@ -485,3 +485,75 @@ def test_gewiste_tweede_dienst_met_afspraak_wordt_niet_meer_getoond(app, gekoppe
     assert bijgewerkt[f"{gekoppeld.id}|{MAANDAG.isoformat()}"]["code"] == "17"
     rij = week_gegevens(2026, 10)["rijen"][0]
     assert not rij.heeft_tweede and rij.dagen[0]["tweede"] is None
+
+
+# ---------- Beheer → Google Agenda: overige knoppen en foutpaden ----------
+
+def test_sleutel_verwijderen_en_leeg_formulier(app, als_beheerder, monkeypatch):
+    weg = []
+    monkeypatch.setattr(google_agenda, "verwijder_sleutel", lambda: weg.append(True))
+    antwoord = als_beheerder.post("/beheer/agenda/sleutel", data={"verwijder": "1"}, follow_redirects=True)
+    assert weg == [True] and "Het sleutelbestand is verwijderd" in antwoord.data.decode()
+    assert Logboek.query.filter_by(actie="Google-sleutel verwijderd").count() == 1
+    antwoord = als_beheerder.post("/beheer/agenda/sleutel", data={}, follow_redirects=True)
+    assert "Kies een JSON-sleutelbestand" in antwoord.data.decode()
+
+
+def test_koppelen_al_gekoppeld_onbekende_modus_en_leeg_agenda_id(app, gekoppeld, nep, als_beheerder):
+    url = f"/beheer/agenda/{gekoppeld.id}/koppel"
+    antwoord = als_beheerder.post(url, data={"modus": "B"}, follow_redirects=True)
+    assert "is al gekoppeld" in antwoord.data.decode()
+    medewerker = db.session.get(Medewerker, gekoppeld.id)
+    medewerker.agenda_modus, medewerker.agenda_id = "", ""
+    db.session.commit()
+    antwoord = als_beheerder.post(url, data={"modus": "B", "agenda_id": " "}, follow_redirects=True)
+    assert "Vul het agenda-ID in" in antwoord.data.decode()
+    antwoord = als_beheerder.post(url, data={"modus": "X"}, follow_redirects=True)
+    assert "Onbekende koppelmodus" in antwoord.data.decode()
+    antwoord = als_beheerder.post(url, data={"modus": "B", "agenda_id": "agenda-a"}, follow_redirects=True)
+    assert "is gekoppeld" in antwoord.data.decode() and "uitnodiging" not in antwoord.data.decode()
+    assert db.session.get(Medewerker, gekoppeld.id).agenda_modus == "B"
+
+
+def test_modus_a_opruimen_mislukt_ook(app, klaar, monkeypatch, als_beheerder):
+    class AllesMislukt(NepKlant):
+        def deel_agenda(self, agenda_id, email):
+            raise AgendaFout("Geen toegang (403)", status=403)
+
+        def verwijder_agenda(self, agenda_id):
+            raise AgendaFout("Ook weg (500)", status=500)
+
+    monkeypatch.setattr(google_agenda, "klant", lambda: AllesMislukt())
+    medewerker = Medewerker(naam="Medewerker Z", initialen="TSZ", email="z@voorbeeld.nl")
+    db.session.add(medewerker)
+    db.session.commit()
+    antwoord = als_beheerder.post(f"/beheer/agenda/{medewerker.id}/koppel", data={"modus": "A"},
+                                  follow_redirects=True)
+    assert "Koppelen mislukt: Geen toegang (403)" in antwoord.data.decode()
+
+
+def test_koppeling_testen(app, gekoppeld, nep, als_beheerder):
+    url = f"/beheer/agenda/{gekoppeld.id}/test"
+    assert "Koppeling werkt: agenda" in als_beheerder.post(url, follow_redirects=True).data.decode()
+    del nep.agendas["agenda-a"]
+    assert "Koppeling werkt niet" in als_beheerder.post(url, follow_redirects=True).data.decode()
+    assert db.session.get(Medewerker, gekoppeld.id).agenda_laatste_fout == "niet gevonden"
+
+
+def test_volledig_synchroniseren_en_opnieuw_proberen(app, gekoppeld, nep, als_beheerder):
+    antwoord = als_beheerder.post(f"/beheer/agenda/{gekoppeld.id}/volledig", follow_redirects=True)
+    assert "staat in de wachtrij" in antwoord.data.decode()
+    assert SyncTaak.query.filter_by(medewerker_id=gekoppeld.id, soort="volledig").count() == 1
+    SyncTaak.query.update({"status": "fout"})
+    db.session.commit()
+    antwoord = als_beheerder.post("/beheer/agenda/opnieuw", follow_redirects=True)
+    assert "1 mislukte taken worden opnieuw geprobeerd" in antwoord.data.decode()
+
+
+def test_ics_link_maken_en_intrekken(app, gekoppeld, als_beheerder):
+    url = f"/beheer/agenda/{gekoppeld.id}/ics"
+    assert "Nieuwe ICS-link gemaakt" in als_beheerder.post(url, follow_redirects=True).data.decode()
+    assert db.session.get(Medewerker, gekoppeld.id).ics_token
+    antwoord = als_beheerder.post(url, data={"intrekken": "1"}, follow_redirects=True)
+    assert "werkt niet meer" in antwoord.data.decode()
+    assert db.session.get(Medewerker, gekoppeld.id).ics_token == ""
