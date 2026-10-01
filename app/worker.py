@@ -57,8 +57,6 @@ def _stap_backup(planning: Planning, nu: datetime) -> None:
 
     try:
         pad = backup.maak_backup()
-        backup.ruim_oude_op()
-        backup.ruim_gelabelde_op()
     except Exception as fout:  # nooit elke ronde opnieuw proberen
         planning.backup_niet_voor = nu + BACKUP_BACKOFF
         log.exception("Back-up mislukt; volgende poging na %s", planning.backup_niet_voor)
@@ -72,6 +70,11 @@ def _stap_backup(planning: Planning, nu: datetime) -> None:
     planning.backup_gedaan = nu.date()
     planning.backup_niet_voor = None
     log.info("Back-up gemaakt: %s", pad)
+    try:
+        backup.ruim_oude_op()
+        backup.ruim_gelabelde_op()
+    except Exception:  # de back-up zelf is gelukt; opruimen kan morgen weer
+        log.exception("Oude back-ups opruimen mislukt")
 
 
 def een_ronde(planning: Planning, nu: datetime | None = None) -> None:

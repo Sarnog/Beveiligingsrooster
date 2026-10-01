@@ -82,5 +82,5 @@ def backup_terugzetten():
     logboek.log("Back-up teruggezet", naam, oud=veiligheid)
     db.session.commit()
     flash(f"Back-up {naam} is teruggezet. De vorige stand is bewaard als {veiligheid}. "
-          "Log zo nodig opnieuw in.", "succes")
+          "Iedereen moet nu opnieuw inloggen.", "succes")
     return redirect(url_for("beheer.backups"))

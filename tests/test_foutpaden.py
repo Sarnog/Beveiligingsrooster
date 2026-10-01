@@ -228,3 +228,16 @@ def test_week_kopieren_ongeldige_doelweek(app, als_beheerder, mw, naar):
 def test_week_kopieren_onbekende_medewerker(als_beheerder, mw):
     assert als_beheerder.post("/week/2026/10/kopieer", data={"naar": "2026-W11",
                                                              "medewerker_id": "999"}).status_code == 404
+
+
+def test_worker_opruimen_mislukt_backup_telt_wel(app, klaar, monkeypatch, caplog):
+    def kapot():
+        raise OSError("map niet leesbaar")
+
+    monkeypatch.setattr(backup, "ruim_oude_op", kapot)
+    planning = worker.Planning()
+    with caplog.at_level("ERROR"):
+        worker.een_ronde(planning, datetime(2026, 3, 2, 3, 0))
+    assert planning.backup_gedaan == date(2026, 3, 2) and planning.backup_niet_voor is None
+    assert len(backup.lijst_backups()) == 1 and "opruimen mislukt" in caplog.text
+    assert Logboek.query.filter_by(actie="Back-up mislukt").count() == 0
