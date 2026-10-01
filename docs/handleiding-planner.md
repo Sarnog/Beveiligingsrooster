@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.3.0)
+# Handleiding voor de planner (beheerder, versie 1.4.0)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
 
@@ -44,6 +44,39 @@ Klikken in het rooster, printen en de uitklapbare lijsten (Dienstcodes, Toetsen)
 | niets (cel leeg maken met **Delete**) | geen dienst |
 | de blanco-code (standaard `15`) | ook: geen dienst (voor wie gewend is aan Excel) |
 | een onbekend nummer | rode cel met de melding "Onbekende dienstcode"; er wordt niets opgeslagen |
+| twee codes, bijvoorbeeld `4/7` (ook `4+7` of `4 7`) | **twee diensten** op die dag, zie hieronder |
+
+### Twee diensten op één dag
+
+![Weekrooster met twee diensten op één dag](schermafbeeldingen/week-twee-diensten-1280x800.png)
+
+Werkt iemand op één dag twee diensten (bijvoorbeeld 's ochtends BHV en 's avonds VW Avond)?
+Typ dan **twee codes** in dezelfde cel van het code-raster, gescheiden door `/`, `+` of een spatie:
+`17/3`, `17+3` of `17 3`. Er kunnen er hooguit **twee** per dag.
+
+- De cel toont `17/3` met een **gesplitste kleur**: links de kleur van dienst 1, rechts die van dienst 2.
+- In het rooster komen bij die medewerker **twee extra regels** (alleen die week en alleen bij
+  wie een tweede dienst heeft): de dienstnaam van dienst 2 als gekleurde balk, en daaronder
+  begin, eind en uren. Dienst 2 staat dus **onder** dienst 1.
+- Elke dienst heeft **eigen tijden en uren**; je kunt ze los aanpassen in het rooster, net als
+  bij één dienst. Pauze-aftrek en weekend-/feestdagtoeslag gelden per dienst. Het dag- en
+  weektotaal tellen beide diensten op.
+- De **opmerking** (regel a en b) hoort bij de dag, niet bij een dienst.
+- Overlappen de tijden van de twee diensten? Dan zie je boven het code-raster een **oranje
+  waarschuwing**. Opslaan kan gewoon; controleer even of het klopt.
+- In het logboek staat bij wijzigingen aan de tweede dienst **"dienst 2:"** voor het veld.
+
+**Tweede dienst weer weghalen:**
+
+| Wat je typt in het code-raster | Gevolg |
+|---|---|
+| één code, bijvoorbeeld `17` | dienst 1 wordt `17`, dienst 2 verdwijnt |
+| niets (**Delete**) | beide diensten verdwijnen |
+| `/3` | alleen een tweede dienst (dienst 1 leeg) |
+
+Op de telefoon zie je de tweede dienst op de dagkaart. Het bewerkpaneel op de telefoon wijzigt
+alleen dienst 1; kies je daar een andere dienst, dan verdwijnt dienst 2. Twee diensten invullen
+of aanpassen doe je in het code-raster op de computer.
 
 ### Toetsen (zoals in Excel)
 
@@ -82,7 +115,7 @@ Niet elke dienst heeft een code. Bijvoorbeeld een cursus of een extra ronde.
 
 ## 3. Opmerkingen
 
-Elk medewerkerblok heeft vier regels per dag:
+Elk medewerkerblok heeft vier regels per dag (plus twee bij een tweede dienst, zie 1):
 
 | Regel | Inhoud | Telt mee in uren? |
 |---|---|---|
@@ -116,11 +149,24 @@ Het Excel-achtige raster met toetsenbord blijft op de computer precies hetzelfde
 
 ## 4. Week kopiëren
 
-Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of één medewerker wilt kopiëren. De doelweek wordt **gelijk gemaakt** aan deze week: daar bestaande diensten worden overschreven.
+Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of één medewerker wilt kopiëren. De doelweek wordt **gelijk gemaakt** aan deze week: daar bestaande diensten worden overschreven. Tweede diensten gaan mee.
 
 ## 5. Printen
 
 Klik op **Printen**. De week komt liggend op één A4 (ook met 15 medewerkers, en ook als je vanaf een telefoon print), zonder het code-raster en met kleuren. Kies in het printvenster eventueel "Achtergrondafbeeldingen afdrukken" als de kleuren ontbreken.
+
+De print ziet eruit als het vertrouwde papieren rooster:
+
+- bovenaan *Weeknummer*, per dag de datum (`ma 28-09-26`) met eventueel de dagopmerking als donker label, en rechts de kolom *Uren*;
+- per medewerker één blok met een dikke lijn ertussen: bovenin de opmerking, daaronder de dienstnaam als gekleurde balk en dan begin en eind; een tweede dienst staat eronder;
+- de uren per dag in de smalle grijze kolom naast elke dag;
+- rechts de contracturen en, grijs, het weektotaal;
+- zaterdag en zondag staan er altijd op, ook als ze leeg zijn;
+- past het, dan staat onderaan een lege regel *Reserve 1* om met de hand iemand bij te schrijven.
+
+Bij veel medewerkers worden eerst de regels lager en pas daarna de letters kleiner, zodat alles op één pagina blijft.
+
+![Printversie van het weekrooster](schermafbeeldingen/week-print-a4.png)
 
 ## 6. Kalender, overzichten en zoeken
 

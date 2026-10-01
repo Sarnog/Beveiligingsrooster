@@ -1,4 +1,4 @@
-# Handleiding voor collega's (versie 1.3.0)
+# Handleiding voor collega's (versie 1.4.0)
 
 Met het Beveiligingsrooster bekijk je je diensten, het weekrooster van het team en je uren. Je kunt niets wijzigen; dat doet de planner.
 
@@ -22,9 +22,11 @@ Wachtwoord vergeten? Vraag de planner om een reset. Na 5 verkeerde pogingen moet
 
 Een tijd met een **rood gestippelde onderstreping** wijkt af van de standaardtijd van die dienst.
 
+Heb je op een dag **twee diensten**, dan staan ze in het weekrooster **onder elkaar** (elk met eigen dienstnaam, tijden en uren). In *Mijn rooster* staan ze als twee regels; de tweede heeft *(2e dienst)* achter de datum. In je agenda (ICS of Google Agenda) worden het twee afspraken.
+
 ## Printen en exporteren
 
-- **Printen**: klik in het weekrooster op **Printen**. De week komt liggend op één A4. Staan de kleuren er niet op, zet dan in het printvenster "Achtergrondafbeeldingen afdrukken" aan.
+- **Printen**: klik in het weekrooster op **Printen**. De week komt liggend op één A4, opgemaakt als het papieren rooster (per medewerker een blok, de uren in de grijze kolom naast elke dag, rechts het weektotaal). Staan de kleuren er niet op, zet dan in het printvenster "Achtergrondafbeeldingen afdrukken" aan.
 - **Exporteren**: in het urenoverzicht en bij zoekresultaten staat een knop **Exporteren (CSV)**. Dat bestand opent in Excel.
 
 ## Op je telefoon

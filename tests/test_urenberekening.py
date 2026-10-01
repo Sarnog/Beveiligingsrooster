@@ -79,3 +79,41 @@ def test_feestdag_met_toeslag_hoogste_factor_telt():
 def test_formatteren():
     assert formatteer_uren(8.25) == "8,25"
     assert formatteer_uren(0) == "0,00"
+
+
+# ---------- Twee diensten op één dag (1.4.0): uren per dienst ----------
+
+def test_uren_per_dienst_bij_twee_diensten(app, klaar):
+    from datetime import date
+
+    from app.extensions import db
+    from app.models import Dienst, Feestdag, Medewerker
+    from app.services import instellingen
+    from app.services.rooster import herbereken_alle
+    from app.services.voorbeeldpakket import laad_voorbeeldpakket
+    from app.services.weekrooster import Wijziging, week_gegevens, weektotaal, wijzig_cellen
+
+    laad_voorbeeldpakket()
+    medewerker = Medewerker(naam="Medewerker A", initialen="TSA")
+    db.session.add(medewerker)
+    db.session.commit()
+    maandag, zaterdag = date(2026, 3, 2), date(2026, 3, 7)
+    # BHV 08:30-12:30 (4 uur, geen pauze) en VW Avond 14:30-23:00 (8,5 - 0,5 pauze = 8)
+    wijzig_cellen([Wijziging(medewerker.id, maandag, "code", "17/3"),
+                   Wijziging(medewerker.id, zaterdag, "code", "17/3")])
+
+    def uren_op(dag):
+        db.session.expire_all()
+        return {d.volgnummer: d.uren_berekend for d in Dienst.query.filter_by(datum=dag)}
+
+    assert uren_op(maandag) == {1: 4.0, 2: 8.0}  # pauze-aftrek per dienst, niet over de dag
+    assert uren_op(zaterdag) == {1: 6.0, 2: 12.0}  # zaterdagtoeslag 1,5 op elke dienst
+    assert weektotaal(medewerker.id, maandag) == 30.0
+    assert week_gegevens(2026, 10)["rijen"][0].weektotaal == 30.0
+
+    # Feestdag met eigen toeslag: herberekenen werkt per dienst
+    instellingen.schrijf("toeslag_feestdag", "2.0")
+    db.session.add(Feestdag(jaar=2026, datum=maandag, naam="Eigen dag"))
+    db.session.commit()
+    herbereken_alle()
+    assert uren_op(maandag) == {1: 8.0, 2: 16.0}

@@ -56,7 +56,7 @@ Wie ben ik?
 ```json
 {
   "api_versie": 1,
-  "app_versie": "1.3.0",
+  "app_versie": "1.4.0",
   "gebruiker": {"id": 2, "gebruikersnaam": "collega", "weergavenaam": "Collega", "rol": "gebruiker"},
   "medewerker": {"id": 1, "naam": "Medewerker A", "initialen": "MA"}
 }
@@ -76,6 +76,7 @@ Je eigen diensten. Zonder `van` begint het vandaag; zonder `tot` loopt het 8 wek
   "diensten": [
     {
       "datum": "2026-10-01",
+      "volgnummer": 1,
       "code": 4,
       "dienstnaam": "VW Vroeg",
       "begin": "07:15",
@@ -91,6 +92,7 @@ Je eigen diensten. Zonder `van` begint het vandaag; zonder `tot` loopt het 8 wek
 }
 ```
 
+- `volgnummer`: `1` voor de (eerste) dienst van die dag, `2` voor een **tweede dienst** op dezelfde dag (sinds app-versie 1.4.0). Een dag met twee diensten staat er dus twee keer in, op volgorde van `datum` en `volgnummer`. De opmerking hoort bij de dag en staat bij dienst 1.
 - `uren` zijn de berekende uren (met toeslag voor zaterdag en zondag), als getal; `null` bij een dienst zonder uren.
 - `begin`/`eind` kunnen `null` zijn (bijvoorbeeld *Bapo* zonder tijden). Loopt `eind` vóór `begin`, dan gaat de dienst door na middernacht.
 
@@ -112,13 +114,14 @@ Het weekrooster (ISO-week), voor iedereen die ingelogd is, net als de pagina *We
       "id": 1, "naam": "Medewerker A", "initialen": "MA",
       "contracturen": 1500.0,
       "weektotaal": 40.0,
-      "dagen": [null, {"datum": "2026-09-29", "code": 4, "...": "..."}]
+      "dagen": [null, {"datum": "2026-09-29", "volgnummer": 1, "code": 4, "...": "..."}],
+      "tweede_diensten": [null, {"datum": "2026-09-29", "volgnummer": 2, "code": 3, "...": "..."}]
     }
   ]
 }
 ```
 
-`dagen` van een medewerker heeft altijd 7 plaatsen (maandag t/m zondag); `null` = geen dienst. Een week die niet bestaat (bijv. week 53 in een jaar met 52 weken) geeft `404`.
+`dagen` van een medewerker heeft altijd 7 plaatsen (maandag t/m zondag); `null` = geen dienst. `tweede_diensten` (sinds 1.4.0) heeft ook 7 plaatsen: de tweede dienst van die dag, of `null`. `weektotaal` telt beide diensten. Een week die niet bestaat (bijv. week 53 in een jaar met 52 weken) geeft `404`.
 
 ### `GET /api/v1/dienstcodes`
 

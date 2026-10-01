@@ -17,17 +17,17 @@
 <div class="mijn-samenvatting">
   <section class="kaart mijn-blok" data-blok="vandaag">
     <h2>Vandaag <small>{{ dagnamen[vandaag.weekday()] }} {{ vandaag|datum_nl }}</small></h2>
-    {% if dienst_vandaag %}
-      <p class="mijn-dienst">{{ dienst_info(dienst_vandaag) }}</p>
+    {% for d in diensten_vandaag %}
+      <p class="mijn-dienst">{{ dienst_info(d) }}</p>
     {% else %}
       <p class="hulp">Geen dienst.</p>
-    {% endif %}
+    {% endfor %}
   </section>
   <section class="kaart mijn-blok" data-blok="volgende">
     <h2>Volgende dienst</h2>
     {% if volgende %}
       <p><strong>{{ dagnamen[volgende.datum.weekday()] }} {{ volgende.datum|datum_nl }}</strong></p>
-      <p class="mijn-dienst">{{ dienst_info(volgende) }}</p>
+      {% for d in diensten_volgende %}<p class="mijn-dienst">{{ dienst_info(d) }}</p>{% endfor %}
     {% else %}
       <p class="hulp">Geen diensten gepland in de komende 8 weken.</p>
     {% endif %}
@@ -45,8 +45,8 @@
   {% if loop.first or d.datum.isocalendar()[1] != loop.previtem.datum.isocalendar()[1] %}
   <li class="mijn-week"><a href="{{ url_for('rooster.week_tonen', jaar=d.datum.isocalendar()[0], week=d.datum.isocalendar()[1]) }}">Week {{ d.datum.isocalendar()[1] }}</a></li>
   {% endif %}
-  <li class="mijn-dag{% if d.datum == vandaag %} vandaag{% endif %}">
-    <span class="mijn-datum">{{ dagnamen[d.datum.weekday()] }} {{ d.datum|datum_nl }}</span>
+  <li class="mijn-dag{% if d.datum == vandaag %} vandaag{% endif %}{% if d.volgnummer == 2 %} tweede{% endif %}">
+    <span class="mijn-datum">{{ dagnamen[d.datum.weekday()] }} {{ d.datum|datum_nl }}{% if d.volgnummer == 2 %} <small>(2e dienst)</small>{% endif %}</span>
     <span class="mijn-dienst">{{ dienst_info(d) }}</span>
     <span class="mijn-uren">{{ d.uren_berekend|uren }}</span>
   </li>

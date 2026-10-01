@@ -2,6 +2,47 @@
 
 ## [Onuitgebracht]
 
+## [1.4.0] – 2026-10-01
+
+**Bijwerken vanaf 1.3.0:** de database krijgt een nieuwe kolom (`update.sh` maakt eerst een
+back-up en werkt de database bij). Bestaande diensten blijven precies zoals ze waren.
+Teruggaan naar 1.3.0 kan alleen als er geen tweede diensten in het rooster staan: de
+databasemigratie weigert dan met een duidelijke melding, zodat er niets ongemerkt verdwijnt.
+Zet anders een back-up van vóór de update terug.
+
+### Toegevoegd
+- **Twee diensten per dag per persoon.** Typ in het code-raster twee codes in één cel:
+  `4/7` (ook `4+7` of `4 7`). De cel toont `4/7` met een gesplitste kleur (links dienst 1,
+  rechts dienst 2). In het rooster staan de twee diensten onder elkaar, elk met een eigen
+  gekleurde dienstnaam, begin, eind en uren. Eén code zet dienst 1 en wist dienst 2; leeg
+  (Delete) wist beide. Hooguit twee diensten per dag.
+- Uren per dienst: pauze-aftrek en weekend-/feestdagtoeslag gelden per dienst; dag- en
+  weektotaal, urenoverzicht en kalender tellen beide diensten op.
+- Overlappen de tijden van de twee diensten, dan verschijnt er een waarschuwing in de
+  statusregel (opslaan wordt niet tegengehouden).
+- Collega's zien de tweede dienst in het weekrooster, op de telefoon, in *Mijn rooster*, in de
+  ICS-feed en in Google Agenda (een eigen afspraak per dienst). Wijzigen kan alleen de planner.
+- API: veld `volgnummer` (1 of 2) bij elke dienst, en `tweede_diensten` per medewerker in
+  `/api/v1/week`. Het interne raster-API (`/api/cellen`) kent `volgnummer` en `versie2`.
+- Nieuwe schermafbeeldingen: `week-twee-diensten-1280x800.png`, `week-print-a4.png` en
+  `week-print-a4.pdf` in `docs/schermafbeeldingen/`.
+
+### Gewijzigd
+- **Printversie van het weekrooster** lijkt nu op het papieren rooster en blijft in kleur:
+  A4 liggend, de hele pagina gevuld, groter lettertype. Kopregel met *Weeknummer*, per dag
+  `ma 28-09-26` met de dagopmerking als donker label en rechts *Uren*. Per medewerker één blok
+  met een dikke lijn ertussen; per dag de opmerking, de dienstnaam als gekleurde balk en
+  begin/eind, met de uren in een smalle grijze kolom naast elke dag. Rechts de contracturen en
+  (grijs) het weektotaal. Weekenden staan er altijd op. Past het, dan komt er onderaan één lege
+  regel *Reserve 1*. Bij veel medewerkers krimpen eerst de regels en pas daarna de letters,
+  zodat de week op één pagina blijft. De schermweergave is niet veranderd.
+- Datamodel: een dienst heeft nu een `volgnummer` (1 of 2); de unieke sleutel is
+  (medewerker, datum, volgnummer). Databasemigratie `0006`.
+- Logboek: wijzigingen aan de tweede dienst staan als *dienst 2: …* in het veld.
+- *Week kopiëren* neemt ook tweede diensten mee.
+- Back-ups van oudere versies (zonder `volgnummer`) kunnen gewoon teruggezet worden; ze worden
+  daarbij bijgewerkt.
+
 ## [1.3.0] – 2026-10-01
 
 > Versie 1.2.0 is per ongeluk als tussenstand uitgebracht; gebruik 1.3.0.

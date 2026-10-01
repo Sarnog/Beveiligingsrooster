@@ -47,7 +47,7 @@ def maak_feed(medewerker: Medewerker, dagen_terug: int = 30, maanden_vooruit: in
         Dienst.query.filter(Dienst.medewerker_id == medewerker.id,
                             Dienst.datum >= vandaag - timedelta(days=dagen_terug),
                             Dienst.datum <= vandaag + timedelta(days=31 * maanden_vooruit))
-        .order_by(Dienst.datum).all()
+        .order_by(Dienst.datum, Dienst.volgnummer).all()
     )
     stempel = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     regels = [

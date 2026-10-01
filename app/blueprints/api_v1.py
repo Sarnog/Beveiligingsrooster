@@ -42,6 +42,7 @@ def dienst_json(dienst: Dienst | None) -> dict | None:
     code = dienst.dienstcode
     return {
         "datum": dienst.datum.isoformat(),
+        "volgnummer": dienst.volgnummer,
         "code": code.nummer if code else None,
         "dienstnaam": dienst.dienstnaam,
         "begin": dienst.begin,
@@ -102,7 +103,8 @@ def mijn_rooster():
     if (tot - van).days >= MAX_DAGEN:
         return fout(f"De periode is te lang (hooguit {MAX_DAGEN} dagen).", 400)
     diensten = (Dienst.query.filter(Dienst.medewerker_id == medewerker.id, Dienst.datum >= van,
-                                    Dienst.datum <= tot).order_by(Dienst.datum).all())
+                                    Dienst.datum <= tot)
+                .order_by(Dienst.datum, Dienst.volgnummer).all())
     return jsonify({"medewerker": medewerker_json(medewerker), "van": van.isoformat(),
                     "tot": tot.isoformat(), "diensten": [dienst_json(d) for d in diensten]})
 
@@ -116,6 +118,7 @@ def week(jaar: int, week: int):
     gegevens = week_gegevens(jaar, week)
     dagen = gegevens["dagen"]
     diensten = gegevens["diensten"]
+    tweede = gegevens["tweede_diensten"]
     return jsonify({
         "jaar": jaar,
         "week": week,
@@ -127,6 +130,8 @@ def week(jaar: int, week: int):
             "contracturen": rij.contracturen,
             "weektotaal": round(rij.weektotaal, 2),
             "dagen": [dienst_json(diensten.get((rij.medewerker.id, dag))) for dag in dagen],
+            # Tweede dienst per dag (null als er geen is), in dezelfde volgorde als 'dagen'
+            "tweede_diensten": [dienst_json(tweede.get((rij.medewerker.id, dag))) for dag in dagen],
         } for rij in gegevens["rijen"]],
     })
 
