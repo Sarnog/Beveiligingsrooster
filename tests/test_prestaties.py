@@ -4,6 +4,7 @@ Eis: de pagina laadt binnen 300 ms, en het aantal databasequery's hangt niet af 
 het aantal medewerkers (geen N+1).
 """
 
+import gc
 import time
 from contextlib import contextmanager
 from datetime import date, timedelta
@@ -139,6 +140,9 @@ def zonder_coverage():
     """Meet de app, niet de coverage-meting van CI (die maakt Python ruim twee keer zo traag).
 
     De export zelf wordt elders in de suite wel onder coverage getest.
+    Ook ruimen we vooraf het geheugen op en 'bevriezen' we wat eerdere tests achterlieten
+    (gc.freeze): de formule-tests laten ruim een miljoen objecten van de bibliotheek
+    'formulas' achter, en elke garbage collection tijdens de meting liep die anders na.
     """
     try:
         import coverage
@@ -148,9 +152,12 @@ def zonder_coverage():
         actief = None
     if actief is not None:
         actief.stop()
+    gc.collect()
+    gc.freeze()
     try:
         yield
     finally:
+        gc.unfreeze()
         if actief is not None:
             actief.start()
 

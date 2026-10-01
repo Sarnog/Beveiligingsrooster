@@ -66,7 +66,7 @@ from .kalender import (
 )
 from .overzichten import uren_overzicht
 from .tijden import is_cijfers, parse_datum
-from .urenberekening import Staffel, uren_uit_minuten
+from .urenberekening import Staffel, pauze_aftrek
 from .weekrooster import dagopmerkingen, kleurregels, matrix_code, medewerkers_voor_periode
 
 log = logging.getLogger(__name__)
@@ -274,10 +274,11 @@ CEL_ZATERDAG, CEL_ZONDAG, CEL_FEESTDAG = "Lijsten!$N$2", "Lijsten!$N$3", "Lijste
 CEL_OPMERKINGTIJDEN, CEL_PAUZE_AAN = "Lijsten!$N$5", "Lijsten!$N$6"
 PAUZE_EERSTE_RIJ = 9  # N9:N13 = grens ('meer dan ... uur'), O9:O13 = pauze eraf
 CEL_CORRECTIES_GELDIG = "Rekenhulp!$D$1"
-# Rekenhulp per dag (verborgen kolommen rechts van de tweede dienst), per dag 7 kolommen:
-# X dienst 1, uren dienst 1, X opmerkingtijden, uren opmerkingtijden, X dienst 2, code 1, code 2
+# Rekenhulp per dag (verborgen kolommen rechts van de tweede dienst), per dag 5 kolommen:
+# X dienst 1, X dienst 2 en, alleen als de opmerkingtijden meetellen: uren dienst 1,
+# X opmerkingtijden, uren opmerkingtijden (zo blijft het bestand klein en snel)
 HULP_EERSTE = 60  # kolom BH
-HULP_BREEDTE = 7
+HULP_BREEDTE = 5
 MINUTEN_PER_DAG = 1440
 # Rekenhulp: sleutel = factor×1000×1440 + minuten; tekst = per begintijd één teken (correctie + 80)
 NUL_TEKEN = 80  # 'P' = geen correctie
@@ -301,9 +302,10 @@ def _getal(waarde: float) -> str:
 class _Formules:
     """Bouwt de formules voor één export; de instellingen zitten in het blad Lijsten."""
 
-    def __init__(self, staffel_regels: int, correcties: int) -> None:
+    def __init__(self, staffel_regels: int, correcties: int, opmerkingtijden: bool = False) -> None:
         self.staffel_regels = staffel_regels
         self.correcties = correcties  # aantal regels in Rekenhulp (0 = geen correcties nodig)
+        self.opmerkingtijden = opmerkingtijden  # bij de export aan: formules voor regel b erbij
 
     @staticmethod
     def minuten(begin: str, eind: str) -> str:
@@ -384,8 +386,7 @@ def correcties(factor: float, staffel: Staffel) -> tuple[tuple[int, str], ...]:
         if not half_kwartier and minuten not in grenzen:
             continue  # kommagetallen maken hier niets uit
         exact = round(x)  # round() op een Fraction: exact, half naar even
-        verschillen = [round(uren_uit_minuten(begin, (begin + minuten) % MINUTEN_PER_DAG, factor,
-                                              staffel) * 4) - exact for begin in range(MINUTEN_PER_DAG)]
+        verschillen = [q - exact for q in kwartieren_vba(minuten, factor, staffel)]
         if any(abs(v) > MAX_CORRECTIE for v in verschillen):
             # Kan alleen bij een extreme pauze × factor; dan liever geen correctie dan een fout teken
             log.warning("Excel-export: correctie buiten bereik (factor %s, %s minuten)", factor, minuten)
@@ -393,6 +394,30 @@ def correcties(factor: float, staffel: Staffel) -> tuple[tuple[int, str], ...]:
             resultaat.append((round(factor * 1000) * MINUTEN_PER_DAG + minuten,
                               "".join(chr(NUL_TEKEN + v) for v in verschillen)))
     return tuple(resultaat)
+
+
+# Stap 1 van de VBA (zie urenberekening.uren_uit_minuten): elke minuut als fractie van een dag
+_DAGFRACTIE = [round(m / 1440 * 1440) / 1440 for m in range(MINUTEN_PER_DAG)]
+
+
+def kwartieren_vba(minuten: int, factor: float, staffel: Staffel) -> list[int]:
+    """round(uren_uit_minuten(begin, begin + minuten) * 4) voor elke begintijd 0..1439.
+
+    Precies dezelfde stappen als uren_uit_minuten (een test bewaakt dat), zonder de functie-
+    aanroep per begintijd: zo blijft correcties() ook op een trage server snel.
+    """
+    resultaat = []
+    for begin in range(MINUTEN_PER_DAG):
+        dbl_begin = _DAGFRACTIE[begin]
+        dbl_eind = _DAGFRACTIE[(begin + minuten) % MINUTEN_PER_DAG]
+        if dbl_eind < dbl_begin:
+            dbl_eind = dbl_eind + 1
+        uren = (dbl_eind - dbl_begin) * 24
+        aftrek = pauze_aftrek(uren, staffel)
+        if aftrek:
+            uren = uren - aftrek
+        resultaat.append(round(uren * factor * 4))
+    return resultaat
 
 
 def _aftrek_exact(minuten: int, staffel: Staffel) -> Fraction:
@@ -430,7 +455,8 @@ def maak_export(keuze: ExportKeuze) -> bytes:
     factoren = sorted({1.0, toeslagen["factor_zaterdag"], toeslagen["factor_zondag"]}
                       | ({toeslagen["factor_feestdag"]} if toeslagen["factor_feestdag"] else set()))
     tabel = sorted({c for f in factoren for c in correcties(f, staffel)})
-    formules = _Formules(len(pauze["regels"]), len(tabel))
+    opmerkingtijden = instellingen.lees_bool("opmerkingtijden_meetellen")
+    formules = _Formules(len(pauze["regels"]), len(tabel), opmerkingtijden)
     stijlen = _Stijlen()
 
     boek = Workbook()
@@ -532,22 +558,22 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
     rij = basis + 3
     factor = _cel(2, _hulpkolom(i, 0), True)
     raster = _cel(rasterrij, CODE_KOLOMMEN[i], True)
-    code1, code2 = _cel(rij, _hulpkolom(i, 5)), _cel(rij, _hulpkolom(i, 6))
-    _formule(blad, rij, _hulpkolom(i, 5), f.code(raster, 1))
-    _formule(blad, rij, _hulpkolom(i, 6), f.code(raster, 2))
-    # Rekenhulp: X en uren van dienst 1, de opmerkingtijden en dienst 2
-    for nummer, (b, e) in ((0, (_cel(rij, kolom), _cel(rij, kolom + 1))),
-                           (2, (_cel(basis + 1, kolom), _cel(basis + 1, kolom + 1))),
-                           (4, (_cel(rij, k2), _cel(rij, k2 + 1)))):
-        x = f.kwartieren_ruw(b, e, factor)
-        _formule(blad, rij, _hulpkolom(i, nummer), x)
-        if nummer < 4:
-            _formule(blad, rij, _hulpkolom(i, nummer + 1),
-                     f.uren(_cel(rij, _hulpkolom(i, nummer)), b, e, factor))
-    uren1 = f.dagtotaal(_cel(rij, _hulpkolom(i, 1)), _cel(rij, _hulpkolom(i, 3)))
-    uren2 = f.uren(_cel(rij, _hulpkolom(i, 4)), _cel(rij, k2), _cel(rij, k2 + 1), factor)
-    _dienst(blad, basis, kolom, dienst1, code1, uren1, c)
-    _dienst(blad, basis, k2, dienst2, code2, uren2, c)
+    # Rekenhulp: X van dienst 1 en dienst 2 (en eventueel de opmerkingtijden)
+    b1, e1, b2, e2 = _cel(rij, kolom), _cel(rij, kolom + 1), _cel(rij, k2), _cel(rij, k2 + 1)
+    x1, x2 = _cel(rij, _hulpkolom(i, 0)), _cel(rij, _hulpkolom(i, 1))
+    _formule(blad, rij, _hulpkolom(i, 0), f.kwartieren_ruw(b1, e1, factor))
+    _formule(blad, rij, _hulpkolom(i, 1), f.kwartieren_ruw(b2, e2, factor))
+    uren1 = f.uren(x1, b1, e1, factor)
+    if f.opmerkingtijden:
+        bo, eo = _cel(basis + 1, kolom), _cel(basis + 1, kolom + 1)
+        _formule(blad, rij, _hulpkolom(i, 2), uren1)
+        _formule(blad, rij, _hulpkolom(i, 3), f.kwartieren_ruw(bo, eo, factor))
+        _formule(blad, rij, _hulpkolom(i, 4), f.uren(_cel(rij, _hulpkolom(i, 3)), bo, eo, factor))
+        uren1 = f.dagtotaal(_cel(rij, _hulpkolom(i, 2)), _cel(rij, _hulpkolom(i, 4)))
+    uren2 = f.uren(x2, b2, e2, factor)
+    _dienst(blad, basis, kolom, dienst1, f.code(raster, 1), uren1, c)
+    # Een lege tweede dienst: wel uren als je tijden typt, maar geen opzoekformules (bestandsgrootte)
+    _dienst(blad, basis, k2, dienst2, f.code(raster, 2) if dienst2 is not None else None, uren2, c)
 
 
 def _volgt_standaard(dienst: Dienst) -> bool:
@@ -557,7 +583,7 @@ def _volgt_standaard(dienst: Dienst) -> bool:
             and (dienst.begin, dienst.eind) == (code.std_begin, code.std_eind))
 
 
-def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str, uren: str,
+def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str | None, uren: str,
             c: _WeekContext) -> None:
     """Dienstnaam (regel c) en begin/eind/uren (regel d) van één dienst.
 
@@ -568,7 +594,9 @@ def _dienst(blad, basis: int, kolom: int, dienst: Dienst | None, code: str, uren
     """
     stijl = c.stijlen.code(dienst.dienstcode if dienst is not None else None)
     naam = {**stijl, "alignment": OVER_DRIE, "border": RAND}
-    if dienst is None or _volgt_standaard(dienst):
+    if code is None:
+        pass  # lege tweede dienst: niets opzoeken
+    elif dienst is None or _volgt_standaard(dienst):
         _formule(blad, basis + 2, kolom, c.formules.opzoeken(code, 2, c.codes), naam)
         _formule(blad, basis + 3, kolom, c.formules.opzoeken(code, 6, c.codes), TIJD)
         _formule(blad, basis + 3, kolom + 1, c.formules.opzoeken(code, 7, c.codes), TIJD)

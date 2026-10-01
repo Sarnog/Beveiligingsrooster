@@ -162,6 +162,13 @@ def test_correcties_alle_begintijden_bij_een_half_kwartier(app, codes):
     assert 0 < len(afwijkend) < 1440
 
 
+@pytest.mark.parametrize("factor, staffel", [(1.5, ((5.5, 0.5),)), (2.0, ((4, 0.25), (9, 0.75))), (1.25, ())])
+def test_snelle_berekening_gelijk_aan_uren_uit_minuten(factor, staffel):
+    for minuten in (0, 75, 330, 495, 540, 545, 1439):
+        assert ex.kwartieren_vba(minuten, factor, staffel) == [
+            round(uren_uit_minuten(b, (b + minuten) % 1440, factor, staffel) * 4) for b in range(1440)]
+
+
 def test_correcties_alleen_voor_halve_kwartieren_en_grenzen():
     for sleutel, tekst in ex.correcties(1.5, ((5.5, 0.5),)):
         minuten = sleutel % 1440

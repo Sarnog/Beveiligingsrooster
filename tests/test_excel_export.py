@@ -214,9 +214,14 @@ def test_tijd_of_code_wijzigen_in_excel_rekent_opnieuw(app, als_beheerder, roost
     # Een code zonder standaardtijden geeft geen 00:00 maar een lege tijd en geen uren
     _, w = _week10(als_beheerder, AG6=10)
     assert (w["W10!P6"], w["W10!P7"], w["W10!R7"]) == ("Bapo", "", "")
-    # Twee codes in één cel
-    _, w = _week10(als_beheerder, AG6="4/17")
-    assert (w["W10!P6"], w["W10!R7"], w["W10!AW6"], w["W10!AY7"]) == ("VW Vroeg", 8.0, "BHV", 4.0)
+    # Twee codes in één cel: dienst 1 zoekt op; een lege tweede dienst zoekt niets op (bestandsgrootte),
+    # maar typ je daar tijden, dan rekent hij de uren en het weektotaal wel
+    _, w = _week10(als_beheerder, AG6="4/17", AW7=time(17, 0), AX7=time(21, 0))
+    assert (w["W10!P6"], w["W10!R7"], w["W10!AY7"]) == ("VW Vroeg", 8.0, 4.0)
+    assert w["W10!Z6"] == 30.25 + 8 + 4
+    # Bestaande tweede dienst volgt de standaard: die zoekt wél op (dinsdag 17/3 -> 17/5)
+    _, w = _week10(als_beheerder, AD6="17/5")
+    assert w["W10!AN6"] == "VW Avond"  # eigen eindtijd 22:30: naam en tijden blijven waarden
 
 
 def test_urenoverzicht_en_vakanties(app, als_beheerder, rooster):
