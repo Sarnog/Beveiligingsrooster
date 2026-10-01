@@ -1068,3 +1068,18 @@ def test_s3_backup_met_trigger_of_view_geweigerd(gemigreerd, sql):
     with pytest.raises(ValueError, match="trigger|view"):
         backup.controleer_backupbestand(kopie)
     assert backup.controleer_backupbestand(pad)  # de gewone back-up is in orde
+
+
+# ---------------------------------------------------------------------------
+# Opruimen · htmx werd nergens gebruikt
+# ---------------------------------------------------------------------------
+
+def test_htmx_is_weg(app, als_gebruiker):
+    import os
+
+    js = os.path.join(os.path.dirname(__file__), "..", "app", "static", "js")
+    assert not os.path.exists(os.path.join(js, "htmx.min.js"))
+    assert "htmx" not in als_gebruiker.get("/kalender/").data.decode()
+    assert "htmx" not in als_gebruiker.get("/sw.js").data.decode()
+    with open(os.path.join(js, "app.js"), encoding="utf-8") as f:
+        assert "htmx" not in f.read()

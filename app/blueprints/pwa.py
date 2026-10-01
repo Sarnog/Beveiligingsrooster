@@ -51,7 +51,7 @@ def service_worker():
     from .. import VERSIE
 
     statisch = [url_for("static", filename=f, v=VERSIE) for f in (
-        "css/style.css", "js/app.js", "js/htmx.min.js", "favicon.svg", "icons/icoon-192.png")]
+        "css/style.css", "js/app.js", "favicon.svg", "icons/icoon-192.png")]
     antwoord = make_response(render_template("pwa/sw.js", versie=VERSIE, statisch=statisch,
                                              offline=url_for("pwa.offline", v=VERSIE)))
     antwoord.mimetype = "text/javascript"

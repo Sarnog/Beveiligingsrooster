@@ -16,11 +16,6 @@
   }
   window.csrfToken = csrfToken;
 
-  // HTMX: stuur bij elk verzoek het CSRF-token mee als header
-  document.addEventListener("htmx:configRequest", function (e) {
-    e.detail.headers["X-CSRFToken"] = csrfToken();
-  });
-
   // Bevestiging vragen bij formulieren met data-bevestig="vraag"
   document.addEventListener("submit", function (e) {
     var vraag = e.target.getAttribute("data-bevestig");

@@ -251,7 +251,7 @@ def _registreer_controles(app: Flask) -> None:
 
     @login_manager.unauthorized_handler
     def niet_ingelogd():
-        if request.method != "GET" or request.headers.get("HX-Request") or request.path.startswith(API_PAD):
+        if request.method != "GET" or request.path.startswith(API_PAD):
             abort(401)
         return redirect(url_for("auth.login", volgende=request.full_path))
 
