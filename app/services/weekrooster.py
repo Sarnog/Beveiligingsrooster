@@ -1,14 +1,19 @@
 """Het weekrooster: gegevens ophalen en cellen wijzigen.
 
 Een 'cel' is één veld van één medewerker op één dag:
-    code        dienstcode-nummer (code-raster)
+    code        dienstcode(s) uit het code-raster: '4', of twee diensten als '4/7'
+                (ook '4+7' en '4 7'); leeg wist beide diensten
     begin/eind  tijden van de dienst (regel d)
     opmerking   vrije tekst (regel a)
     opm_begin / opm_eind   tijden bij de opmerking (regel b)
 Daarnaast is er per dag de 'dagopmerking' (rij 3 van het Excel-blad).
+
+Per medewerker per dag kunnen er twee diensten zijn (volgnummer 1 en 2). Dienstnaam,
+tijden en uren bestaan per dienst; de opmerking hoort bij de dag (dienst 1).
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -16,12 +21,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from ..extensions import db
-from ..models import Dagopmerking, Dienst, Dienstcode, Medewerker, OpmerkingKleurregel
+from ..models import MAX_DIENSTEN_PER_DAG, Dagopmerking, Dienst, Dienstcode, Medewerker, OpmerkingKleurregel
 from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
-from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
+from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd, tijd_naar_minuten
 from .urenberekening import formatteer_uren
 
 VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "dienstnaam", "uren")
@@ -30,7 +35,11 @@ VELD_NAMEN = {
     "opm_begin": "opmerking begin", "opm_eind": "opmerking eind",
     "dienstnaam": "dienstnaam", "uren": "uren",
 }
+# Velden die dienst 2 heeft (de opmerking hoort bij de dag en staat bij dienst 1)
+VELDEN_DIENST2 = ("code", "begin", "eind", "dienstnaam", "uren")
 MAX_OPMERKING = 120
+# Scheidingsteken tussen twee codes in het code-raster: '/', '+' of een spatie
+CODE_SCHEIDING = re.compile(r"\s*[/+]\s*|\s+")
 log = logging.getLogger(__name__)
 
 # Velden van een dienst met hun 'lege' waarde (gebruikt bij week kopiëren)
@@ -80,6 +89,34 @@ def dienst_stijl(dienst: Dienst | None) -> str:
             f"font-style:{'italic' if code.cursief else 'normal'}")
 
 
+def code_tekst(dienst: Dienst | None) -> str:
+    """Nummer van de dienstcode als tekst ('' zonder code)."""
+    return str(dienst.dienstcode.nummer) if dienst is not None and dienst.dienstcode else ""
+
+
+def matrix_code(dienst1: Dienst | None, dienst2: Dienst | None) -> str:
+    """Wat er in het code-raster staat: '4', of '4/7' bij twee diensten."""
+    if dienst2 is None:
+        return code_tekst(dienst1)
+    return f"{code_tekst(dienst1)}/{code_tekst(dienst2)}"
+
+
+def _achtergrond(dienst: Dienst | None) -> str:
+    if dienst is None or dienst.dienstcode is None:
+        return "#FFFFFF"
+    return dienst.dienstcode.kleur_achtergrond
+
+
+def matrix_stijl(dienst1: Dienst | None, dienst2: Dienst | None) -> str:
+    """Stijl van de cel in het code-raster; bij twee diensten links/rechts gesplitst."""
+    if dienst2 is None:
+        return dienst_stijl(dienst1)
+    tekst = (dienst1.dienstcode if dienst1 is not None and dienst1.dienstcode else dienst2.dienstcode)
+    kleur_tekst = tekst.kleur_tekst if tekst is not None else "#000000"
+    return (f"background:linear-gradient(90deg,{_achtergrond(dienst1)} 50%,{_achtergrond(dienst2)} 50%);"
+            f"color:{kleur_tekst};font-weight:bold")
+
+
 def dienst_naar_dict(dienst: Dienst | None, regels: dict | None = None) -> dict:
     """Alles wat de pagina nodig heeft om één dag van één medewerker te tonen."""
     regels = regels if regels is not None else kleurregels()
@@ -102,6 +139,48 @@ def dienst_naar_dict(dienst: Dienst | None, regels: dict | None = None) -> dict:
         "dienst_stijl": dienst_stijl(dienst),
         "opmerking_stijl": opmerking_stijl(dienst.opmerking_tekst, regels),
     }
+
+
+def overlappen(dienst1: Dienst | None, dienst2: Dienst | None) -> bool:
+    """True als de tijden van twee diensten op dezelfde dag elkaar overlappen.
+
+    Eind vóór begin = de dienst loopt door tot na middernacht.
+    """
+    if dienst1 is None or dienst2 is None:
+        return False
+    vakken = []
+    for dienst in (dienst1, dienst2):
+        begin, eind = tijd_naar_minuten(dienst.begin), tijd_naar_minuten(dienst.eind)
+        if begin is None or eind is None:
+            return False
+        vakken.append((begin, eind + 1440 if eind <= begin else eind))
+    (b1, e1), (b2, e2) = vakken
+    return b1 < e2 and b2 < e1
+
+
+def dag_naar_dict(dienst1: Dienst | None, dienst2: Dienst | None, regels: dict | None = None) -> dict:
+    """Eén dag van één medewerker: dienst 1 (met opmerking) plus eventueel dienst 2.
+
+    De velden van dienst 1 staan direct in het resultaat (zoals vóór versie 1.4.0);
+    'code' is wat er in het code-raster staat ('4' of '4/7'), 'tweede' is dienst 2
+    (of None) en 'overlap' zegt of de tijden van beide diensten overlappen.
+    """
+    regels = regels if regels is not None else kleurregels()
+    gegevens = dienst_naar_dict(dienst1, regels)
+    gegevens["code"] = matrix_code(dienst1, dienst2)
+    gegevens["code_stijl"] = matrix_stijl(dienst1, dienst2)
+    gegevens["tweede"] = dienst_naar_dict(dienst2, regels) if dienst2 is not None else None
+    gegevens["overlap"] = overlappen(dienst1, dienst2)
+    return gegevens
+
+
+def diensten_van_dag(medewerker_id: int, datum: date) -> tuple[Dienst | None, Dienst | None]:
+    """(dienst 1, dienst 2) van een medewerker op een dag; None als die er niet is."""
+    per_volgnummer = {d.volgnummer: d for d in Dienst.query.filter_by(
+        medewerker_id=medewerker_id, datum=datum).all()}
+    dienst2 = per_volgnummer.get(2)
+    # Een lege dienst 2 (wacht alleen nog tot de agenda-afspraak weg is) telt niet mee
+    return per_volgnummer.get(1), None if dienst2 is None or dienst2.is_leeg else dienst2
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +250,7 @@ class WeekRij:
     dagen: list[dict] = field(default_factory=list)
     weektotaal: float = 0.0
     heeft_diensten: bool = False
+    heeft_tweede: bool = False  # minstens één dag met een tweede dienst
 
 
 def medewerkers_voor_periode(van: date, tot: date) -> list[Medewerker]:
@@ -191,7 +271,9 @@ def week_gegevens(jaar: int, week: int) -> dict:
     medewerkers = medewerkers_voor_periode(dagen[0], dagen[-1])
     diensten = (Dienst.query.options(joinedload(Dienst.dienstcode))
                 .filter(Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all())
-    per_sleutel = {(d.medewerker_id, d.datum): d for d in diensten}
+    per_sleutel = {(d.medewerker_id, d.datum): d for d in diensten if d.volgnummer == 1}
+    # Een lege dienst 2 (wacht alleen nog tot de agenda-afspraak weg is) telt niet mee
+    tweede = {(d.medewerker_id, d.datum): d for d in diensten if d.volgnummer == 2 and not d.is_leeg}
     regels = kleurregels()
 
     rijen = []
@@ -199,10 +281,13 @@ def week_gegevens(jaar: int, week: int) -> dict:
         rij = WeekRij(medewerker=medewerker, contracturen=medewerker.contracturen_voor(jaar))
         for dag in dagen:
             dienst = per_sleutel.get((medewerker.id, dag))
-            rij.dagen.append(dienst_naar_dict(dienst, regels))
-            if dienst is not None:
-                rij.heeft_diensten = True
-                rij.weektotaal += dienst.uren_berekend or 0
+            dienst2 = tweede.get((medewerker.id, dag))
+            rij.dagen.append(dag_naar_dict(dienst, dienst2, regels))
+            for d in (dienst, dienst2):
+                if d is not None:
+                    rij.heeft_diensten = True
+                    rij.weektotaal += d.uren_berekend or 0
+            rij.heeft_tweede = rij.heeft_tweede or dienst2 is not None
         rijen.append(rij)
 
     return {
@@ -212,7 +297,8 @@ def week_gegevens(jaar: int, week: int) -> dict:
         "dagopmerkingen": dagopmerkingen(dagen),
         "feestdagen": feestdagen_in_periode(dagen[0], dagen[-1]),
         "rijen": rijen,
-        "diensten": per_sleutel,  # (medewerker_id, datum) -> Dienst, o.a. voor de API
+        "diensten": per_sleutel,  # (medewerker_id, datum) -> dienst 1, o.a. voor de API
+        "tweede_diensten": tweede,  # (medewerker_id, datum) -> dienst 2
     }
 
 
@@ -246,6 +332,17 @@ def _lees_code(waarde: str) -> Dienstcode | None:
     return code
 
 
+def splits_codes(waarde: str) -> list[str]:
+    """'4/7', '4+7' of '4 7' -> ['4', '7']; '4' -> ['4']; '' -> ['']. Meer dan twee: CelFout."""
+    tekst = (waarde or "").strip()
+    delen = CODE_SCHEIDING.split(tekst) if tekst else [""]
+    if len(delen) > MAX_DIENSTEN_PER_DAG:
+        raise CelFout(f"Hooguit {MAX_DIENSTEN_PER_DAG} diensten per dag (bijvoorbeeld 4/7).")
+    for deel in delen:
+        _lees_code(deel)  # controleer alle codes vóór er iets gewijzigd wordt
+    return delen
+
+
 def _tijd(waarde: str) -> str | None:
     try:
         return normaliseer_tijd(waarde)
@@ -255,6 +352,14 @@ def _tijd(waarde: str) -> str | None:
 
 def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
     """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst."""
+    if veld == "code" and dienst.volgnummer == 2 and _lees_code(waarde) is None:
+        # Dienst 2 wissen: alles weg (ook een vrije dienstnaam en eigen tijden of uren)
+        oud = code_tekst(dienst) or dienst.dienstnaam
+        for kolom, leeg in LEGE_DIENST.items():
+            setattr(dienst, kolom, leeg)
+        dienst.dienstcode = None
+        return oud, ""
+
     if veld == "code":
         oud = str(dienst.dienstcode.nummer) if dienst.dienstcode else ""
         code = _lees_code(waarde)
@@ -329,6 +434,42 @@ class Wijziging:
     veld: str
     waarde: str
     versie: int | None = None  # None = niet controleren
+    volgnummer: int = 1  # 1 = eerste dienst van de dag, 2 = tweede dienst
+    # Alleen bij veld 'code' (code-raster): versie van dienst 2 (None = niet controleren)
+    versie2: int | None = None
+
+
+def _veldnaam(w: Wijziging) -> str:
+    """Naam van het veld voor het logboek; bij de tweede dienst met 'dienst 2: ' ervoor."""
+    naam = VELD_NAMEN.get(w.veld, w.veld)
+    return f"dienst 2: {naam}" if w.volgnummer == 2 else naam
+
+
+def _fout(w: Wijziging, melding: str, **extra) -> dict:
+    return {"mw": w.medewerker_id, "datum": w.datum.isoformat(), "veld": w.veld,
+            "vn": w.volgnummer, "melding": melding, **extra}
+
+
+def _splits_wijzigingen(wijzigingen: list[Wijziging]) -> tuple[list[Wijziging], list[dict]]:
+    """Codes uit het code-raster ('4/7') worden twee wijzigingen: dienst 1 en dienst 2.
+
+    Eén code zet dienst 1 en wist dienst 2; leeg wist beide. Een ongeldige invoer
+    (onbekende code, meer dan twee codes) wordt helemaal niet uitgevoerd.
+    """
+    resultaat, fouten = [], []
+    for w in wijzigingen:
+        if w.veld != "code" or w.volgnummer != 1:
+            resultaat.append(w)
+            continue
+        try:
+            delen = splits_codes(w.waarde)
+        except CelFout as fout:
+            fouten.append(_fout(w, str(fout)))
+            continue
+        delen += [""] * (MAX_DIENSTEN_PER_DAG - len(delen))
+        resultaat.append(Wijziging(w.medewerker_id, w.datum, "code", delen[0], w.versie, 1))
+        resultaat.append(Wijziging(w.medewerker_id, w.datum, "code", delen[1], w.versie2, 2))
+    return resultaat, fouten
 
 
 def _claim(dienst: Dienst) -> None:
@@ -351,50 +492,52 @@ def _claim(dienst: Dienst) -> None:
 
 def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
     """Pas celwijzigingen toe in de sessie. Geeft (geraakte (mw, datum), fouten)."""
-    fouten: list[dict] = []
-    geclaimd: set[tuple[int, date]] = set()
-    geraakt: dict[tuple[int, date], Dienst | None] = {}
-    gecontroleerd: set[tuple[int, date]] = set()
+    wijzigingen, fouten = _splits_wijzigingen(wijzigingen)
+    geclaimd: set[tuple[int, date, int]] = set()
+    geraakt: set[tuple[int, date]] = {(f["mw"], date.fromisoformat(f["datum"])) for f in fouten}
+    gecontroleerd: set[tuple[int, date, int]] = set()
     medewerkers: dict[int, Medewerker] = {}
     context_cache: dict[date, UrenContext] = {}
 
     for w in wijzigingen:
-        sleutel = (w.medewerker_id, w.datum)
+        sleutel = (w.medewerker_id, w.datum, w.volgnummer)
         medewerker = medewerkers.get(w.medewerker_id) or db.session.get(Medewerker, w.medewerker_id)
         if medewerker is None:
-            fouten.append({"mw": w.medewerker_id, "datum": w.datum.isoformat(), "veld": w.veld,
-                           "melding": "Onbekende medewerker."})
+            fouten.append(_fout(w, "Onbekende medewerker."))
             continue
         medewerkers[medewerker.id] = medewerker
+        if w.volgnummer not in range(1, MAX_DIENSTEN_PER_DAG + 1) or (
+                w.volgnummer == 2 and w.veld not in VELDEN_DIENST2):
+            fouten.append(_fout(w, "Dit veld bestaat niet bij deze dienst."))
+            continue
+        geraakt.add((medewerker.id, w.datum))
 
-        dienst = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=w.datum).first()
+        dienst = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=w.datum,
+                                        volgnummer=w.volgnummer).first()
         huidige_versie = dienst.versie if dienst else 0
         # Optimistic locking: alleen de eerste keer per dienst in dit verzoek controleren
         if w.versie is not None and sleutel not in gecontroleerd and w.versie != huidige_versie:
-            fouten.append({"mw": medewerker.id, "datum": w.datum.isoformat(), "veld": w.veld,
-                           "melding": "Deze cel is net door iemand anders gewijzigd. "
-                                      "De nieuwste waarde staat nu in beeld.",
-                           "conflict": True})
-            geraakt[sleutel] = dienst
+            fouten.append(_fout(w, "Deze cel is net door iemand anders gewijzigd. "
+                                   "De nieuwste waarde staat nu in beeld.", conflict=True))
             continue
         gecontroleerd.add(sleutel)
 
         nieuw_record = dienst is None
         if nieuw_record:
+            if w.veld == "code" and w.volgnummer == 2 and not w.waarde.strip():
+                continue  # geen dienst 2 en die ook niet aanmaken
             # Nog niet aan de sessie toevoegen: pas als de wijziging geldig is
-            dienst = Dienst(medewerker_id=medewerker.id, datum=w.datum, versie=0,
-                            dienstnaam_override="", opmerking_tekst="", tijden_handmatig=False)
+            dienst = Dienst(medewerker_id=medewerker.id, datum=w.datum, volgnummer=w.volgnummer,
+                            versie=0, dienstnaam_override="", opmerking_tekst="",
+                            tijden_handmatig=False)
         try:
             with db.session.no_autoflush:
                 oud, nieuw = _pas_veld_toe(dienst, w.veld, w.waarde)
         except CelFout as fout:
-            fouten.append({"mw": medewerker.id, "datum": w.datum.isoformat(), "veld": w.veld,
-                           "melding": str(fout)})
-            geraakt[sleutel] = None if nieuw_record else dienst
+            fouten.append(_fout(w, str(fout)))
             continue
 
         if oud == nieuw:
-            geraakt[sleutel] = None if nieuw_record else dienst
             continue
         if nieuw_record:
             db.session.add(dienst)  # tegelijk aangemaakt: de unieke index geeft een conflict
@@ -409,7 +552,7 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
         dienst.versie = (dienst.versie or 0) + 1
 
         logboek.log("Rooster gewijzigd", datum=w.datum, medewerker=medewerker.naam,
-                    veld=VELD_NAMEN.get(w.veld, w.veld), oud=oud, nieuw=nieuw)
+                    veld=_veldnaam(w), oud=oud, nieuw=nieuw)
         sync_planning.plan_dag(medewerker, w.datum, commit=False)
 
         # Een helemaal lege regel ruimen we op (behalve als er nog een agenda-afspraak
@@ -420,9 +563,22 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
             else:
                 db.session.delete(dienst)
         db.session.flush()  # zodat een volgende cel van dezelfde dag deze dienst terugvindt
-        geraakt[sleutel] = dienst
 
-    return set(geraakt), fouten
+    return geraakt, fouten
+
+
+def overlap_waarschuwingen(geraakt) -> list[dict]:
+    """Dagen waarop de twee diensten van een medewerker elkaar in tijd overlappen."""
+    waarschuwingen = []
+    for mw, datum in sorted(geraakt, key=lambda s: (s[1], s[0])):
+        dienst1, dienst2 = diensten_van_dag(mw, datum)
+        if overlappen(dienst1, dienst2):
+            medewerker = db.session.get(Medewerker, mw)
+            waarschuwingen.append({
+                "mw": mw, "datum": datum.isoformat(),
+                "melding": f"Let op: de twee diensten van {medewerker.initialen} op "
+                           f"{datum.strftime('%d-%m')} overlappen in tijd."})
+    return waarschuwingen
 
 
 def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: bool = True,
@@ -435,7 +591,8 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
 
     ook_tonen / ook_dagen: extra dagen waarvan de actuele stand mee terug moet
     (bijv. na 'ongedaan maken', zodat die cellen hun oude waarde weer tonen).
-    Geeft {'bijgewerkt': {...}, 'dagopmerkingen': {...}, 'fouten': [...]}.
+    Geeft {'bijgewerkt': {...}, 'dagopmerkingen': {...}, 'fouten': [...],
+    'waarschuwingen': [...]} (waarschuwing: de twee diensten van een dag overlappen).
     """
     # Feestdagen van de betrokken jaren vooraf aanmaken. Dat moet vóór de wijzigingen,
     # want het aanmaken slaat direct op (en een voorbeeld mag niets opslaan).
@@ -457,10 +614,10 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
         regels = kleurregels()
         bijgewerkt = {}
         for mw, datum in geraakt | set(ook_tonen):
-            actueel = Dienst.query.filter_by(medewerker_id=mw, datum=datum).first()
-            gegevens = dienst_naar_dict(actueel, regels)
+            gegevens = dag_naar_dict(*diensten_van_dag(mw, datum), regels)
             gegevens["weektotaal"] = formatteer_uren(weektotaal(mw, datum))
             bijgewerkt[f"{mw}|{datum.isoformat()}"] = gegevens
+        waarschuwingen = overlap_waarschuwingen(geraakt)
         dagen = sorted({d for d, _ in dag_wijzigingen} | set(ook_dagen))
         dagresultaat = {d.isoformat(): v for d, v in dagopmerkingen(dagen).items()} if dagen else {}
 
@@ -481,7 +638,8 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
     except IntegrityError as fout:  # tegelijk door een ander aangemaakt
         db.session.rollback()
         raise VersieConflict("Iemand anders wijzigde tegelijk dezelfde dienst.") from fout
-    return {"bijgewerkt": bijgewerkt, "dagopmerkingen": dagresultaat, "fouten": fouten}
+    return {"bijgewerkt": bijgewerkt, "dagopmerkingen": dagresultaat, "fouten": fouten,
+            "waarschuwingen": waarschuwingen}
 
 
 def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
@@ -504,7 +662,7 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
         query = query.filter_by(id=medewerker_id)
     medewerkers = query.all()
     bron = {
-        (d.medewerker_id, d.datum): d for d in Dienst.query.filter(
+        (d.medewerker_id, d.datum, d.volgnummer): d for d in Dienst.query.filter(
             Dienst.datum >= van_maandag, Dienst.datum <= van_maandag + timedelta(days=6)).all()
     }
     context = UrenContext(naar_maandag, naar_maandag + timedelta(days=6))
@@ -515,24 +673,30 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
             dag_doel = dag_bron + verschuiving
             if not medewerker.is_zichtbaar_op(dag_doel):
                 continue  # gearchiveerd: niet meer inplannen
-            origineel = bron.get((medewerker.id, dag_bron))
-            doel = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=dag_doel).first()
-            if origineel is None and doel is None:
-                continue
-            if doel is None:
-                doel = Dienst(medewerker_id=medewerker.id, datum=dag_doel, versie=0)
-                db.session.add(doel)
-            for kolom, leeg in LEGE_DIENST.items():
-                setattr(doel, kolom, getattr(origineel, kolom) if origineel else leeg)
-            doel.uren_berekend = uren_voor(doel, context)
-            doel.versie = (doel.versie or 0) + 1
-            sync_planning.plan_dag(medewerker, dag_doel, commit=False)
-            if doel.is_leeg and not doel.google_event_id:
-                if doel in db.session.new:
-                    db.session.expunge(doel)
-                else:
-                    db.session.delete(doel)
-            gewijzigd += 1
+            dag_gewijzigd = False
+            for volgnummer in range(1, MAX_DIENSTEN_PER_DAG + 1):  # beide diensten van de dag
+                origineel = bron.get((medewerker.id, dag_bron, volgnummer))
+                doel = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=dag_doel,
+                                              volgnummer=volgnummer).first()
+                if origineel is None and doel is None:
+                    continue
+                if doel is None:
+                    doel = Dienst(medewerker_id=medewerker.id, datum=dag_doel, volgnummer=volgnummer,
+                                  versie=0)
+                    db.session.add(doel)
+                for kolom, leeg in LEGE_DIENST.items():
+                    setattr(doel, kolom, getattr(origineel, kolom) if origineel else leeg)
+                doel.uren_berekend = uren_voor(doel, context)
+                doel.versie = (doel.versie or 0) + 1
+                if doel.is_leeg and not doel.google_event_id:
+                    if doel in db.session.new:
+                        db.session.expunge(doel)
+                    else:
+                        db.session.delete(doel)
+                dag_gewijzigd = True
+            if dag_gewijzigd:
+                sync_planning.plan_dag(medewerker, dag_doel, commit=False)
+                gewijzigd += 1
 
     naar_jaar, naar_week, _ = naar_maandag.isocalendar()
     van_jaar, van_week, _ = van_maandag.isocalendar()
@@ -551,5 +715,5 @@ def komende_diensten(medewerker: Medewerker, weken: int = 8) -> list[Dienst]:
     return (
         Dienst.query.filter(Dienst.medewerker_id == medewerker.id, Dienst.datum >= vandaag,
                             Dienst.datum < vandaag + timedelta(weeks=weken))
-        .order_by(Dienst.datum).all()
+        .order_by(Dienst.datum, Dienst.volgnummer).all()
     )

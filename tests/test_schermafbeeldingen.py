@@ -54,3 +54,25 @@ def test_schermafbeeldingen(server, browser, sessies, scherm):
         pagina.screenshot(path=os.path.join(map_, f"{naam}-{scherm}.png"),
                           full_page=not telefoon)  # telefoon: één scherm, zoals je het ziet
         context.close()
+
+
+def test_schermafbeeldingen_twee_diensten_en_print(server, browser, sessies):
+    """Weekrooster met een tweede dienst (scherm) en de printversie (PNG en PDF, A4 liggend)."""
+    map_ = os.environ["SCHERMAFBEELDINGEN"]
+    os.makedirs(map_, exist_ok=True)
+    context, pagina = nieuwe_pagina(browser, "1280x800", sessies["beheerder"])
+    pagina.goto(server.url + "/week")
+    cel = pagina.locator(".code-paneel td.code").nth(1)  # eerste medewerker, dinsdag
+    cel.click()
+    pagina.keyboard.type("17/3")
+    pagina.keyboard.press("Control+s")
+    pagina.locator(".code-paneel [data-status]").filter(has_text="Opgeslagen").wait_for()
+    pagina.reload()
+    pagina.screenshot(path=os.path.join(map_, "week-twee-diensten-1280x800.png"))
+    # Printversie: A4 liggend op 96 dpi (1123 x 794 px), zoals de printer hem krijgt
+    pagina.set_viewport_size({"width": 1123, "height": 794})
+    pagina.emulate_media(media="print")
+    pagina.screenshot(path=os.path.join(map_, "week-print-a4.png"), full_page=True)
+    pagina.pdf(path=os.path.join(map_, "week-print-a4.pdf"), prefer_css_page_size=True,
+               print_background=True)
+    context.close()

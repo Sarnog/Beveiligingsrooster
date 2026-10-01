@@ -30,6 +30,10 @@ components:
       type: [object, "null"]
       properties:
         datum: {type: string, format: date}
+        volgnummer:
+          type: integer
+          enum: [1, 2]
+          description: 1 = (eerste) dienst van de dag, 2 = tweede dienst op dezelfde dag (sinds 1.4.0)
         code: {type: [integer, "null"]}
         dienstnaam: {type: string}
         begin: {type: [string, "null"], example: "07:15"}
@@ -128,6 +132,12 @@ paths:
                         contracturen: {type: [number, "null"]}
                         weektotaal: {type: number}
                         dagen:
+                          type: array
+                          minItems: 7
+                          maxItems: 7
+                          items: {$ref: "#/components/schemas/Dienst"}
+                        tweede_diensten:
+                          description: Tweede dienst per dag (null = geen), maandag t/m zondag (sinds 1.4.0)
                           type: array
                           minItems: 7
                           maxItems: 7

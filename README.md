@@ -40,8 +40,8 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 | **Setup-wizard** | Eerste beheerder, instellingen, dienstcodes en medewerkers invoeren | ✅ |
 | **Beheer** | Medewerkers (met contracturen per jaar), dienstcodes met kleuren, vakanties, feestdagen, accounts en instellingen | ✅ |
 | **Urenberekening** | Precies zoals de oude Excel-VBA: pauze-aftrek, toeslag voor zaterdag en zondag, afronding op kwartieren | ✅ |
-| **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf | ✅ |
-| **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | ✅ |
+| **Weekrooster** | Het code-raster zoals in Excel: typ een dienstcode, dan verschijnen tijden en uren vanzelf. Twee diensten op één dag: typ `4/7` | ✅ |
+| **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand; de print van het weekrooster lijkt op het papieren rooster (A4 liggend, in kleur) | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
 | **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen (met droogloop en controle van de weektotalen); back-ups downloaden en terugzetten | ✅ |
 | **Telefoon en app** | Elke pagina werkt op de telefoon; *Mijn rooster* en het weekrooster zijn voor de telefoon gemaakt; de planner wijzigt een dienst met één tik. Te installeren als app (PWA) | ✅ |
@@ -75,7 +75,7 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 - **Rechten worden op de server gecontroleerd.** Een gewone gebruiker krijgt bij elke wijzigpoging een foutmelding (HTTP 403), ook als hij de knoppen omzeilt. Dit staat vast in de tests.
 - **Geen wachtwoorden in platte tekst.** Wachtwoorden worden versleuteld opgeslagen (argon2). Zie [Inlogblokkade](#inlogblokkade-en-reverse-proxy) voor de beperking van foute pogingen.
 - **Sessies.** Na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of een rolwijziging zijn alle andere sessies van die gebruiker direct ongeldig. Na het terugzetten van een back-up moet iedereen opnieuw inloggen.
-- **Urenberekening** (per dag, alleen over begin- en eindtijd):
+- **Urenberekening** (per dienst, alleen over begin- en eindtijd; bij twee diensten op een dag telt elke dienst apart):
   1. Eindtijd vóór de begintijd? Dan loopt de dienst door na middernacht.
   2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af.
   3. Daarna × de toeslagfactor: zaterdag 1,5 en zondag 2,0 (instelbaar).
@@ -387,7 +387,7 @@ ruff check .                            # lint
 flask --app wsgi:app db check           # klopt het datamodel met de migraties?
 ```
 
-**Browsertests (Playwright).** `tests/test_mobiel*.py` openen elke pagina in een echte Chromium op telefoon-, tablet- en computerformaat (geen horizontaal scrollen, niets buiten beeld, invoervelden 16 px, tikdoelen 44 px, menu), testen de mobiele bewerkflow, printen en de service worker. Zonder Chromium worden ze overgeslagen. Eén keer installeren en draaien:
+**Browsertests (Playwright).** `tests/test_mobiel*.py` en `tests/test_tweede_dienst_browser.py` openen elke pagina in een echte Chromium op telefoon-, tablet- en computerformaat (geen horizontaal scrollen, niets buiten beeld, invoervelden 16 px, tikdoelen 44 px, menu), testen de mobiele bewerkflow, printen en de service worker. Zonder Chromium worden ze overgeslagen. Eén keer installeren en draaien:
 
 ```sh
 python -m playwright install chromium   # eenmalig (of PLAYWRIGHT_CHROMIUM=/pad/naar/chrome)

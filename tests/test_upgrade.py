@@ -176,3 +176,62 @@ def test_upgrade_daarna_db_check_schoon(app_112):
     with db.engine.connect() as verbinding:
         verschillen = compare_metadata(MigrationContext.configure(verbinding), db.metadata)
     assert verschillen == []
+
+
+# ---------- 1.3.0 (0005) -> 1.4.0 (0006): tweede dienst per dag ----------
+
+@pytest.fixture
+def app_130(tmp_path):
+    """App met een database op revisie 0005 (versie 1.3.0), met diensten."""
+    app = create_app(conftest.TestConfig(str(tmp_path)))
+    with app.app_context():
+        upgrade(directory=MIGRATIES, revision="0003")
+        with db.engine.begin() as verbinding:
+            _vul_versie_112(verbinding)
+        upgrade(directory=MIGRATIES, revision="0005")
+        yield app
+        db.session.remove()
+
+
+def test_upgrade_0005_naar_0006_houdt_diensten_intact(app_130):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Dienst
+
+    voor = _tel("dienst")
+    upgrade(directory=MIGRATIES, revision="0006")
+    assert _tel("dienst") == voor == 3
+    assert _tel("dienst", "volgnummer = 1") == 3  # bestaande diensten zijn dienst 1
+    diensten = {d.datum: d for d in Dienst.query.all()}
+    assert diensten[date(2026, 3, 2)].versie == 3 and diensten[date(2026, 3, 2)].google_event_id == "evt1"
+    assert diensten[date(2026, 3, 7)].opmerking_tekst == "Locatie A"
+
+    # Nu mag er een tweede dienst bij, maar geen tweede 'dienst 1'
+    db.session.add(Dienst(medewerker_id=1, datum=date(2026, 3, 2), volgnummer=2, versie=1))
+    db.session.commit()
+    db.session.add(Dienst(medewerker_id=1, datum=date(2026, 3, 2), volgnummer=1, versie=1))
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()
+
+
+def test_downgrade_0006_weigert_bij_tweede_diensten(app_130, capfd):
+    from flask_migrate import downgrade
+
+    upgrade(directory=MIGRATIES, revision="0006")
+    with db.engine.begin() as verbinding:
+        _sql(verbinding, "UPDATE dienst SET volgnummer = 2 WHERE datum = '2026-03-02'")
+    with pytest.raises(SystemExit):  # Flask-Migrate meldt de fout en stopt (zoals 'flask db downgrade')
+        downgrade(directory=MIGRATIES, revision="0005")
+    assert "er staan nog 1 tweede dienst(en) in het rooster" in capfd.readouterr().err
+    assert _tel("dienst") == 3  # niets kwijt
+
+    # Zonder tweede diensten gaat terugzetten gewoon (en weer bijwerken ook)
+    with db.engine.begin() as verbinding:
+        _sql(verbinding, "UPDATE dienst SET volgnummer = 1")
+    downgrade(directory=MIGRATIES, revision="0005")
+    with db.engine.connect() as verbinding:
+        kolommen = [r[1] for r in verbinding.exec_driver_sql("PRAGMA table_info(dienst)")]
+    assert "volgnummer" not in kolommen and _tel("dienst") == 3
+    upgrade(directory=MIGRATIES)
+    assert _tel("dienst", "volgnummer = 1") == 3

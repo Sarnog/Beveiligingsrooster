@@ -37,7 +37,6 @@
   </details>
   {% endif %}
 </div>
-<h1 class="alleen-print">{{ teamnaam }} – week {{ week }} ({{ jaar }})</h1>
 
 <div class="week-opmaak{% if bewerken %} met-raster{% endif %}"{% if bewerken %} data-api-cellen="{{ url_for('rooster.api_cellen') }}" data-versie="{{ versie }}"{% endif %}>
   <div class="tabel-schuif rooster-houder">
@@ -61,12 +60,14 @@
         <td class="urenkol"></td>
       </tr>
     </thead>
+    {# Zes rijen per medewerker: a opmerking, b opmerkingtijden, c dienstnaam, d tijden en uren,
+       e/f dienstnaam en tijden van de tweede dienst (alleen zichtbaar als die er die week is) #}
     {% for rij in rijen %}
-    {% set r = loop.index0 * 4 %}
+    {% set r = loop.index0 * 6 %}
     {% set mw = rij.medewerker %}
-    <tbody class="blok">
+    <tbody class="blok" data-blok="{{ mw.id }}">
       <tr class="r-a">
-        <th rowspan="4" class="naamkol">{{ mw.naam }}{% if mw.functie_opmerking %}<small>{{ mw.functie_opmerking }}</small>{% endif %}</th>
+        <th rowspan="6" class="naamkol">{{ mw.naam }}{% if mw.functie_opmerking %}<small>{{ mw.functie_opmerking }}</small>{% endif %}</th>
         {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}
         <td colspan="3" class="{{ 'cel ' if bewerken }}opm" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-veld="opmerking"
             data-r="{{ r + 1 }}" data-c="{{ loop.index0 * 3 }}" data-cs="3" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}</td>
@@ -94,6 +95,20 @@
         <td class="{{ 'cel ' if bewerken }}uren{% if d.uren_handmatig %} handmatig{% endif %}" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-toon="uren" data-veld="uren" data-r="{{ r + 4 }}" data-c="{{ loop.index0 * 3 + 2 }}"{% if d.uren_handmatig %} title="Zelf ingevulde uren"{% endif %}>{{ d.uren }}</td>
         {% endfor %}
       </tr>
+      <tr class="r-e tweede-rij" data-tweede="{{ mw.id }}"{% if not rij.heeft_tweede %} hidden{% endif %}>
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}{% set t = d.tweede or {} %}
+        <td colspan="3" class="{{ 'cel ' if bewerken }}dienstnaam" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-vn="2" data-toon="dienstnaam" data-veld="dienstnaam" data-r="{{ r + 5 }}" data-c="{{ loop.index0 * 3 }}" data-cs="3" data-versie="{{ t.versie or 0 }}" style="{{ t.dienst_stijl }}">{{ t.dienstnaam }}</td>
+        {% endfor %}
+        <td class="urenkol"></td>
+      </tr>
+      <tr class="r-f tweede-rij" data-tweede="{{ mw.id }}"{% if not rij.heeft_tweede %} hidden{% endif %}>
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}{% set t = d.tweede or {} %}
+        <td class="{{ 'cel ' if bewerken }}tijd{% if t.handmatig %} handmatig{% endif %}" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-vn="2" data-veld="begin" data-r="{{ r + 6 }}" data-c="{{ loop.index0 * 3 }}"{% if t.handmatig %} title="Handmatig aangepast"{% endif %}>{{ t.begin }}</td>
+        <td class="{{ 'cel ' if bewerken }}tijd{% if t.handmatig %} handmatig{% endif %}" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-vn="2" data-veld="eind" data-r="{{ r + 6 }}" data-c="{{ loop.index0 * 3 + 1 }}"{% if t.handmatig %} title="Handmatig aangepast"{% endif %}>{{ t.eind }}</td>
+        <td class="{{ 'cel ' if bewerken }}uren{% if t.uren_handmatig %} handmatig{% endif %}" data-mw="{{ mw.id }}" data-datum="{{ datum }}" data-vn="2" data-toon="uren" data-veld="uren" data-r="{{ r + 6 }}" data-c="{{ loop.index0 * 3 + 2 }}"{% if t.uren_handmatig %} title="Zelf ingevulde uren"{% endif %}>{{ t.uren }}</td>
+        {% endfor %}
+        <td class="urenkol"></td>
+      </tr>
     </tbody>
     {% else %}
     <tbody><tr><td colspan="23">Nog geen medewerkers.{% if bewerken %} Voeg ze toe via Beheer → Medewerkers.{% endif %}</td></tr></tbody>
@@ -103,7 +118,7 @@
 
   {% if bewerken %}
   <aside class="code-paneel geen-print">
-    <div class="raster-status" data-status aria-live="polite">Typ een dienstcode per dag</div>
+    <div class="raster-status" data-status aria-live="polite">Typ een dienstcode per dag (twee diensten: 4/7)</div>
     <table class="raster" data-raster="codes">
       <thead><tr><th>Init.</th>{% for dag in dagen %}<th class="{{ 'weekend' if dag.weekday() >= 5 }}">{{ dagnamen_kort[loop.index0]|upper }}</th>{% endfor %}</tr></thead>
       <tbody>
@@ -112,7 +127,7 @@
           <th title="{{ rij.medewerker.naam }}">{{ rij.medewerker.initialen }}</th>
           {% for d in rij.dagen %}
           <td class="cel code" data-mw="{{ rij.medewerker.id }}" data-datum="{{ dagen[loop.index0].isoformat() }}" data-veld="code"
-              data-r="{{ ri }}" data-c="{{ loop.index0 }}" style="{{ d.dienst_stijl }}">{{ d.code }}</td>
+              data-r="{{ ri }}" data-c="{{ loop.index0 }}" style="{{ d.code_stijl }}">{{ d.code }}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -137,12 +152,91 @@
         <li>Ctrl+Z: laatste wijziging ongedaan maken</li>
         <li>Ctrl+S: opslaan (wijzigingen worden pas bewaard na <strong>Opslaan</strong>)</li>
         <li>Tijden: 715, 7:15, 07.15 of 0715</li>
+        <li>Twee diensten op één dag: 4/7 (of 4+7, 4 7) in het code-raster; Delete wist beide</li>
         <li>Dienstnaam of uren in het rooster typen: vrije dienst of eigen uren (Delete = weer automatisch)</li>
       </ul>
     </details>
   </aside>
   {% endif %}
 </div>
+
+{# Printversie (alleen zichtbaar bij printen): zoals het papieren rooster, A4 liggend.
+   Per dag een witte kolom (dienstnaam als gekleurde balk, begin en eind) en een smalle
+   grijze kolom met de uren. raster.js werkt deze tabel bij na een wijziging
+   (data-pmw/data-pdatum/data-pvn/data-p); hij heeft bewust geen 'cel'-klasse. #}
+{# Maat van de printversie: de hele pagina vullen. Eerst krimpt de witruimte (rijhoogte),
+   pas als dat niet genoeg is het lettertype. De reserveregel alleen als die nog past.
+   184 mm = A4 liggend (210 mm) min marges en kopregel. #}
+{% set ns_p = namespace(rijen=0) %}{% for rij in rijen %}{% set ns_p.rijen = ns_p.rijen + (5 if rij.heeft_tweede else 3) %}{% endfor %}
+{% set p_reserve = (ns_p.rijen + 3) * 4.4 <= 184 %}
+{% set p_rij = [[7.5, 184 / [ns_p.rijen + (3 if p_reserve else 0), 1]|max]|min, 3.4]|max %}
+{% set p_schaal = [1, p_rij / 4.6]|min %}
+<section class="print-rooster">
+  <table class="print-tabel" style="--p-rij: {{ '%.2f'|format(p_rij) }}mm; --p-f: {{ '%.3f'|format(p_schaal) }}">
+    <colgroup>
+      <col class="p-naamkol">
+      {% for dag in dagen %}<col class="p-tijdkol"><col class="p-tijdkol"><col class="p-grijskol">{% endfor %}
+      <col class="p-urenkol">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="p-weeknr"><small>{{ teamnaam }}</small>Weeknummer <strong>{{ week }}</strong></th>
+        {% for dag in dagen %}{% set opm = dagopmerkingen[dag] %}
+        <th colspan="2" class="p-dag{% if dag.weekday() >= 5 %} weekend{% endif %}">{{ dagnamen_kort[loop.index0] }} {{ dag.strftime('%d-%m-%y') }}<span class="p-dagopm" data-pdagopm="{{ dag.isoformat() }}">{{ opm.tekst }}</span></th>
+        <th class="p-grijs"></th>
+        {% endfor %}
+        <th class="p-urenkop">Uren</th>
+      </tr>
+    </thead>
+    {% for rij in rijen %}{% set mw = rij.medewerker %}{% set c = rij.contracturen %}
+    <tbody class="p-blok">
+      <tr class="p-a">
+        <th rowspan="5" class="p-naam">{{ mw.naam }}{% if mw.functie_opmerking %}<small>{{ mw.functie_opmerking }}</small>{% endif %}</th>
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}
+        <td colspan="2" class="p-opm" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="1" data-p="opmerking" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}{% if d.opm_begin %} ({{ d.opm_begin }}–{{ d.opm_eind }}){% endif %}</td>
+        <td class="p-grijs"></td>
+        {% endfor %}
+        <td class="p-contract">{% if c is not none %}{{ c|int if c == c|int else c|uren }}{% endif %}</td>
+      </tr>
+      <tr class="p-c">
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}
+        <td colspan="2" class="p-dienst" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="1" data-p="dienstnaam" style="{{ d.dienst_stijl }}">{{ d.dienstnaam }}</td>
+        <td class="p-grijs"></td>
+        {% endfor %}
+        <td rowspan="4" class="p-totaal" data-ptotaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</td>
+      </tr>
+      <tr class="p-d">
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}
+        <td class="p-tijd" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="1" data-p="begin">{{ d.begin }}</td>
+        <td class="p-tijd" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="1" data-p="eind">{{ d.eind }}</td>
+        <td class="p-grijs p-uren" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="1" data-p="uren">{{ d.uren }}</td>
+        {% endfor %}
+      </tr>
+      <tr class="p-e" data-ptweede="{{ mw.id }}"{% if not rij.heeft_tweede %} hidden{% endif %}>
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}{% set t = d.tweede or {} %}
+        <td colspan="2" class="p-dienst" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="2" data-p="dienstnaam" style="{{ t.dienst_stijl }}">{{ t.dienstnaam }}</td>
+        <td class="p-grijs"></td>
+        {% endfor %}
+      </tr>
+      <tr class="p-f" data-ptweede="{{ mw.id }}"{% if not rij.heeft_tweede %} hidden{% endif %}>
+        {% for d in rij.dagen %}{% set datum = dagen[loop.index0].isoformat() %}{% set t = d.tweede or {} %}
+        <td class="p-tijd" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="2" data-p="begin">{{ t.begin }}</td>
+        <td class="p-tijd" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="2" data-p="eind">{{ t.eind }}</td>
+        <td class="p-grijs p-uren" data-pmw="{{ mw.id }}" data-pdatum="{{ datum }}" data-pvn="2" data-p="uren">{{ t.uren }}</td>
+        {% endfor %}
+      </tr>
+    </tbody>
+    {% endfor %}
+    {# Eén lege reserveregel, om met de hand iemand bij te schrijven (alleen als die past) #}
+    {% if p_reserve %}
+    <tbody class="p-blok p-reserve">
+      <tr class="p-a"><th rowspan="3" class="p-naam">Reserve 1</th>{% for dag in dagen %}<td colspan="2" class="p-opm"></td><td class="p-grijs"></td>{% endfor %}<td class="p-contract"></td></tr>
+      <tr class="p-c">{% for dag in dagen %}<td colspan="2" class="p-dienst"></td><td class="p-grijs"></td>{% endfor %}<td rowspan="2" class="p-totaal"></td></tr>
+      <tr class="p-d">{% for dag in dagen %}<td class="p-tijd"></td><td class="p-tijd"></td><td class="p-grijs p-uren"></td>{% endfor %}</tr>
+    </tbody>
+    {% endif %}
+  </table>
+</section>
 
 {% include "rooster/_week_mobiel.html" %}
 

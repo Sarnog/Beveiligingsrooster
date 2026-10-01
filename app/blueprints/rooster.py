@@ -7,7 +7,7 @@ from flask import Blueprint, abort, flash, jsonify, redirect, render_template, r
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import Dienstcode, Medewerker
+from ..models import MAX_DIENSTEN_PER_DAG, Dienstcode, Medewerker
 from ..services import instellingen, klok
 from ..services.kalender import MAX_JAAR, MIN_JAAR, aantal_weken, maandag_van_week, week_van
 from ..services.weekrooster import (
@@ -92,8 +92,10 @@ def mijn():
     diensten = komende_diensten(medewerker, weken=8)
     vandaag = klok.vandaag()
     # Bovenaan: de dienst van vandaag en de eerstvolgende dienst daarna
-    dienst_vandaag = next((d for d in diensten if d.datum == vandaag), None)
+    diensten_vandaag = [d for d in diensten if d.datum == vandaag]
     volgende = next((d for d in diensten if d.datum > vandaag), None)
+    # Op de dag van de volgende dienst kunnen twee diensten staan: allebei tonen
+    diensten_volgende = [d for d in diensten if volgende and d.datum == volgende.datum]
     # 'Toevoegen aan mijn agenda': de ICS-link als webcal:// (opent de agenda-app),
     # zonder ICS-link naar de uitlegpagina
     if medewerker.ics_token:
@@ -101,7 +103,8 @@ def mijn():
     else:
         agenda_url = url_for("rooster.agenda_info")
     return render_template("rooster/mijn.html", medewerker=medewerker, diensten=diensten,
-                           vandaag=vandaag, dienst_vandaag=dienst_vandaag, volgende=volgende,
+                           vandaag=vandaag, diensten_vandaag=diensten_vandaag, volgende=volgende,
+                           diensten_volgende=diensten_volgende,
                            agenda_url=agenda_url)
 
 
@@ -127,7 +130,10 @@ def api_cellen():
     """Wijzigingen in het rooster verwerken: als voorbeeld of definitief opslaan.
 
     Body (JSON):
-      wijzigingen:    [{mw, datum, veld, waarde, versie}]
+      wijzigingen:    [{mw, datum, veld, waarde, versie, volgnummer, versie2}]
+                      volgnummer: 1 (standaard) of 2 = tweede dienst van die dag.
+                      veld 'code' met volgnummer 1 is de cel uit het code-raster
+                      ('4' of '4/7'); versie2 is dan de versie van dienst 2.
       dagopmerkingen: [{datum, tekst}]
       opslaan:        alleen bij precies true wordt er bewaard (knop 'Opslaan');
                       anders wordt alleen een voorbeeld berekend en niets opgeslagen
@@ -152,12 +158,18 @@ def api_cellen():
             if veld not in VELDEN:
                 raise ValueError
             versie = item.get("versie")
+            versie2 = item.get("versie2")
+            volgnummer = int(item.get("volgnummer") or 1)
+            if volgnummer not in range(1, MAX_DIENSTEN_PER_DAG + 1):
+                raise ValueError
             wijzigingen.append(Wijziging(
                 medewerker_id=int(item["mw"]),
                 datum=_lees_datum(item["datum"]),
                 veld=veld,
                 waarde="" if item.get("waarde") is None else str(item["waarde"]),
                 versie=None if versie is None else int(versie),
+                volgnummer=volgnummer,
+                versie2=None if versie2 is None else int(versie2),
             ))
         dag_wijzigingen = [(_lees_datum(d["datum"]), str(d.get("tekst") or ""))
                            for d in ruwe_dagen]

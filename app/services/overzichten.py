@@ -140,5 +140,5 @@ def zoek_diensten(naam: str = "", code: int | None = None, van: date | None = No
         query = query.filter(Dienst.datum >= van)
     if tot:
         query = query.filter(Dienst.datum <= tot)
-    return query.order_by(Dienst.datum, Medewerker.volgorde).limit(limiet).all()
+    return query.order_by(Dienst.datum, Medewerker.volgorde, Dienst.volgnummer).limit(limiet).all()
 

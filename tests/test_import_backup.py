@@ -6,6 +6,7 @@ oude Excel-rooster. Er zit dus geen echte roosterdata in de repository.
 
 import io
 import os
+import shutil
 from datetime import date, datetime, time
 
 import openpyxl
@@ -243,3 +244,54 @@ def test_ongeldige_backup_upload(gemigreerd, client):
         "bevestig": "1", "bestand": (io.BytesIO(b"onzin"), "x.db")},
         content_type="multipart/form-data", follow_redirects=True)
     assert "geen geldige" in antwoord.data.decode() or "geen back-up" in antwoord.data.decode()
+
+
+def test_oude_backup_zonder_volgnummer_terugzetten(gemigreerd, tmp_path):
+    """Een back-up van 1.3.0 (databaseversie 0005, zonder volgnummer) kan nog terug."""
+    from flask_migrate import upgrade
+
+    from app import create_app
+
+    from .conftest import TestConfig
+
+    # Een database zoals 1.3.0 hem had, in een eigen map
+    oud_map = tmp_path / "oud"
+    oud_map.mkdir()
+    oude_app = create_app(TestConfig(str(oud_map)))
+    with oude_app.app_context():
+        upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"), revision="0005")
+        with db.engine.begin() as verbinding:
+            verbinding.exec_driver_sql(
+                "INSERT INTO medewerker (id, naam, initialen, functie_opmerking, volgorde, email, "
+                "agenda_modus, agenda_id, agenda_laatste_fout, ics_token) "
+                "VALUES (1, 'Medewerker Oud', 'OUD', '', 1, '', '', '', '', '')")
+            verbinding.exec_driver_sql(
+                "INSERT INTO dienst (datum, medewerker_id, dienstnaam_override, begin, eind, "
+                "tijden_handmatig, uren_berekend, opmerking_tekst, google_event_id, versie, gewijzigd_op) "
+                "VALUES ('2026-03-02', 1, 'Cursus', '09:00', '17:30', 1, 8.0, 'Locatie A', '', 2, "
+                "'2026-03-01 10:00:00')")
+        db.engine.dispose()
+    # De TestConfig van de oude app zette DATA_MAP om; terugzetten naar de back-upmap van deze app
+    os.environ["DATA_MAP"] = gemigreerd.config["DATA_MAP"]
+
+    naam = "rooster-20260301-100000-handmatig.db"
+    shutil.copy(oud_map / "test.db", os.path.join(backup.backup_map(), naam))
+    backup.zet_terug(backup.pad_van(naam))
+    db.session.remove()
+    dienst = Dienst.query.one()
+    assert (dienst.volgnummer, dienst.dienstnaam, dienst.opmerking_tekst, dienst.versie) == \
+        (1, "Cursus", "Locatie A", 2)
+
+
+def test_backup_met_tweede_dienst_terugzetten(gemigreerd):
+    db.session.add(Medewerker(id=1, naam="Medewerker A", initialen="TSA"))
+    db.session.add_all([Dienst(medewerker_id=1, datum=date(2026, 3, 2), volgnummer=v, versie=1,
+                               dienstnaam_override=f"Dienst {v}") for v in (1, 2)])
+    db.session.commit()
+    pad = backup.maak_backup("handmatig")
+    Dienst.query.filter_by(volgnummer=2).delete()
+    db.session.commit()
+    backup.zet_terug(pad)
+    db.session.remove()
+    assert sorted((d.volgnummer, d.dienstnaam) for d in Dienst.query.all()) == \
+        [(1, "Dienst 1"), (2, "Dienst 2")]

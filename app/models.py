@@ -15,6 +15,7 @@ from .services import klok
 
 ROL_BEHEERDER = "beheerder"
 ROL_GEBRUIKER = "gebruiker"
+MAX_DIENSTEN_PER_DAG = 2  # per medewerker per dag (volgnummer 1 en 2)
 
 
 def nu() -> datetime:
@@ -156,7 +157,12 @@ class OpmerkingKleurregel(db.Model):
 
 
 class Dienst(db.Model):
-    """Eén roosterregel: één medewerker op één datum."""
+    """Eén dienst van één medewerker op één datum.
+
+    Een medewerker kan per dag hooguit twee diensten hebben (volgnummer 1 en 2).
+    De opmerking (opmerking_tekst/begin/eind) hoort bij de dag en staat altijd bij
+    dienst 1; dienst 2 heeft geen eigen opmerking.
+    """
 
     __tablename__ = "dienst"
 
@@ -170,6 +176,8 @@ class Dienst(db.Model):
         db.Integer, db.ForeignKey("dienstcode.id", ondelete="RESTRICT"), nullable=True,
         index=True,
     )
+    # 1 = eerste dienst van de dag, 2 = tweede dienst (zie MAX_DIENSTEN_PER_DAG)
+    volgnummer = db.Column(db.Integer, nullable=False, default=1, server_default="1")
     # Vrije dienstnaam, bijvoorbeeld bij een import zonder code
     dienstnaam_override = db.Column(db.String(60), nullable=False, default="")
     begin = db.Column(db.String(5), nullable=True)
@@ -189,7 +197,10 @@ class Dienst(db.Model):
     medewerker = db.relationship("Medewerker")
     dienstcode = db.relationship("Dienstcode")
 
-    __table_args__ = (db.UniqueConstraint("medewerker_id", "datum"),)
+    __table_args__ = (
+        db.UniqueConstraint("medewerker_id", "datum", "volgnummer",
+                            name="uq_dienst_medewerker_datum_volgnummer"),
+    )
 
     @property
     def dienstnaam(self) -> str:

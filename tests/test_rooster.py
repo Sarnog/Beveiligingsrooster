@@ -381,3 +381,221 @@ def test_cache_instructies(als_beheerder, rooster):
 def test_maar_een_opslaan_knop(als_beheerder, rooster):
     pagina = als_beheerder.get("/week/2026/10").data.decode()
     assert pagina.count("data-opslaan") == 1
+
+
+# ---------- Twee diensten per dag (1.4.0) ----------
+
+def diensten(mw, datum):
+    """{volgnummer: Dienst} van een medewerker op een dag."""
+    db.session.expire_all()
+    return {d.volgnummer: d for d in Dienst.query.filter_by(medewerker_id=mw.id, datum=datum)}
+
+
+def cellen(client, wijzigingen, opslaan=True):
+    return client.post("/api/cellen", json={"wijzigingen": wijzigingen, "opslaan": opslaan})
+
+
+@pytest.mark.parametrize("invoer", ["17/3", "17+3", "17 3", " 17 / 3 "])
+def test_twee_codes_in_het_code_raster(als_beheerder, rooster, invoer):
+    a = rooster["a"]
+    antwoord = cel(als_beheerder, a, MAANDAG, "code", invoer)
+    assert antwoord.status_code == 200 and antwoord.json["fouten"] == []
+    per_vn = diensten(a, MAANDAG)
+    assert set(per_vn) == {1, 2}
+    assert (per_vn[1].dienstnaam, per_vn[1].begin, per_vn[1].eind, per_vn[1].uren_berekend) == \
+        ("BHV", "08:30", "12:30", 4.0)
+    assert (per_vn[2].dienstnaam, per_vn[2].begin, per_vn[2].eind, per_vn[2].uren_berekend) == \
+        ("VW Avond", "14:30", "23:00", 8.0)
+    gegevens = antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]
+    assert gegevens["code"] == "17/3" and gegevens["dienstnaam"] == "BHV"
+    assert gegevens["tweede"]["dienstnaam"] == "VW Avond" and gegevens["tweede"]["uren"] == "8,00"
+    assert gegevens["weektotaal"] == "12,00"  # beide diensten tellen mee
+    # Gesplitste achtergrond in het code-raster: links dienst 1, rechts dienst 2
+    assert "linear-gradient(90deg,#E2EFDA 50%,#FFFF00 50%)" in gegevens["code_stijl"]
+    assert antwoord.json["waarschuwingen"] == []
+
+
+def test_een_code_of_leeg_wist_de_tweede_dienst(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    per_vn = diensten(a, MAANDAG)
+    assert set(per_vn) == {1} and per_vn[1].dienstnaam == "VW Vroeg"
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cel(als_beheerder, a, MAANDAG, "code", "")
+    assert diensten(a, MAANDAG) == {}
+    # Ook een vrije dienstnaam en eigen tijden van dienst 2 verdwijnen bij leeg
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "dienstnaam",
+                            "volgnummer": 2, "waarde": "Controleronde"}])
+    cel(als_beheerder, a, MAANDAG, "code", "")
+    assert diensten(a, MAANDAG) == {}
+
+
+def test_ongeldige_dubbele_invoer_wijzigt_niets(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "4")
+    for invoer, melding in (("4/7/9", "Hooguit 2 diensten"), ("4/99", "Onbekende dienstcode: 99"),
+                            ("4/x", "geen dienstcode")):
+        antwoord = cel(als_beheerder, a, MAANDAG, "code", invoer)
+        assert melding in antwoord.json["fouten"][0]["melding"]
+        assert antwoord.json["fouten"][0]["vn"] == 1  # hoort bij de cel in het code-raster
+        per_vn = diensten(a, MAANDAG)
+        assert set(per_vn) == {1} and per_vn[1].dienstnaam == "VW Vroeg"
+
+
+def test_alleen_een_tweede_dienst(als_beheerder, rooster):
+    a = rooster["a"]
+    antwoord = cel(als_beheerder, a, MAANDAG, "code", "/3")
+    assert set(diensten(a, MAANDAG)) == {2}
+    assert antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]["code"] == "/3"
+
+
+def test_tweede_dienst_eigen_tijden_uren_en_logboek(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    antwoord = cellen(als_beheerder, [
+        {"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind", "volgnummer": 2, "waarde": "2200"}])
+    assert antwoord.json["fouten"] == []
+    per_vn = diensten(a, MAANDAG)
+    assert per_vn[1].eind == "12:30" and per_vn[1].uren_berekend == 4.0  # dienst 1 ongemoeid
+    assert per_vn[2].eind == "22:00" and per_vn[2].tijden_handmatig and per_vn[2].uren_berekend == 7.0
+    gegevens = antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]
+    assert gegevens["tweede"]["handmatig"] and gegevens["weektotaal"] == "11,00"
+    regel = Logboek.query.filter_by(actie="Rooster gewijzigd").order_by(Logboek.id.desc()).first()
+    assert regel.veld == "dienst 2: eindtijd"
+    assert (regel.oude_waarde, regel.nieuwe_waarde) == ("23:00", "22:00")
+    # Het aanmaken van dienst 2 via het code-raster staat ook als 'dienst 2' in het logboek
+    assert Logboek.query.filter_by(veld="dienst 2: dienstcode", nieuwe_waarde="3").count() == 1
+    # Eigen uren bij dienst 2
+    cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "uren", "volgnummer": 2,
+                            "waarde": "5"}])
+    assert diensten(a, MAANDAG)[2].uren_berekend == 5.0
+
+
+def test_dienst2_heeft_geen_opmerking(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    antwoord = cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "opmerking",
+                                       "volgnummer": 2, "waarde": "Locatie A"}])
+    assert antwoord.json["fouten"][0]["melding"] == "Dit veld bestaat niet bij deze dienst."
+    assert cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code",
+                                   "volgnummer": 3, "waarde": "4"}]).status_code == 400
+
+
+def test_overlappende_diensten_geven_waarschuwing(als_beheerder, rooster):
+    a = rooster["a"]
+    antwoord = cel(als_beheerder, a, MAANDAG, "code", "4/7")  # 07:15-15:45 en 07:30-16:00
+    assert antwoord.json["fouten"] == []  # niet tegenhouden
+    assert set(diensten(a, MAANDAG)) == {1, 2}
+    assert antwoord.json["waarschuwingen"] == [{
+        "mw": a.id, "datum": MAANDAG.isoformat(),
+        "melding": "Let op: de twee diensten van TSA op 02-03 overlappen in tijd."}]
+
+
+def test_overlap_berekening():
+    from app.services.weekrooster import overlappen
+
+    def d(begin, eind):
+        return Dienst(begin=begin, eind=eind)
+
+    assert overlappen(d("07:00", "15:00"), d("14:00", "22:00"))
+    assert not overlappen(d("07:00", "15:00"), d("15:00", "23:00"))  # aansluitend mag
+    assert overlappen(d("22:00", "06:00"), d("23:00", "23:30"))  # nachtdienst
+    assert not overlappen(d("22:00", "06:00"), d("05:00", "08:00"))  # ochtend vóór de nachtdienst
+    assert not overlappen(d("07:00", "15:00"), d(None, None))  # zonder tijden geen overlap
+    assert not overlappen(d("07:00", "15:00"), None)
+
+
+def test_optimistic_locking_per_dienst(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    versie1, versie2 = diensten(a, MAANDAG)[1].versie, diensten(a, MAANDAG)[2].versie
+    # Iemand anders wijzigt dienst 2
+    cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind", "volgnummer": 2,
+                            "waarde": "22:00"}])
+    # Wijziging van dienst 1 met de oude versie van dienst 1: mag (dienst 1 is niet gewijzigd)
+    antwoord = cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "begin",
+                                       "waarde": "08:00", "versie": versie1}])
+    assert antwoord.json["fouten"] == []
+    # Wijziging van dienst 2 met de oude versie van dienst 2: conflict
+    antwoord = cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind",
+                                       "volgnummer": 2, "waarde": "21:00", "versie": versie2}])
+    assert antwoord.json["fouten"][0]["conflict"] and antwoord.json["fouten"][0]["vn"] == 2
+    assert diensten(a, MAANDAG)[2].eind == "22:00"
+    # Een code in het code-raster controleert ook de versie van dienst 2 (versie2)
+    antwoord = cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code",
+                                       "waarde": "4", "versie": diensten(a, MAANDAG)[1].versie,
+                                       "versie2": versie2}])
+    assert antwoord.json["fouten"][0]["conflict"]
+    assert 2 in diensten(a, MAANDAG)  # dienst 2 is niet gewist
+
+
+def test_voorbeeld_van_twee_diensten_slaat_niets_op(als_beheerder, rooster):
+    a = rooster["a"]
+    antwoord = cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "code",
+                                       "waarde": "17/3"}], opslaan=False)
+    assert antwoord.json["bijgewerkt"][f"{a.id}|{MAANDAG.isoformat()}"]["tweede"]["dienstnaam"] == "VW Avond"
+    assert diensten(a, MAANDAG) == {}
+
+
+def test_weekpagina_toont_tweede_dienst(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert ">17/3</td>" in pagina  # code-raster
+    assert f'<tr class="r-e tweede-rij" data-tweede="{a.id}">' in pagina  # zichtbaar
+    assert f'<tr class="r-e tweede-rij" data-tweede="{rooster["b"].id}" hidden>' in pagina
+    assert 'data-vn="2" data-toon="dienstnaam"' in pagina and "VW Avond" in pagina
+    # Printversie: ook beide diensten
+    assert f'<tr class="p-e" data-ptweede="{a.id}">' in pagina
+    assert pagina.count('data-pvn="2" data-p="dienstnaam"') == 14  # 2 medewerkers x 7 dagen
+
+
+def test_gebruiker_ziet_tweede_dienst_maar_kan_niets_wijzigen(app, client, rooster, klaar):
+    from .conftest import login
+
+    a = rooster["a"]
+    planner = app.test_client()
+    login(planner, "beheerder")
+    cel(planner, a, MAANDAG, "code", "17/3")
+    gebruiker = db.session.get(Gebruiker, klaar["gebruiker"].id)
+    gebruiker.medewerker_id = a.id
+    db.session.commit()
+    login(client, "collega")
+    pagina = client.get("/week/2026/10").data.decode()
+    assert "VW Avond" in pagina and "BHV" in pagina and "code-paneel" not in pagina
+    assert cel(client, a, MAANDAG, "code", "4").status_code in (302, 403)
+    assert set(diensten(a, MAANDAG)) == {1, 2}
+
+
+def test_mijn_rooster_toont_beide_diensten(app, client, rooster, klaar):
+    from app.services import klok
+
+    from .conftest import login
+
+    a = rooster["a"]
+    vandaag = klok.vandaag()
+    planner = app.test_client()
+    login(planner, "beheerder")
+    cel(planner, a, vandaag, "code", "17/3")
+    gebruiker = db.session.get(Gebruiker, klaar["gebruiker"].id)
+    gebruiker.medewerker_id = a.id
+    db.session.commit()
+    login(client, "collega")
+    pagina = client.get("/mijn").data.decode()
+    vandaag_blok = pagina.split('data-blok="vandaag"')[1].split("</section>")[0]
+    assert "BHV" in vandaag_blok and "VW Avond" in vandaag_blok
+    assert "(2e dienst)" in pagina
+
+
+def test_week_kopieren_neemt_beide_diensten_mee(als_beheerder, rooster):
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cel(als_beheerder, a, date(2026, 3, 16), "code", "4/7")  # doelweek had al twee diensten
+    cel(als_beheerder, a, date(2026, 3, 17), "code", "4/7")
+    als_beheerder.post("/week/2026/10/kopieer", data={"naar": "2026-W12", "medewerker_id": ""})
+    kopie = diensten(a, date(2026, 3, 16))
+    assert (kopie[1].dienstnaam, kopie[2].dienstnaam) == ("BHV", "VW Avond")
+    assert kopie[2].uren_berekend == 8.0
+    assert diensten(a, date(2026, 3, 17)) == {}  # bron leeg: doel ook leeg (beide diensten)

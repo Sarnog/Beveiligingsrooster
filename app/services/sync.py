@@ -74,12 +74,17 @@ def _ruim_lege_dienst_op(dienst: Dienst) -> None:
 
 
 def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:
-    dienst = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum).first()
-    if dienst is None:
-        return  # geen dienst en ook geen afspraak (die houden we bij in de dienstregel)
-    gewenst = afspraak_voor(dienst, dagtekst_voor(datum))
-    _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, dienst.google_event_id)
-    _ruim_lege_dienst_op(dienst)
+    """Zet de afspraken van één dag goed: één afspraak per dienst (dus twee bij een 2e dienst).
+
+    Geen dienst betekent ook geen afspraak (die houden we bij in de dienstregel).
+    """
+    diensten = (Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum)
+                .order_by(Dienst.volgnummer).all())
+    dagtekst = dagtekst_voor(datum) if diensten else ""
+    for dienst in diensten:
+        gewenst = afspraak_voor(dienst, dagtekst)
+        _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, dienst.google_event_id)
+        _ruim_lege_dienst_op(dienst)
 
 
 def _privé(afspraak: dict) -> dict:

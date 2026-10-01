@@ -244,7 +244,9 @@ def test_printen_vanaf_telefoon_een_a4_liggend(server, browser, sessies):
     context, pagina = nieuwe_pagina(browser, "390x844", sessies["collega"])
     pagina.goto(server.url + "/week")
     pagina.emulate_media(media="print")
-    assert pagina.locator(".rooster").is_visible()
+    # Bij printen: de printtabel (papieren rooster), niet het schermrooster of de telefoonweergave
+    assert pagina.locator(".print-tabel").is_visible()
+    assert not pagina.locator(".rooster").is_visible()
     assert not pagina.locator(".week-mobiel").is_visible()
     pdf = pagina.pdf(prefer_css_page_size=True, print_background=True)
     pagina_aantal = len(re.findall(rb"/Type\s*/Page[^s]", pdf))

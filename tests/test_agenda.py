@@ -420,3 +420,44 @@ def test_klant_met_echte_bibliotheek(app, tmp_path):
     klant = google_agenda.klant()
     assert isinstance(klant, google_agenda.AgendaKlant)
     assert klant.service._http.http.timeout == google_agenda.TIMEOUT
+
+
+# ---------- Twee diensten op één dag (1.4.0) ----------
+
+def test_twee_diensten_geven_twee_afspraken(app, gekoppeld, nep):
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "17/3")])
+    assert SyncTaak.query.count() == 1  # één taak voor de dag
+    wachtrij_nu_uitvoeren()
+    assert sorted(a["summary"] for a in afspraken(nep)) == ["BHV", "VW Avond"]
+    ids = {d.volgnummer: d.google_event_id for d in Dienst.query.all()}
+    assert ids[1] and ids[2] and ids[1] != ids[2]  # eigen afspraak per dienst
+    # Tweede dienst weg: alleen die afspraak verdwijnt
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "17")])
+    wachtrij_nu_uitvoeren()
+    assert [a["summary"] for a in afspraken(nep)] == ["BHV"]
+    assert [d.volgnummer for d in Dienst.query.all()] == [1]
+
+
+def test_ics_feed_met_twee_diensten(app, gekoppeld):
+    from app.services.ics import maak_feed
+
+    vandaag = date.today()
+    wijzig_cellen([Wijziging(gekoppeld.id, vandaag, "code", "17/3")])
+    tekst = maak_feed(db.session.get(Medewerker, gekoppeld.id))
+    assert tekst.count("BEGIN:VEVENT") == 2
+    assert tekst.index("SUMMARY:BHV") < tekst.index("SUMMARY:VW Avond")  # op volgorde
+    uids = {d.id for d in Dienst.query.all()}
+    for dienst_id in uids:
+        assert f"UID:dienst-{dienst_id}@beveiligingsrooster" in tekst
+
+
+def test_gewiste_tweede_dienst_met_afspraak_wordt_niet_meer_getoond(app, gekoppeld, nep):
+    from app.services.weekrooster import week_gegevens
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "17/3")])
+    wachtrij_nu_uitvoeren()
+    bijgewerkt, _ = wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "17")])
+    assert Dienst.query.count() == 2  # lege dienst 2 wacht nog op het weghalen van de afspraak
+    assert bijgewerkt[f"{gekoppeld.id}|{MAANDAG.isoformat()}"]["code"] == "17"
+    rij = week_gegevens(2026, 10)["rijen"][0]
+    assert not rij.heeft_tweede and rij.dagen[0]["tweede"] is None

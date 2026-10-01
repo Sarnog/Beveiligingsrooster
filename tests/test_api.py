@@ -235,9 +235,10 @@ def test_mijn_rooster(app, rooster):
     assert data["van"] == "2026-03-04" and data["tot"] == "2026-04-28"  # standaard 8 weken
     assert [d["datum"] for d in data["diensten"]] == ["2026-03-04", "2026-03-06"]
     eerste = data["diensten"][0]
-    assert eerste == {"datum": "2026-03-04", "code": 4, "dienstnaam": "VW Vroeg", "begin": "07:15",
-                      "eind": "15:45", "uren": 8.0, "opmerking": "Locatie A", "opmerking_begin": None,
-                      "opmerking_eind": None, "kleur_achtergrond": "#FF0000", "kleur_tekst": "#FFFFFF"}
+    assert eerste == {"datum": "2026-03-04", "volgnummer": 1, "code": 4, "dienstnaam": "VW Vroeg",
+                      "begin": "07:15", "eind": "15:45", "uren": 8.0, "opmerking": "Locatie A",
+                      "opmerking_begin": None, "opmerking_eind": None,
+                      "kleur_achtergrond": "#FF0000", "kleur_tekst": "#FFFFFF"}
     data = client.get("/api/v1/mijn-rooster?van=2026-05-01&tot=2026-05-31", headers=bearer(token)).json
     assert [d["datum"] for d in data["diensten"]] == ["2026-05-13"]
 
@@ -303,3 +304,23 @@ def test_openapi_beschrijft_alle_eindpunten(app):
     routes = {re.sub(r"<(?:int:)?(\w+)>", r"{\1}", r.rule.removeprefix("/api/v1"))
               for r in app.url_map.iter_rules() if r.endpoint.startswith("api_v1.")}
     assert beschreven == routes
+
+
+def test_tweede_dienst_in_de_api(app, rooster):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(rooster["mw"].id, VANDAAG, "code", "4/3")])
+    token = maak_token(app.test_client())
+    client = app.test_client()
+    data = client.get("/api/v1/mijn-rooster", headers=bearer(token)).json
+    vandaag = [(d["volgnummer"], d["dienstnaam"]) for d in data["diensten"]
+               if d["datum"] == VANDAAG.isoformat()]
+    assert vandaag == [(1, "VW Vroeg"), (2, "VW Avond")]
+    jaar, week, dag = VANDAAG.isocalendar()
+    data = client.get(f"/api/v1/week/{jaar}/{week}", headers=bearer(token)).json
+    eerste = data["medewerkers"][0]
+    assert eerste["dagen"][dag - 1]["volgnummer"] == 1
+    assert eerste["tweede_diensten"][dag - 1]["dienstnaam"] == "VW Avond"
+    assert eerste["tweede_diensten"][dag - 1]["volgnummer"] == 2
+    assert [d for i, d in enumerate(eerste["tweede_diensten"]) if i != dag - 1] == [None] * 6
+    assert eerste["weektotaal"] == 24.0  # 8 + 8 (andere dag) + 8 (dienst 2)
