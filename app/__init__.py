@@ -198,12 +198,17 @@ def _registreer_controles(app: Flask) -> None:
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            "script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
+            "form-action 'self'",
         )
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # HSTS alleen als de app via HTTPS draait (Secure-cookies aan); anders sluit je
+        # jezelf buiten op een LAN-adres zonder certificaat
+        if app.config.get("SESSION_COOKIE_SECURE"):
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
 
         # Cache: pagina's en API-antwoorden nooit bewaren (ook niet door een proxy).
         # Scripts/CSS met versienummer (?v=...) mogen lang bewaard worden: bij een nieuwe
