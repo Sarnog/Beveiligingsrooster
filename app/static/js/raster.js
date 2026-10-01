@@ -23,7 +23,7 @@
 
   // Versie van dit script. Moet gelijk zijn aan VERSIE in app/__init__.py
   // (een test in tests/test_rooster.py controleert dat).
-  var SCRIPT_VERSIE = "1.1.2";
+  var SCRIPT_VERSIE = "1.2.0";
 
   var houder = document.querySelector("[data-api-cellen]");
   if (!houder) return;
