@@ -80,6 +80,7 @@ def maak_backup(label: str = "") -> str:
         if os.path.exists(tijdelijk):
             os.remove(tijdelijk)
         raise
+    log.debug("Back-up gemaakt: %s (%s bytes)", naam, os.path.getsize(doel))
     return doel
 
 
@@ -220,6 +221,7 @@ def zet_terug(pad: str) -> str:
     import flask_migrate
 
     revisie = controleer_backupbestand(pad)
+    log.debug("Terugzetten van %s (databaseversie %s)", os.path.basename(pad), revisie)
     _controleer_revisie(revisie)
     veiligheid = maak_backup("voor-terugzetten")
     _kopieer_naar_live(pad)
@@ -236,4 +238,6 @@ def zet_terug(pad: str) -> str:
 
     instellingen.schrijf("sessie_generatie", secrets.token_hex(8))
     db.session.commit()
+    log.info("Back-up %s teruggezet; vorige stand in %s", os.path.basename(pad),
+             os.path.basename(veiligheid))
     return os.path.basename(veiligheid)

@@ -18,6 +18,7 @@ gebeuren, daarna pas definitief importeren (importeer).
 Wachtwoorden en rechten uit de bladen 'Beveiliging' en 'Rechten' worden bewust NIET gelezen.
 """
 
+import logging
 import os
 import re
 import time as _time
@@ -43,6 +44,7 @@ DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
 CODE_KOLOMMEN = list(range(29, 36))  # AC..AI
 MAX_BLOKKEN = 30
 UPLOAD_BEWAREN_SECONDEN = 24 * 3600
+log = logging.getLogger(__name__)
 
 
 class ImportFout(Exception):
@@ -299,6 +301,9 @@ def lees_bestand(pad: str) -> ImportPlan:
         plan.waarschuwingen.append(
             "Dubbele diensten (zelfde medewerker en dag staan er meer dan eens in): "
             + "; ".join(dubbel) + ". Pas het Excel-bestand aan; zo kan het niet geïmporteerd worden.")
+    log.debug("Excel gelezen: jaar %s, %s medewerkers, %s codes, %s diensten, %s weken, "
+              "%s waarschuwingen", plan.jaar, len(plan.medewerkers), len(plan.codes),
+              len(plan.diensten), len(plan.weken), len(plan.waarschuwingen))
     return plan
 
 
@@ -444,6 +449,7 @@ def importeer(plan: ImportPlan) -> dict:
     # Gekoppelde agenda's gelijk maken aan het nieuwe rooster
     for medewerker in medewerkers:
         sync_planning.plan_volledig(medewerker)
+    log.info("Excel-import klaar: %s", resultaat)
     return resultaat
 
 

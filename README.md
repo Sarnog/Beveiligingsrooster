@@ -20,8 +20,9 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 7. [Bijwerken](#bijwerken)
 8. [Back-ups en terugzetten](#back-ups-en-terugzetten)
 9. [Bereikbaarheid en HTTPS](#bereikbaarheid-en-https)
-10. [Veelgestelde problemen](#veelgestelde-problemen)
-11. [Ontwikkelen](#ontwikkelen)
+10. [Debuglog](#debuglog)
+11. [Veelgestelde problemen](#veelgestelde-problemen)
+12. [Ontwikkelen](#ontwikkelen)
 
 ---
 
@@ -58,6 +59,7 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
   - `backups/` bevat de nachtelijke back-ups;
   - `secret_key` wordt automatisch aangemaakt;
   - `google-service-account.json` is het Google-sleutelbestand (alleen als je de agenda-koppeling gebruikt);
+  - `logs/debug.log` is de debuglog (alleen met `DEBUG_LOG=1`, zie [Debuglog](#debuglog));
   - `import/` bevat tijdelijk een geüpload Excel-bestand (wordt na de import, of na een dag, opgeruimd).
 
   Een back-up van deze map (of van de hele LXC met Proxmox) is dus genoeg.
@@ -130,6 +132,8 @@ services:
       PROXY_VERTROUWEN: ${PROXY_VERTROUWEN:-0}  # 1 als er een reverse proxy/tunnel voor staat
       SECRET_KEY: ${SECRET_KEY:-}               # leeg = automatisch aangemaakt in ./data
       SESSIE_UREN: ${SESSIE_UREN:-12}
+      LOG_NIVEAU: ${LOG_NIVEAU:-INFO}           # DEBUG voor meer details in 'docker compose logs'
+      DEBUG_LOG: ${DEBUG_LOG:-0}                # 1 = alles ook naar ./data/logs/debug.log
     volumes:
       - ./data:/data
     healthcheck:
@@ -148,6 +152,8 @@ services:
       TZ: Europe/Amsterdam
       BASE_URL: ${BASE_URL:-}
       SECRET_KEY: ${SECRET_KEY:-}
+      LOG_NIVEAU: ${LOG_NIVEAU:-INFO}           # DEBUG voor meer details in 'docker compose logs'
+      DEBUG_LOG: ${DEBUG_LOG:-0}                # 1 = alles ook naar ./data/logs/debug.log
     volumes:
       - ./data:/data
     depends_on:
@@ -165,6 +171,8 @@ services:
 | `PROXY_VERTROUWEN` | `0` | `1` achter Caddy, Cloudflare Tunnel of Tailscale |
 | `SESSIE_UREN` | `12` | Hoe lang je ingelogd blijft |
 | `SECRET_KEY` | leeg | Leeg laten; wordt dan bewaard in `data/secret_key` |
+| `LOG_NIVEAU` | `INFO` | Wat er in `docker compose logs` komt: `DEBUG`, `INFO`, `WARNING` of `ERROR` |
+| `DEBUG_LOG` | `0` | `1` = debuglog aan, zie [Debuglog](#debuglog) |
 | `COOKIE_SECURE` | volgt `BASE_URL` | `1` = sessiecookie alleen via HTTPS, `0` = ook via HTTP. Standaard aan als `BASE_URL` met `https://` begint |
 | `TZ` | `Europe/Amsterdam` | Standaardtijdzone. De instelling *Tijdzone* in Beheer → Instellingen gaat voor; die geldt voor de klok, de ICS-feed en Google Agenda |
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `2` / `4` | Aantal webserverprocessen en threads per proces. Ruim genoeg voor 10–15 collega's |
@@ -295,6 +303,29 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 - **Achter een reverse proxy of tunnel** ziet de app zonder `PROXY_VERTROUWEN=1` het adres van de proxy in plaats van dat van de bezoeker. Dan telt de blokkade voor het hele team samen. De app zet een waarschuwing in de log als er een `X-Forwarded-For`-header binnenkomt terwijl `PROXY_VERTROUWEN` uit staat.
 - **Zet `PROXY_VERTROUWEN=1` alleen als er écht een proxy voor staat.** Anders kan een bezoeker zelf een `X-Forwarded-For`-header meesturen en zo de blokkade omzeilen.
 - De geheime tokens van de ICS-feed en de deellink worden in de toegangslog vervangen door `***`.
+
+## Debuglog
+
+Bij een probleem dat je wilt uitzoeken (bijvoorbeeld de agenda-koppeling of een import):
+
+1. Zet in `.env`: `DEBUG_LOG=1` en start opnieuw met `docker compose up -d`.
+2. Doe wat het probleem geeft.
+3. Bekijk de log in *Beheer → Debuglog* (laatste 500 regels en een downloadknop), of op de server:
+   ```sh
+   tail -f data/logs/debug.log
+   ```
+4. Zet hem daarna weer uit (`DEBUG_LOG=0`, `docker compose up -d`).
+
+Wat erin staat: elk verzoek (methode, pad, status, duur, gebruiker), inlogpogingen met de reden van
+mislukken, opslaan van het rooster (aantal wijzigingen, celfouten, conflicten), elke agenda-taak en
+elke aanroep naar Google, back-ups, terugzetten, de Excel-import en alle waarschuwingen en fouten.
+Website en worker schrijven samen in hetzelfde bestand; het procesnummer staat tussen `[ ]`.
+
+Wat er **niet** in staat: wachtwoorden, wachtwoord-hashes, SQL, en de geheime tokens van de ICS-feed
+en de deellink (die worden `***`). Bij 5 MB wordt het bestand vervangen; `debug.log.1` t/m `.3` blijven
+bewaard (maximaal ongeveer 20 MB).
+
+Met `LOG_NIVEAU=DEBUG` komen dezelfde details ook in `docker compose logs`.
 
 ## Veelgestelde problemen
 

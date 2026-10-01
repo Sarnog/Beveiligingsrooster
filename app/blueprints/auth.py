@@ -104,6 +104,7 @@ def login():
         ip = _client_ip()
 
         if _is_geblokkeerd(gebruikersnaam, ip):
+            log.debug("Login geblokkeerd: %r vanaf %s", gebruikersnaam, ip)
             return _geblokkeerd(gebruikersnaam, ip)
 
         gebruiker = None if te_lang else \
@@ -115,6 +116,10 @@ def login():
         db.session.add(LoginPoging(gebruikersnaam=gebruikersnaam, ip=ip, gelukt=klopt))
 
         if not klopt:
+            # Nooit het wachtwoord loggen, alleen de reden
+            reden = "onbekende gebruiker" if gebruiker is None else (
+                "account niet actief" if not gebruiker.actief else "verkeerd wachtwoord")
+            log.debug("Login mislukt: %r vanaf %s (%s)", gebruikersnaam, ip, reden)
             logboek.log("Login mislukt", f"IP {ip}", gebruiker=gebruikersnaam, rol="")
             db.session.commit()
             if _ip_geblokkeerd(ip):
@@ -123,6 +128,7 @@ def login():
             return render_template("auth/login.html"), 401
 
         # Gelukt: hash eventueel vernieuwen, tijdstip bijhouden, loggen
+        log.debug("Login gelukt: %r (%s) vanaf %s", gebruiker.gebruikersnaam, gebruiker.rol, ip)
         if moet_opnieuw_hashen(gebruiker.wachtwoord_hash):
             gebruiker.wachtwoord_hash = hash_wachtwoord(wachtwoord)
         gebruiker.laatst_ingelogd = klok.nu()

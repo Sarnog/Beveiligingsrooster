@@ -8,6 +8,7 @@ Een 'cel' is één veld van één medewerker op één dag:
 Daarnaast is er per dag de 'dagopmerking' (rij 3 van het Excel-blad).
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -29,6 +30,7 @@ VELD_NAMEN = {
     "dienstnaam": "dienstnaam", "uren": "uren",
 }
 MAX_OPMERKING = 120
+log = logging.getLogger(__name__)
 
 # Velden van een dienst met hun 'lege' waarde (gebruikt bij week kopiëren)
 LEGE_DIENST = {
@@ -461,8 +463,15 @@ def verwerk_rooster(wijzigingen: list[Wijziging], dag_wijzigingen=(), opslaan: b
             db.session.commit()
         else:
             db.session.rollback()  # alleen een voorbeeld: niets bewaren
+        log.debug("Rooster %s: %s celwijzigingen, %s dagopmerkingen, %s geraakt, %s fouten",
+                  "opgeslagen" if opslaan else "voorbeeld", len(wijzigingen), len(dag_wijzigingen),
+                  len(geraakt), len(fouten))
+        for fout in fouten:
+            log.debug("Celfout: medewerker %s, %s, %s: %s", fout["mw"], fout["datum"], fout["veld"],
+                      fout["melding"])
     except VersieConflict:
         db.session.rollback()
+        log.debug("Versieconflict bij %s wijzigingen (opslaan=%s)", len(wijzigingen), opslaan)
         raise
     except IntegrityError as fout:  # tegelijk door een ander aangemaakt
         db.session.rollback()

@@ -24,6 +24,8 @@ services:
       PROXY_VERTROUWEN: ${PROXY_VERTROUWEN:-0}  # 1 als er een reverse proxy/tunnel voor staat
       SECRET_KEY: ${SECRET_KEY:-}               # leeg = automatisch aangemaakt in ./data
       SESSIE_UREN: ${SESSIE_UREN:-12}
+      LOG_NIVEAU: ${LOG_NIVEAU:-INFO}           # DEBUG voor meer details in 'docker compose logs'
+      DEBUG_LOG: ${DEBUG_LOG:-0}                # 1 = alles ook naar ./data/logs/debug.log
     volumes:
       - ./data:/data
     healthcheck:
@@ -42,6 +44,8 @@ services:
       TZ: Europe/Amsterdam
       BASE_URL: ${BASE_URL:-}
       SECRET_KEY: ${SECRET_KEY:-}
+      LOG_NIVEAU: ${LOG_NIVEAU:-INFO}           # DEBUG voor meer details in 'docker compose logs'
+      DEBUG_LOG: ${DEBUG_LOG:-0}                # 1 = alles ook naar ./data/logs/debug.log
     volumes:
       - ./data:/data
     depends_on:

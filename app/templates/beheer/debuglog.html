@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titel %}Debuglog{% endblock %}
+{% block inhoud %}
+<section class="kaart">
+  <h1>Debuglog</h1>
+  <p>Console-logniveau: <strong>{{ niveau }}</strong>. Debuglog-bestand: <strong>{{ 'aan' if aan else 'uit' }}</strong>.</p>
+  {% if aan %}
+    <p class="hulp">Alle meldingen van de website en de worker, ook de details (DEBUG), staan in <code>data/logs/debug.log</code>
+      ({{ (grootte / 1024)|round(0)|int }} kB). Bij 5 MB wordt het bestand vervangen; de laatste 3 oude blijven bewaard.
+      Geheime links en wachtwoorden staan er niet in.</p>
+    <p><a class="knop" href="{{ url_for('beheer.debuglog_download') }}">Download debug.log</a></p>
+    <h2>Laatste {{ aantal }} regels (nieuwste onderaan)</h2>
+    {% if regels %}
+      <pre class="debuglog">{% for regel in regels %}{{ regel }}
+{% endfor %}</pre>
+    {% else %}
+      <p>Er staat nog niets in de debuglog.</p>
+    {% endif %}
+  {% else %}
+    <p>De debuglog staat uit. Zet hem aan bij een probleem dat je wilt onderzoeken:</p>
+    <ol>
+      <li>Zet in <code>.env</code> (naast <code>docker-compose.yml</code>): <code>DEBUG_LOG=1</code></li>
+      <li>Herstart: <code>docker compose up -d</code></li>
+      <li>Doe wat het probleem geeft en kom hier terug.</li>
+    </ol>
+    <p class="hulp">Zet hem daarna weer uit (<code>DEBUG_LOG=0</code>). Met <code>LOG_NIVEAU=DEBUG</code> komen de details
+      ook in <code>docker compose logs</code>.</p>
+  {% endif %}
+</section>
+{% endblock %}

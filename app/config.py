@@ -58,4 +58,9 @@ class Config:
         # Maximale uploadgrootte (Excel-import, back-up terugzetten): 50 MB
         self.MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 
+        # Logging (zie app/debuglog.py): niveau van de console en het debuglog-bestand
+        niveau = os.environ.get("LOG_NIVEAU", "INFO").strip().upper()
+        self.LOG_NIVEAU = niveau if niveau in ("DEBUG", "INFO", "WARNING", "ERROR") else "INFO"
+        self.DEBUG_LOG = _bool(os.environ.get("DEBUG_LOG"))
+
         self.TESTING = False

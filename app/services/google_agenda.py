@@ -8,6 +8,7 @@ vervangen door een nep-versie, zodat er nooit echt met Google gepraat wordt.
 """
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -22,6 +23,7 @@ BESTANDSNAAM = "google-service-account.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 BRON = "beveiligingsrooster"  # markering in extendedProperties.private
 TIMEOUT = 30  # seconden
+log = logging.getLogger(__name__)
 BEHEERD_TEKST = "Automatisch beheerd door Beveiligingsrooster – niet handmatig wijzigen"
 
 
@@ -135,10 +137,16 @@ class AgendaKlant:
         self.service = service
 
     def _voer_uit(self, verzoek):
+        naam = getattr(verzoek, "methodId", type(verzoek).__name__)
         try:
-            return verzoek.execute()
+            antwoord = verzoek.execute()
         except Exception as fout:  # wordt vertaald
-            raise _vertaal_fout(fout) from fout
+            vertaald = _vertaal_fout(fout)
+            log.debug("Google %s mislukt: %s (status %s, tijdelijk %s)", naam, vertaald,
+                      vertaald.status, vertaald.tijdelijk)
+            raise vertaald from fout
+        log.debug("Google %s gelukt", naam)
+        return antwoord
 
     def maak_agenda(self, titel: str, tijdzone: str) -> str:
         agenda = self._voer_uit(self.service.calendars().insert(

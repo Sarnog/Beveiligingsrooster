@@ -6,8 +6,9 @@ controles die bij elk verzoek draaien (setup-wizard, rechten, security-headers).
 
 import logging
 import os
+import time
 
-from flask import Flask, abort, redirect, request, url_for
+from flask import Flask, abort, g, redirect, request, url_for
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -15,6 +16,7 @@ from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
 VERSIE = "1.2.0"
+verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
 SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen"}
@@ -52,7 +54,9 @@ def create_app(config: Config | None = None) -> Flask:
     login_manager.login_message = "Log in om verder te gaan."
     login_manager.login_message_category = "info"
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    from . import debuglog
+
+    debuglog.stel_in(app)
 
     _registreer_blueprints(app)
     _registreer_controles(app)
@@ -165,6 +169,22 @@ def _registreer_controles(app: Flask) -> None:
             if not current_user.is_beheerder:
                 abort(403)
         return None
+
+    def start_tijd():
+        g.start_tijd = time.perf_counter()
+
+    # Als eerste, zodat ook verzoeken die de toegangscontrole doorstuurt een duur krijgen
+    app.before_request_funcs.setdefault(None, []).insert(0, start_tijd)
+
+    @app.after_request
+    def log_verzoek(response):
+        """Debugregel per verzoek (pad met gemaskeerde tokens, nooit formulierinhoud)."""
+        if request.endpoint != "static" and verzoeklog.isEnabledFor(logging.DEBUG):
+            duur = (time.perf_counter() - g.get("start_tijd", time.perf_counter())) * 1000
+            wie = current_user.gebruikersnaam if current_user.is_authenticated else "-"
+            verzoeklog.debug("%s %s -> %s (%.0f ms, %s, %s)", request.method, request.path,
+                             response.status_code, duur, wie, request.remote_addr)
+        return response
 
     @login_manager.unauthorized_handler
     def niet_ingelogd():

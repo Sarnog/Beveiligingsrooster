@@ -16,4 +16,6 @@ accesslog = "-"
 # Geheime tokens van de ICS-feed en de deellink niet in de toegangslog (zie app/toegangslog.py)
 logger_class = "app.toegangslog.ToegangsLogger"
 errorlog = "-"
-loglevel = "info"
+# Zelfde niveau als de app (LOG_NIVEAU: DEBUG, INFO, WARNING of ERROR)
+_niveau = os.environ.get("LOG_NIVEAU", "INFO").strip().lower()
+loglevel = _niveau if _niveau in ("debug", "info", "warning", "error") else "info"

@@ -230,12 +230,15 @@ def verwerk_wachtrij(klant_maker=None) -> int:
         taak = _claim(taak_id)
         if taak is None:
             continue
+        log.debug("Agenda-taak %s gestart: %s, medewerker %s, datum %s, poging %s", taak_id,
+                  taak.soort, taak.medewerker_id, taak.datum, taak.pogingen + 1)
         try:
             _voer_uit(klant, taak)
             # Alleen de eigen (geclaimde) taak weg; een nieuwe wachtende taak blijft staan
             SyncTaak.query.filter_by(id=taak_id).delete(synchronize_session=False)
             db.session.commit()
             verwerkt += 1
+            log.debug("Agenda-taak %s klaar", taak_id)
         except Exception as fout:  # één taak mag de wachtrij niet stilleggen
             db.session.rollback()
             if not isinstance(fout, AgendaFout):
@@ -243,6 +246,7 @@ def verwerk_wachtrij(klant_maker=None) -> int:
                 fout = AgendaFout(f"Onverwachte fout: {fout}", tijdelijk=True)
             taak = db.session.get(SyncTaak, taak_id)  # na de rollback opnieuw ophalen
             if taak is None:
+                log.debug("Agenda-taak %s is intussen verwijderd", taak_id)
                 continue  # intussen verwijderd
             _verwerk_fout(taak, fout)
             db.session.commit()

@@ -80,6 +80,15 @@ def _stap_backup(planning: Planning, nu: datetime) -> None:
 def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
     """Voer één ronde van de worker uit (los aan te roepen in tests)."""
     nu = nu or klok.nu()
+    try:
+        from flask import current_app
+
+        from . import debuglog
+
+        if debuglog.roteer(current_app.config["DATA_MAP"]):
+            log.info("Debuglog geroteerd")
+    except Exception:  # loggen mag de worker nooit stilleggen
+        log.exception("Debuglog roteren mislukt")
 
     # 1. Agenda-synchronisatie
     try:
@@ -109,7 +118,8 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
 def main() -> None:
     app = create_app()
     planning = Planning()
-    log.info("Worker gestart")
+    log.info("Worker gestart (log: %s%s)", app.config["LOG_NIVEAU"],
+             ", debuglog aan" if app.config["DEBUG_LOG"] else "")
     with app.app_context():
         while True:
             try:
