@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 
 from ..extensions import db
 from ..models import Dagopmerking, Dienst, Dienstcode, Medewerker, OpmerkingKleurregel
@@ -178,7 +179,9 @@ def medewerkers_voor_periode(van: date, tot: date) -> list[Medewerker]:
         mid for (mid,) in db.session.query(Dienst.medewerker_id)
         .filter(Dienst.datum >= van, Dienst.datum <= tot).distinct()
     }
-    alle = Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()
+    # Contracturen in één keer meeladen (anders één query per medewerker)
+    alle = (Medewerker.query.options(selectinload(Medewerker.contracturen))
+            .order_by(Medewerker.volgorde, Medewerker.naam).all())
     return [m for m in alle if m.is_zichtbaar_op(van) or m.id in met_diensten]
 
 
@@ -186,7 +189,8 @@ def week_gegevens(jaar: int, week: int) -> dict:
     """Alles voor de weekpagina: dagen, dagopmerkingen en per medewerker de 7 dagen."""
     dagen = dagen_van_week(jaar, week)
     medewerkers = medewerkers_voor_periode(dagen[0], dagen[-1])
-    diensten = Dienst.query.filter(Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all()
+    diensten = (Dienst.query.options(joinedload(Dienst.dienstcode))
+                .filter(Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all())
     per_sleutel = {(d.medewerker_id, d.datum): d for d in diensten}
     regels = kleurregels()
 
