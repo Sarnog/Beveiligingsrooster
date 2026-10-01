@@ -219,6 +219,7 @@ class ImportDienst:
 @dataclass
 class ImportPlan:
     jaar: int
+    jaar_in_bestand: int | None = None  # Kalender!E2 (ter controle)
     toeslag_zaterdag: float | None = None
     toeslag_zondag: float | None = None
     medewerkers: list[ImportMedewerker] = field(default_factory=list)
@@ -316,8 +317,61 @@ def controleer_zip(pad: str) -> None:
         raise ImportFout(f"Het bestand kan niet gelezen worden: {fout}") from fout
 
 
-def lees_bestand(pad: str) -> ImportPlan:
-    """Lees het Excel-bestand en maak een plan. Er wordt nog niets opgeslagen."""
+def _jaar_in_kalender(boek) -> int | None:
+    """Het jaar uit Kalender!E2 (of None als dat er niet is)."""
+    if "Kalender" not in boek.sheetnames:
+        return None
+    waarde = _getal(boek["Kalender"]["E2"].value)
+    return int(waarde) if waarde else None
+
+
+def controleer_bestand(pad: str) -> None:
+    """Snelle controle direct na het uploaden: is het een veilig, leesbaar rooster? (ImportFout)"""
+    import openpyxl
+
+    controleer_zip(pad)
+    try:
+        boek = openpyxl.load_workbook(pad, read_only=True, keep_vba=False)
+        bladen = boek.sheetnames
+        boek.close()
+    except Exception as fout:  # elk leesprobleem is een importfout
+        raise ImportFout(f"Het bestand kan niet gelezen worden: {fout}") from fout
+    if "Lijsten" not in bladen:
+        raise ImportFout("Dit lijkt geen rooster: het blad 'Lijsten' ontbreekt.")
+
+
+def jaar_uit_bestand(pad: str) -> int | None:
+    """Voorstel voor het jaar: Kalender!E2, als dat een geldig jaar is. Leest alleen dat blad."""
+    import openpyxl
+
+    try:
+        controleer_zip(pad)
+        boek = openpyxl.load_workbook(pad, data_only=True, read_only=True, keep_vba=False)
+        try:
+            jaar = _jaar_in_kalender(boek)
+        finally:
+            boek.close()
+    except Exception:  # alleen een voorstel; fouten meldt de droogloop
+        return None
+    return jaar if jaar is not None and MIN_JAAR <= jaar <= MAX_JAAR else None
+
+
+def jaar_uit_naam(bestandsnaam: str) -> int | None:
+    """Voorstel voor het jaar uit de bestandsnaam, bijv. 'Rooster 2027.xlsm' -> 2027."""
+    for kandidaat in re.findall(r"(?<!\d)(\d{4})(?!\d)", bestandsnaam or ""):
+        if MIN_JAAR <= int(kandidaat) <= MAX_JAAR:
+            return int(kandidaat)
+    return None
+
+
+def lees_bestand(pad: str, jaar: int | None = None) -> ImportPlan:
+    """Lees het Excel-bestand en maak een plan voor het gekozen jaar. Er wordt nog niets opgeslagen.
+
+    jaar: het jaar dat de beheerder kiest ('Rooster voor jaar'). Zonder keuze geldt
+    Kalender!E2; staat dat er ook niet, dan volgt een ImportFout (nooit stil het
+    huidige jaar). Wijkt het gekozen jaar af van E2 of van de datums in de weekbladen,
+    dan komt er een waarschuwing; weekbladen van een ander jaar worden overgeslagen.
+    """
     import openpyxl
 
     controleer_zip(pad)
@@ -329,13 +383,23 @@ def lees_bestand(pad: str) -> ImportPlan:
     if "Lijsten" not in boek.sheetnames:
         raise ImportFout("Dit lijkt geen oud rooster: het blad 'Lijsten' ontbreekt.")
 
-    jaar = None
-    if "Kalender" in boek.sheetnames:
-        jaar = int(_getal(boek["Kalender"]["E2"].value) or 0) or None
-    if jaar is not None and not MIN_JAAR <= jaar <= MAX_JAAR:
-        raise ImportFout(f"Het jaar in Kalender!E2 ({jaar}) is ongeldig; verwacht een jaar tussen "
-                         f"{MIN_JAAR} en {MAX_JAAR}.")
-    plan = ImportPlan(jaar=jaar or klok.vandaag().year)
+    in_bestand = _jaar_in_kalender(boek)
+    geldig_in_bestand = in_bestand is not None and MIN_JAAR <= in_bestand <= MAX_JAAR
+    if jaar is None:
+        if in_bestand is not None and not geldig_in_bestand:
+            raise ImportFout(f"Het jaar in Kalender!E2 ({in_bestand}) is ongeldig; verwacht een jaar "
+                             f"tussen {MIN_JAAR} en {MAX_JAAR}.")
+        if in_bestand is None:
+            raise ImportFout("Kies voor welk jaar dit rooster is (het bestand heeft geen jaar in "
+                             "Kalender!E2).")
+        jaar = in_bestand
+    if not MIN_JAAR <= jaar <= MAX_JAAR:
+        raise ImportFout(f"Kies een jaar tussen {MIN_JAAR} en {MAX_JAAR}.")
+    plan = ImportPlan(jaar=jaar, jaar_in_bestand=in_bestand)
+    if in_bestand is not None and in_bestand != jaar:
+        plan.waarschuwingen.append(
+            f"Let op: je importeert voor {jaar}, maar in het bestand (Kalender!E2) staat {in_bestand}. "
+            f"Weekbladen met datums uit een ander jaar worden overgeslagen.")
     _lees_lijsten(boek["Lijsten"], plan)
     _bepaal_koppelingen(plan)
     if "Vakanties" in boek.sheetnames:
@@ -344,7 +408,14 @@ def lees_bestand(pad: str) -> ImportPlan:
     weekbladen = sorted(
         (int(naam[1:]), naam) for naam in boek.sheetnames if re.fullmatch(r"W\d{1,2}", naam))
     for week, naam in weekbladen:
-        if week > aantal_weken(plan.jaar):
+        cel = boek[naam].cell(2, DAG_KOLOMMEN[0]).value
+        datum = None if _is_leeg(cel) else _datum(cel)
+        if datum is not None and datum.isocalendar()[0] != plan.jaar:
+            plan.waarschuwingen.append(
+                f"{naam} overgeslagen: de datums in het blad ({datum:%d-%m-%Y}) horen bij "
+                f"{datum.isocalendar()[0]}, niet bij {plan.jaar}.")
+            continue
+        if week < 1 or week > aantal_weken(plan.jaar):
             if _blad_heeft_diensten(boek[naam]):
                 plan.waarschuwingen.append(f"{naam} overgeslagen: {plan.jaar} heeft geen week {week}.")
             continue
@@ -432,7 +503,8 @@ def _blad_heeft_diensten(blad) -> bool:
 
 
 def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
-    maandag = _datum(blad.cell(2, DAG_KOLOMMEN[0]).value) or maandag_van_week(plan.jaar, week)
+    cel = blad.cell(2, DAG_KOLOMMEN[0]).value
+    maandag = (None if _is_leeg(cel) else _datum(cel)) or maandag_van_week(plan.jaar, week)
     if maandag.isocalendar()[:2] != (plan.jaar, week):
         plan.waarschuwingen.append(
             f"W{week}: datum in het blad ({maandag:%d-%m-%Y}) past niet bij week {week}; "

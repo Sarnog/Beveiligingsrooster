@@ -78,7 +78,6 @@ def test_h1_droogloop_toont_te_verwijderen_bestaande_diensten(app, mw):
 
 
 def test_h1_droogloopscherm_toont_verwijderde_diensten_per_medewerker(app, als_beheerder, tmp_path):
-    import io
 
     from .test_import_backup import maak_testbestand
 
@@ -91,9 +90,9 @@ def test_h1_droogloopscherm_toont_verwijderde_diensten_per_medewerker(app, als_b
     db.session.commit()
     pad = str(tmp_path / "oud.xlsx")
     maak_testbestand(pad)
-    with open(pad, "rb") as f:
-        als_beheerder.post("/beheer/importeren", data={"bestand": (io.BytesIO(f.read()), "x.xlsx")},
-                           content_type="multipart/form-data")
+    from .test_import_backup import upload
+
+    upload(als_beheerder, pad)
     pagina = als_beheerder.get("/beheer/importeren/voorbeeld").data.decode()
     rij = pagina.split("data-effect")[1].split("Medewerker Vijf B")[1].split("</tr>")[0]
     assert "<strong>2</strong>" in rij

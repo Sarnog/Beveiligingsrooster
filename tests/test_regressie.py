@@ -303,7 +303,6 @@ def test_h2_fout_halverwege_draait_alles_terug(app, mw, monkeypatch):
 
 
 def test_h2_droogloop_meldt_dubbele_diensten_en_scherm_geeft_nette_fout(app, als_beheerder, tmp_path):
-    import io
 
     import openpyxl
 
@@ -327,10 +326,11 @@ def test_h2_droogloop_meldt_dubbele_diensten_en_scherm_geeft_nette_fout(app, als
     plan = lees_bestand(pad)
     assert any("dubbel" in w.lower() for w in plan.waarschuwingen)
 
-    with open(pad, "rb") as f:
-        als_beheerder.post("/beheer/importeren", data={"bestand": (io.BytesIO(f.read()), "x.xlsx")},
-                           content_type="multipart/form-data")
-    antwoord = als_beheerder.post("/beheer/importeren/voorbeeld", data={"bevestig": "1"},
+    from .test_import_backup import keuzeformulier, upload
+
+    upload(als_beheerder, pad)
+    als_beheerder.get("/beheer/importeren/voorbeeld")
+    antwoord = als_beheerder.post("/beheer/importeren/voorbeeld", data=keuzeformulier(),
                                   follow_redirects=True)
     assert antwoord.status_code == 200
     assert "niet geïmporteerd" in antwoord.data.decode()
@@ -1395,14 +1395,15 @@ def test_import_jaar_buiten_bereik(app, klaar, tmp_path):
 
 def test_import_lange_dienstnaam_en_oude_toeslag_gelogd(app, mw):
     from app.models import Dienst
-    from app.services.excel_import import ImportMedewerker, ImportPlan, importeer
+    from app.services.excel_import import ImportKeuzes, ImportMedewerker, ImportPlan, importeer
 
     instellingen.schrijf("toeslag_zaterdag", "1.25")
     db.session.commit()
     plan = ImportPlan(jaar=2026, weken=[10], toeslag_zaterdag=1.5,
                       medewerkers=[ImportMedewerker("Medewerker A", "MA", None)],
                       diensten=[_import_dienst("Medewerker A", MAANDAG, dienstnaam="d" * 80)])
-    importeer(plan)
+    # Sinds 1.5.0 worden toeslagen alleen overgenomen als dat gekozen is (standaard: huidig jaar)
+    importeer(plan, ImportKeuzes(toeslagen=True))
     assert len(Dienst.query.one().dienstnaam_override) == 60
     regel = Logboek.query.filter_by(actie="Instelling gewijzigd", veld="toeslag_zaterdag").one()
     assert (regel.oude_waarde, regel.nieuwe_waarde) == ("1.25", "1.5")

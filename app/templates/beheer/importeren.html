@@ -2,35 +2,114 @@
 {% from "macros.html" import csrf, post_knop %}
 {% block titel %}Importeren uit Excel{% endblock %}
 {% block inhoud %}
-<h1>Importeren uit Excel (.xlsm)</h1>
-{% if not plan %}
+<h1>Importeren uit Excel</h1>
+{% if stap == "upload" %}
 <section class="kaart">
-  <p>Lees het oude roosterbestand in: medewerkers, contracturen, dienstcodes, toeslagen, vakanties en alle weken W1–W53 (diensten, tijden, opmerkingen, dagopmerkingen).</p>
+  <p>Lees een roosterbestand in: het oude Excel-rooster (.xlsm) of een export uit deze app (.xlsx). Medewerkers, contracturen, dienstcodes, toeslagen, vakanties en de weken W1–W53 (diensten, tijden, opmerkingen, dagopmerkingen).</p>
   <ul class="hulp">
-    <li>Eerst krijg je een <strong>voorbeeld</strong>; er wordt dan nog niets opgeslagen.</li>
+    <li>Je kiest daarna voor <strong>welk jaar</strong> het rooster is. Alleen dat jaar wordt gevuld; andere jaren blijven ongemoeid.</li>
+    <li>Eerst krijg je een <strong>voorbeeld</strong> met keuzes (alles, alleen bepaalde medewerkers of een periode, of alleen lege dagen aanvullen); er wordt dan nog niets opgeslagen.</li>
     <li>Wachtwoorden en rechten uit het Excel-bestand worden <strong>niet</strong> overgenomen.</li>
-    <li>Bestaande medewerkers (zelfde naam) en dienstcodes (zelfde nummer) worden hergebruikt. Zijn alleen de initialen gelijk, dan komt er een nieuwe medewerker. Diensten in de geïmporteerde weken worden overschreven.</li>
-    <li>De import gebeurt in één keer: gaat er iets mis, dan wordt er niets opgeslagen.</li>
+    <li>Bestaande medewerkers (zelfde naam) en dienstcodes (zelfde nummer) worden hergebruikt; bestaande dienstcodes worden nooit gewijzigd. Zijn alleen de initialen gelijk, dan komt er een nieuwe medewerker.</li>
+    <li>De import gebeurt in één keer: gaat er iets mis, dan wordt er niets opgeslagen. Vooraf wordt altijd een back-up gemaakt.</li>
     <li>Het bestand wordt na de import (of bij annuleren) direct verwijderd.</li>
   </ul>
   <form method="post" enctype="multipart/form-data" class="rij-formulier">
     {{ csrf() }}
     <label class="veld"><span>Excel-bestand</span><input type="file" name="bestand" accept=".xlsm,.xlsx" required></label>
-    <button class="knop primair" type="submit">Uploaden en controleren</button>
+    <label class="veld"><span>Rooster voor jaar</span><input type="number" name="jaar" min="1950" max="2150" inputmode="numeric" placeholder="volgende stap" class="klein">
+      <small>Mag je ook in de volgende stap kiezen.</small></label>
+    <button class="knop primair" type="submit">Uploaden</button>
   </form>
 </section>
+
+{% elif stap == "jaar" %}
+<section class="kaart" data-stap-jaar>
+  <h2>Voor welk jaar is dit rooster?</h2>
+  <p>Bestand: <strong>{{ bestandsnaam }}</strong></p>
+  <form method="post" action="{{ url_for('beheer.excel_import_jaar') }}" class="rij-formulier">
+    {{ csrf() }}
+    <label class="veld"><span>Rooster voor jaar *</span>
+      <input type="number" name="jaar" value="{{ voorstel or '' }}" min="{{ min_jaar }}" max="{{ max_jaar }}" inputmode="numeric" required autofocus>
+      <small>{% if voorstel %}Voorstel uit het bestand. Controleer het: alleen dit jaar wordt gevuld.{% else %}Het bestand noemt geen jaar; vul het zelf in.{% endif %}</small></label>
+    <button class="knop primair" type="submit">Verder naar het voorbeeld</button>
+  </form>
+  {{ post_knop(url_for('beheer.excel_import_annuleren'), 'Annuleren', 'knop') }}
+</section>
+
 {% else %}
+{% set t = effect.totaal %}
 <section class="kaart">
-  <h2>Voorbeeld (droogloop) – jaar {{ plan.jaar }}</h2>
+  <h2>Voorbeeld (droogloop) – rooster voor {{ plan.jaar }}</h2>
+  <p>Bestand: <strong>{{ bestandsnaam }}</strong>{% if plan.jaar_in_bestand %} · jaar in het bestand (Kalender!E2): {{ plan.jaar_in_bestand }}{% endif %}
+    · <a href="{{ url_for('beheer.excel_import') }}">ander jaar kiezen</a></p>
   <ul>
-    <li><strong>{{ plan.medewerkers|length }}</strong> medewerkers, <strong>{{ plan.codes|length }}</strong> dienstcodes, <strong>{{ plan.vakanties|length }}</strong> vakanties</li>
+    <li><strong>{{ plan.medewerkers|length }}</strong> medewerkers, <strong>{{ plan.codes|length }}</strong> dienstcodes, <strong>{{ plan.vakanties|length }}</strong> vakanties in het bestand</li>
     <li><strong>{{ plan.diensten|length }}</strong> diensten in <strong>{{ plan.weken|length }}</strong> weken, waarvan <strong>{{ plan.afwijkend }}</strong> met afwijkende (handmatige) tijden</li>
-    <li>Toeslagen: zaterdag {{ plan.toeslag_zaterdag or '–' }}, zondag {{ plan.toeslag_zondag or '–' }}</li>
   </ul>
   {% if plan.waarschuwingen %}
   <h3>Waarschuwingen</h3>
-  <ul class="hulp">{% for w in plan.waarschuwingen %}<li>{{ w }}</li>{% endfor %}</ul>
+  <ul class="hulp" data-waarschuwingen>{% for w in plan.waarschuwingen %}<li>{{ w }}</li>{% endfor %}</ul>
   {% endif %}
+</section>
+
+<form method="post" class="kaart" data-import-keuzes>
+  {{ csrf() }}
+  <h2>Wat wordt er overschreven?</h2>
+  <fieldset>
+    <legend>Overschrijfmodus</legend>
+    {% for waarde, tekst in modi.items() %}
+    <label class="vink"><input type="radio" name="modus" value="{{ waarde }}"{% if keuzes.modus == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>
+    {% endfor %}
+    <p class="hulp">Alleen de weken die in het bestand staan worden geraakt. <em>Alles</em>: alle diensten van de medewerkers uit het bestand in die weken worden vervangen. <em>Gedeeltelijk</em>: alleen diensten die aan beide filters hieronder voldoen. <em>Alleen lege dagen aanvullen</em>: niets wordt overschreven; een dag met al een dienst of opmerking wordt overgeslagen (de filters gelden ook hier).</p>
+  </fieldset>
+  <fieldset>
+    <legend>Filters (bij gedeeltelijk en aanvullen)</legend>
+    <p class="hulp">Geen medewerker gekozen = alle medewerkers; geen periode = het hele jaar ({{ eerste|datum_nl }} t/m {{ laatste|datum_nl }}).</p>
+    <div class="keuze-medewerkers">
+      {% for m in plan.medewerkers %}
+      <label class="vink"><input type="checkbox" name="medewerkers" value="{{ m.naam }}"{% if m.naam in keuzes.medewerkers %} checked{% endif %}><span>{{ m.naam }}</span></label>
+      {% endfor %}
+    </div>
+    <div class="rij-formulier">
+      <label class="veld"><span>Periode van</span><input type="date" name="van" value="{{ keuzes.van.isoformat() if keuzes.van else '' }}" min="{{ eerste.isoformat() }}" max="{{ laatste.isoformat() }}"></label>
+      <label class="veld"><span>t/m</span><input type="date" name="tot" value="{{ keuzes.tot.isoformat() if keuzes.tot else '' }}" min="{{ eerste.isoformat() }}" max="{{ laatste.isoformat() }}"></label>
+    </div>
+    <label class="vink"><input type="checkbox" name="dagopmerkingen_bij_selectie" value="1"{% if keuzes.dagopmerkingen_bij_selectie %} checked{% endif %}><span>Dagopmerkingen ook overnemen als er medewerkers gekozen zijn</span>
+      <small>Dagopmerkingen gelden voor iedereen; daarom blijven ze bij een keuze van medewerkers standaard ongemoeid. De periode geldt altijd.</small></label>
+  </fieldset>
+  <fieldset>
+    <legend>Algemene gegevens</legend>
+    {% set namen = {"contracturen": "Contracturen (alleen voor " ~ plan.jaar ~ ")", "toeslagen": "Toeslagen zaterdag/zondag", "vakanties": "Vakanties (alleen die in " ~ plan.jaar ~ " vallen)", "codes": "Nieuwe dienstcodes toevoegen (bestaande worden nooit gewijzigd)"} %}
+    {% for o in onderdelen %}
+    <label class="veld"><span>{{ namen[o] }}</span>
+      <select name="{{ o }}"><option value="ja"{% if keuzes[o] %} selected{% endif %}>overnemen</option><option value="nee"{% if not keuzes[o] %} selected{% endif %}>niet overnemen</option></select></label>
+    {% endfor %}
+    <p class="hulp">Let op: de toeslagen (zaterdag {{ plan.toeslag_zaterdag or '–' }}, zondag {{ plan.toeslag_zondag or '–' }} in het bestand) gelden <strong>voor alle jaren</strong> in de app, niet alleen voor {{ plan.jaar }}. Daarom worden ze voor een ander jaar dan het huidige standaard niet overgenomen.</p>
+  </fieldset>
+  <button class="knop" type="submit" name="actie" value="voorbeeld">Voorbeeld bijwerken</button>
+
+  <h2>Wat er gebeurt met deze keuzes</h2>
+  <p data-totaal-effect>Totaal: <strong>{{ t.nieuw }}</strong> nieuw, <strong>{{ t.vervangen }}</strong> vervangen, <strong>{{ t.verwijderd }}</strong> verwijderd, {{ t.gelijk }} ongewijzigd{% if t.overgeslagen %}, {{ t.overgeslagen }} overgeslagen (dag al gevuld){% endif %}.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact" data-effect>
+    <thead><tr><th>Medewerker</th><th class="getal">Nieuw</th><th class="getal">Vervangen</th><th class="getal">Verwijderd (bestaand)</th><th class="getal">Ongewijzigd</th><th class="getal">Overgeslagen</th></tr></thead>
+    <tbody>{% for naam, n in effect.per_medewerker.items() %}<tr><td>{{ naam }}{% if naam in effect.nieuwe_medewerkers %} <small>(nieuw)</small>{% endif %}</td><td class="getal">{{ n.nieuw }}</td><td class="getal">{{ n.vervangen }}</td><td class="getal">{% if n.verwijderd %}<strong>{{ n.verwijderd }}</strong>{% else %}0{% endif %}</td><td class="getal">{{ n.gelijk }}</td><td class="getal">{{ n.overgeslagen }}</td></tr>
+    {% else %}<tr><td colspan="6">Geen medewerkers gekozen.</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  {% if effect.dagopmerkingen %}
+  <details data-dagopmerkingen><summary>Dagopmerkingen die veranderen ({{ effect.dagopmerkingen|length }})</summary>
+    <ul class="hulp">{% for dag, oud, nieuw in effect.dagopmerkingen %}<li>{{ dag|datum_nl }}: '{{ oud }}' → '{{ nieuw }}'</li>{% endfor %}</ul>
+  </details>
+  {% else %}<p class="hulp">Er veranderen geen dagopmerkingen.</p>{% endif %}
+  <ul class="hulp">
+    {% for sleutel, oud, nieuw in effect.toeslagen %}<li>Instelling {{ sleutel }}: {{ oud }} → {{ nieuw }}</li>{% endfor %}
+    {% for c in effect.nieuwe_codes %}<li>Nieuwe dienstcode {{ c.nummer }} – {{ c.omschrijving }}</li>{% endfor %}
+    {% for naam, van, tot in effect.vakanties %}<li>Nieuwe vakantie {{ naam }} ({{ van|datum_nl }} t/m {{ tot|datum_nl }})</li>{% endfor %}
+    {% for naam, oud, nieuw in effect.contracturen %}<li>Contracturen {{ plan.jaar }} {{ naam }}: {{ oud|uren or '–' }} → {{ nieuw|uren }}</li>{% endfor %}
+  </ul>
+
   <h3>Controle weektotalen (Excel kolom Z)</h3>
   {% if week_verschillen %}
   <p class="hulp">Hier wijkt het weektotaal na de import af van kolom Z in Excel. Controleer deze weken na de import.</p>
@@ -45,15 +124,6 @@
   </details>
   {% endif %}
 
-  <h3>Wat er met het rooster gebeurt</h3>
-  <p class="hulp">Alleen de weken die in het bestand staan worden geraakt; andere weken blijven zoals ze zijn.</p>
-  <div class="tabel-schuif">
-  <table class="tabel compact" data-effect>
-    <thead><tr><th>Medewerker</th><th class="getal">Nieuw</th><th class="getal">Vervangen</th><th class="getal">Verwijderd (bestaand)</th><th class="getal">Ongewijzigd</th></tr></thead>
-    <tbody>{% for naam, t in effect.per_medewerker.items() %}<tr><td>{{ naam }}</td><td class="getal">{{ t.nieuw }}</td><td class="getal">{{ t.vervangen }}</td><td class="getal">{% if t.verwijderd %}<strong>{{ t.verwijderd }}</strong>{% else %}0{% endif %}</td><td class="getal">{{ t.gelijk }}</td></tr>{% endfor %}</tbody>
-  </table>
-  </div>
-
   <div class="tabel-schuif">
   <table class="tabel compact">
     <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th><th>Koppeling</th></tr></thead>
@@ -61,12 +131,11 @@
   </table>
   </div>
 
-  <form method="post" class="knoppen">
-    {{ csrf() }}
-    <label class="vink"><input type="checkbox" name="bevestig" value="1" required><span>Ik wil definitief importeren (er wordt eerst automatisch een back-up gemaakt)</span></label>
-    <button class="knop primair" type="submit">Definitief importeren</button>
-  </form>
-  {{ post_knop(url_for('beheer.excel_import_annuleren'), 'Annuleren', 'knop') }}
-</section>
+  <div class="knoppen">
+    <label class="vink"><input type="checkbox" name="bevestig" value="1"><span>Ik wil definitief importeren met deze keuzes (er wordt eerst automatisch een back-up gemaakt)</span></label>
+    <button class="knop primair" type="submit" name="actie" value="importeren">Definitief importeren</button>
+  </div>
+</form>
+{{ post_knop(url_for('beheer.excel_import_annuleren'), 'Annuleren', 'knop') }}
 {% endif %}
 {% endblock %}
