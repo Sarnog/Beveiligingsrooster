@@ -1,10 +1,12 @@
 """Commando's voor de command line (noodgevallen en onderhoud).
 
-Aanroepen in Docker, vanuit de map met docker-compose.yml:
-    docker compose exec web flask reset-wachtwoord <gebruiker>
-    docker compose exec web flask maak-beheerder
-    docker compose exec web flask setup-code
-    docker compose exec web flask herbereken-uren
+Aanroepen in Docker, vanuit de map met docker-compose.yml. Gebruik altijd
+'-u rooster', anders worden nieuwe bestanden in ./data van root:
+    docker compose exec -u rooster web flask reset-wachtwoord <gebruiker>
+    docker compose exec -u rooster web flask maak-beheerder
+    docker compose exec -u rooster web flask setup-code
+    docker compose exec -u rooster web flask backup
+    docker compose exec -u rooster web flask herbereken-uren
 """
 
 import getpass

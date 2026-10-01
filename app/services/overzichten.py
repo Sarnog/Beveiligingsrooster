@@ -129,9 +129,11 @@ def zoek_diensten(naam: str = "", code: int | None = None, van: date | None = No
         db.or_(Dienst.dienstcode_id.isnot(None), Dienst.dienstnaam_override != ""))
     naam = (naam or "").strip()
     if naam:
-        patroon = f"%{naam}%"
-        query = query.filter(db.or_(Medewerker.naam.ilike(patroon),
-                                    Medewerker.initialen.ilike(patroon)))
+        # % en _ letterlijk zoeken (anders vindt '___' alles en omzeil je de minimale lengte)
+        schoon = naam.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        patroon = f"%{schoon}%"
+        query = query.filter(db.or_(Medewerker.naam.ilike(patroon, escape="\\"),
+                                    Medewerker.initialen.ilike(patroon, escape="\\")))
     if code is not None:
         query = query.filter(Dienstcode.nummer == code)
     if van:

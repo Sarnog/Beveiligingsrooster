@@ -73,16 +73,27 @@ def _lees_of_maak_geheime_sleutel(data_map: str) -> str:
     import secrets
 
     pad = os.path.join(data_map, "secret_key")
-    if os.path.exists(pad):
-        with open(pad, encoding="utf-8") as bestand:
-            sleutel = bestand.read().strip()
-        if sleutel:
-            return sleutel
-    sleutel = secrets.token_hex(32)
-    descriptor = os.open(pad, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as bestand:
-        bestand.write(sleutel + "\n")
+    try:
+        if os.path.exists(pad):
+            with open(pad, encoding="utf-8") as bestand:
+                sleutel = bestand.read().strip()
+            if sleutel:
+                return sleutel
+        sleutel = secrets.token_hex(32)
+        descriptor = os.open(pad, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as bestand:
+            bestand.write(sleutel + "\n")
+    except PermissionError as fout:
+        raise RuntimeError(rechten_melding(pad)) from fout
     return sleutel
+
+
+def rechten_melding(pad: str) -> str:
+    """Uitleg bij een PermissionError op een bestand in de datamap."""
+    return (f"Geen toegang tot {pad}. Waarschijnlijk is een commando zonder '-u rooster' "
+            "uitgevoerd, waardoor het bestand van root is. Gebruik altijd "
+            "'docker compose exec -u rooster web flask ...' en herstel de rechten met: "
+            "docker compose run --rm -u root web chown -R 1000:1000 /data")
 
 
 def _registreer_blueprints(app: Flask) -> None:
@@ -115,7 +126,7 @@ def _registreer_controles(app: Flask) -> None:
         back-up; ook het oude formaat (alleen het ID, vóór 1.2.0) is ongeldig.
         """
         delen = (sessiesleutel or "").split(":")
-        if len(delen) != 3 or not delen[0].isdecimal():
+        if len(delen) != 3 or not delen[0].isascii() or not delen[0].isdecimal():
             return None
         gebruiker = db.session.get(Gebruiker, int(delen[0]))
         if gebruiker is None or not gebruiker.actief or gebruiker.get_id() != sessiesleutel:
@@ -200,10 +211,12 @@ def _registreer_controles(app: Flask) -> None:
 
 
 def _registreer_template_helpers(app: Flask) -> None:
+    from .blueprints.hulp import externe_url
     from .services import instellingen
     from .services.tijden import datum_nl
     from .services.urenberekening import formatteer_uren
 
+    app.jinja_env.globals["externe_url"] = externe_url
     app.jinja_env.filters["datum_nl"] = datum_nl
     app.jinja_env.filters["uren"] = formatteer_uren
 

@@ -29,11 +29,12 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
-from . import instellingen, logboek, sync_planning
+from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import zorg_voor_jaar
-from .kalender import aantal_weken, maandag_van_week
+from .kalender import MAX_JAAR, MIN_JAAR, aantal_weken, maandag_van_week
 from .medewerkers import uniek_voorstel
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
+from .tijden import is_cijfers
 from .urenberekening import bereken_uren, dagfactor
 from .voorbeeldpakket import DIENSTCODES
 
@@ -278,7 +279,10 @@ def lees_bestand(pad: str) -> ImportPlan:
     jaar = None
     if "Kalender" in boek.sheetnames:
         jaar = int(_getal(boek["Kalender"]["E2"].value) or 0) or None
-    plan = ImportPlan(jaar=jaar or date.today().year)
+    if jaar is not None and not MIN_JAAR <= jaar <= MAX_JAAR:
+        raise ImportFout(f"Het jaar in Kalender!E2 ({jaar}) is ongeldig; verwacht een jaar tussen "
+                         f"{MIN_JAAR} en {MAX_JAAR}.")
+    plan = ImportPlan(jaar=jaar or klok.vandaag().year)
     _lees_lijsten(boek["Lijsten"], plan)
     _bepaal_koppelingen(plan)
     if "Vakanties" in boek.sheetnames:
@@ -380,7 +384,7 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
         naam = _tekst(blad.cell(basis, 2).value)
-        if naam.isdigit():  # bijv. 0 uit een formule naar een lege cel
+        if is_cijfers(naam):  # bijv. 0 uit een formule naar een lege cel
             naam = ""
         if not naam:
             if n > 12 and all(_is_leeg(blad.cell(basis + k, 2).value) for k in range(8)):
@@ -453,11 +457,13 @@ def _importeer(plan: ImportPlan) -> tuple[dict, list[Medewerker]]:
     for jaar in (plan.jaar - 1, plan.jaar, plan.jaar + 1):
         zorg_voor_jaar(jaar, commit=False)
 
-    # Toeslagen
-    if plan.toeslag_zaterdag:
-        instellingen.schrijf("toeslag_zaterdag", plan.toeslag_zaterdag)
-    if plan.toeslag_zondag:
-        instellingen.schrijf("toeslag_zondag", plan.toeslag_zondag)
+    # Toeslagen (oude waarde in het logboek)
+    for sleutel, waarde in (("toeslag_zaterdag", plan.toeslag_zaterdag),
+                            ("toeslag_zondag", plan.toeslag_zondag)):
+        if waarde and instellingen.lees(sleutel) != str(waarde):
+            logboek.log("Instelling gewijzigd", "Excel-import", veld=sleutel,
+                        oud=instellingen.lees(sleutel), nieuw=waarde)
+            instellingen.schrijf(sleutel, waarde)
 
     # Dienstcodes (kleuren uit het voorbeeldpakket als het nummer daar in staat)
     pakket = {c[0]: c for c in DIENSTCODES}
@@ -535,7 +541,7 @@ def _importeer(plan: ImportPlan) -> tuple[dict, list[Medewerker]]:
         dienst = Dienst(
             medewerker_id=medewerker.id, datum=d.datum,
             dienstcode_id=code.id if code else None,
-            dienstnaam_override="" if code else d.dienstnaam,
+            dienstnaam_override="" if code else d.dienstnaam[:60],
             begin=d.begin, eind=d.eind,
             tijden_handmatig=bool(code and (d.begin, d.eind) != (code.std_begin, code.std_eind)),
             opmerking_tekst=d.opmerking[:120], opmerking_begin=d.opm_begin,

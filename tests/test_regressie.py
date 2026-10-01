@@ -929,3 +929,488 @@ def test_m9_import_plant_agenda_sync(app, klaar, tmp_path):
     taken = SyncTaak.query.all()
     assert [(t.soort, db.session.get(Medewerker, t.medewerker_id).naam) for t in taken] \
         == [("volledig", "Medewerker Vijf A")]
+
+
+# ---------------------------------------------------------------------------
+# L1 · Taak verwijderd of onverwachte fout tijdens de sync
+# ---------------------------------------------------------------------------
+
+def test_l1_taak_intussen_verwijderd_geeft_geen_crash(app, gekoppeld, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    from app.models import SyncTaak
+    from app.services import google_agenda
+    from app.services.google_agenda import AgendaFout
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    from .test_agenda import NepKlant
+
+    class Klant(NepKlant):
+        def maak_afspraak(self, agenda_id, body):
+            with Session(db.engine) as sessie:  # een ander proces ruimt de taak op
+                sessie.query(SyncTaak).delete()
+                sessie.commit()
+            raise AgendaFout("Google even weg", tijdelijk=True, status=503)
+
+    monkeypatch.setattr(google_agenda, "klant", Klant)
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    _wachtrij_nu()  # mag niet crashen
+    assert SyncTaak.query.count() == 0
+
+
+def test_l1_onverwachte_fout_zet_taak_terug_met_backoff(app, gekoppeld, monkeypatch):
+    from app.models import SyncTaak
+    from app.services import google_agenda
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    from .test_agenda import NepKlant
+
+    class Klant(NepKlant):
+        def maak_afspraak(self, agenda_id, body):
+            raise RuntimeError("onverwacht")
+
+    monkeypatch.setattr(google_agenda, "klant", Klant)
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4"),
+                   Wijziging(gekoppeld.id, MAANDAG + timedelta(days=1), "code", "4")])
+    _wachtrij_nu()
+    taken = SyncTaak.query.all()
+    assert [(t.status, t.pogingen) for t in taken] == [("wacht", 1), ("wacht", 1)]
+    assert all("onverwacht" in t.laatste_fout for t in taken)
+
+
+# ---------------------------------------------------------------------------
+# L2 · '²' en andere 'cijfers' gaven een 500
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("invoer", ["²", "7:²", "²:30", "١٢", "7:٣"])
+def test_l2_vreemde_cijfers_zijn_ongeldige_tijd(invoer):
+    from app.services.tijden import OngeldigeTijd, normaliseer_tijd
+
+    with pytest.raises(OngeldigeTijd):
+        normaliseer_tijd(invoer)
+
+
+def test_l2_vreemde_cijfers_als_code_geven_celfout(app, als_beheerder, mw):
+    for waarde in ("²", "١٢"):
+        antwoord = als_beheerder.post("/api/cellen", json={"opslaan": True, "wijzigingen": [
+            {"mw": mw.id, "datum": MAANDAG.isoformat(), "veld": "code", "waarde": waarde}]})
+        assert antwoord.status_code == 200 and antwoord.json["fouten"]
+    antwoord = als_beheerder.post("/api/cellen", json={"opslaan": True, "wijzigingen": [
+        {"mw": mw.id, "datum": MAANDAG.isoformat(), "veld": "begin", "waarde": "²"}]})
+    assert antwoord.status_code == 200 and antwoord.json["fouten"]
+
+
+# ---------------------------------------------------------------------------
+# L3 · Ongeldige body en datums in /api/cellen; jaar in /beheer/feestdagen
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("body", [[1, 2], "tekst", 5])
+def test_l3_body_moet_een_object_zijn(app, als_beheerder, mw, body):
+    assert als_beheerder.post("/api/cellen", json=body).status_code == 400
+
+
+@pytest.mark.parametrize("datum", ["0001-01-01", "9999-12-31", "1949-12-31", "2151-01-01"])
+def test_l3_datum_buiten_bereik(app, als_beheerder, mw, datum):
+    antwoord = als_beheerder.post("/api/cellen", json={"opslaan": True, "wijzigingen": [
+        {"mw": mw.id, "datum": datum, "veld": "code", "waarde": "4"}]})
+    assert antwoord.status_code == 400
+    antwoord = als_beheerder.post("/api/cellen", json={"dagopmerkingen": [{"datum": datum, "tekst": "x"}]})
+    assert antwoord.status_code == 400
+
+
+@pytest.mark.parametrize("jaar", ["99999", "-5", "1"])
+def test_l3_feestdagen_jaar_begrensd(app, als_beheerder, jaar):
+    assert als_beheerder.get(f"/beheer/feestdagen?jaar={jaar}").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# L4 · Agenda bijwerken na wijziging van codenummer, vakanties en feestdagen
+# ---------------------------------------------------------------------------
+
+def _gekoppeld_met_dienst(mw, dag):
+    from app.models import SyncTaak
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    mw.agenda_modus, mw.agenda_id = "B", "agenda-a"
+    db.session.commit()
+    wijzig_cellen([Wijziging(mw.id, dag, "code", "4")])
+    SyncTaak.query.delete()
+    db.session.commit()
+
+
+def test_l4_nieuw_codenummer_plant_agenda(app, als_beheerder, mw):
+    from app.models import Dienstcode, SyncTaak
+
+    dag = klok.vandaag() + timedelta(days=3)
+    _gekoppeld_met_dienst(mw, dag)
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    als_beheerder.post(f"/beheer/dienstcodes/{code.id}", data={
+        "nummer": "40", "omschrijving": code.omschrijving, "std_begin": "07:15", "std_eind": "15:45",
+        "vet": "1", "actief": "1", "in_agenda": "1"})
+    assert Dienstcode.query.filter_by(nummer=40).count() == 1
+    assert SyncTaak.query.filter_by(datum=dag).count() == 1
+
+
+def test_l4_vakantie_en_feestdag_plannen_agenda(app, als_beheerder, mw):
+    from app.models import Feestdag, SyncTaak, Vakantie
+
+    dag = klok.vandaag() + timedelta(days=3)
+    _gekoppeld_met_dienst(mw, dag)
+    als_beheerder.post("/beheer/vakanties/opslaan", data={
+        "naam": "Herfstvakantie", "datum_van": dag.isoformat(), "datum_tot": dag.isoformat()})
+    assert SyncTaak.query.filter_by(datum=dag).count() == 1
+    SyncTaak.query.delete()
+    db.session.commit()
+    vakantie = Vakantie.query.one()
+    als_beheerder.post(f"/beheer/vakanties/{vakantie.id}/verwijder")
+    assert SyncTaak.query.filter_by(datum=dag).count() == 1
+    SyncTaak.query.delete()
+    db.session.commit()
+    als_beheerder.post("/beheer/feestdagen/nieuw", data={"naam": "Teamdag", "datum": dag.isoformat()})
+    assert SyncTaak.query.filter_by(datum=dag).count() == 1
+    SyncTaak.query.delete()
+    db.session.commit()
+    feestdag = Feestdag.query.filter_by(naam="Teamdag").one()
+    als_beheerder.post(f"/beheer/feestdagen/{feestdag.id}/wissel")
+    assert SyncTaak.query.filter_by(datum=dag).count() == 1
+
+
+# ---------------------------------------------------------------------------
+# L5 · Week kopiëren nam gearchiveerde medewerkers mee
+# ---------------------------------------------------------------------------
+
+def test_l5_kopieer_week_respecteert_archiefdatum(app, mw):
+    from app.models import Dienst
+    from app.services.weekrooster import Wijziging, kopieer_week, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG + timedelta(days=i), "code", "4") for i in range(7)])
+    doel = MAANDAG + timedelta(days=7)
+    mw.gearchiveerd_vanaf = doel + timedelta(days=2)  # vanaf woensdag gearchiveerd
+    db.session.commit()
+    kopieer_week(MAANDAG, doel)
+    gekopieerd = Dienst.query.filter(Dienst.datum >= doel).all()
+    assert sorted(d.datum for d in gekopieerd) == [doel, doel + timedelta(days=1)]
+
+
+# ---------------------------------------------------------------------------
+# L6 · Feestdagen dubbel aanmaken (race)
+# ---------------------------------------------------------------------------
+
+def test_l6_feestdag_maar_een_keer_per_jaar(app, klaar):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Feestdag
+    from app.services import feestdagen
+
+    feestdagen.zorg_voor_jaar(2026)
+    db.session.add(Feestdag(jaar=2026, datum=datetime(2026, 4, 27).date(), naam="Dubbel",
+                            sleutel="koningsdag"))
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()
+    # Eigen dagen (zonder sleutel) mogen wel meerdere keren
+    db.session.add_all([Feestdag(jaar=2026, datum=MAANDAG, naam="Eigen", sleutel=""),
+                        Feestdag(jaar=2026, datum=MAANDAG, naam="Eigen 2", sleutel="")])
+    db.session.commit()
+
+
+def test_l6_gelijktijdig_aanmaken_geeft_geen_fout(app, klaar, monkeypatch):
+    from app.models import Feestdag
+    from app.services import feestdagen
+
+    feestdagen.zorg_voor_jaar(2026)
+    # Alsof een ander proces ze net tegelijk aanmaakte: wij 'zien' ze nog niet
+    monkeypatch.setattr(feestdagen, "_bestaande_sleutels", lambda jaar: set(), raising=False)
+    feestdagen.zorg_voor_jaar(2026)
+    assert Feestdag.query.filter_by(jaar=2026).count() == 11
+
+
+def test_l6_migratie_ruimt_dubbele_feestdagen_op(tmp_path):
+    from flask_migrate import upgrade
+
+    from app import create_app
+
+    from .conftest import TestConfig
+
+    app = create_app(TestConfig(str(tmp_path)))
+    map_ = os.path.join(os.path.dirname(__file__), "..", "migrations")
+    with app.app_context():
+        upgrade(directory=map_, revision="0003")
+        with db.engine.begin() as verbinding:
+            for _ in range(3):
+                verbinding.exec_driver_sql(
+                    "INSERT INTO feestdag (jaar, datum, naam, sleutel, actief) "
+                    "VALUES (2026, '2026-04-27', 'Koningsdag', 'koningsdag', 1)")
+            verbinding.exec_driver_sql(
+                "INSERT INTO feestdag (jaar, datum, naam, sleutel, actief) "
+                "VALUES (2026, '2026-03-02', 'Eigen', '', 1)")
+        upgrade(directory=map_)
+        with db.engine.connect() as verbinding:
+            assert verbinding.exec_driver_sql("SELECT count(*) FROM feestdag").scalar() == 2
+        db.session.remove()
+
+
+# ---------------------------------------------------------------------------
+# L7 · Bewaartermijn 0 dagen + 0 uren wiste het hele logboek
+# ---------------------------------------------------------------------------
+
+def test_l7_bewaartermijn_nul_betekent_nooit_opschonen(app, klaar):
+    from app.services import logboek
+
+    instellingen.schrijf("logboek_dagen", "0")
+    instellingen.schrijf("logboek_uren", "0")
+    db.session.add(Logboek(actie="Oud", tijdstempel=datetime(2000, 1, 1)))
+    db.session.commit()
+    assert logboek.opschonen() == 0
+    assert Logboek.query.filter_by(actie="Oud").count() == 1
+    instellingen.schrijf("logboek_uren", "1")
+    db.session.commit()
+    assert logboek.opschonen() >= 1
+
+
+# ---------------------------------------------------------------------------
+# L8 · Het dubbele uur bij de wintertijd
+# ---------------------------------------------------------------------------
+
+def test_l8_loginblokkade_rekent_in_utc(app, client, klaar, monkeypatch):
+    from .conftest import login
+
+    lokaal, utc = datetime(2026, 10, 25, 2, 50), datetime(2026, 10, 25, 0, 50)
+    monkeypatch.setattr(klok, "nu", lambda: lokaal)
+    monkeypatch.setattr(klok, "utc_nu", lambda: utc, raising=False)
+    for _ in range(5):
+        login(client, "collega", "fout")
+    # De klok gaat om 03:00 terug naar 02:00; 16 minuten later is het lokaal 02:06
+    monkeypatch.setattr(klok, "nu", lambda: datetime(2026, 10, 25, 2, 6))
+    monkeypatch.setattr(klok, "utc_nu", lambda: datetime(2026, 10, 25, 1, 6), raising=False)
+    assert login(client, "collega").status_code == 302
+
+
+def test_l8_wachtrij_rekent_in_utc(app, gekoppeld, monkeypatch):
+    from app.services import google_agenda, sync
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    from .test_agenda import NepKlant
+
+    klant = NepKlant()
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    monkeypatch.setattr(klok, "nu", lambda: datetime(2026, 10, 25, 2, 55))
+    monkeypatch.setattr(klok, "utc_nu", lambda: datetime(2026, 10, 25, 0, 55), raising=False)
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    # 10 minuten later, ná het terugzetten van de klok
+    monkeypatch.setattr(klok, "nu", lambda: datetime(2026, 10, 25, 2, 5))
+    monkeypatch.setattr(klok, "utc_nu", lambda: datetime(2026, 10, 25, 1, 5), raising=False)
+    assert sync.verwerk_wachtrij() == 1
+
+
+# ---------------------------------------------------------------------------
+# S1 · Timing: onbekende gebruiker zonder wachtwoordcontrole
+# ---------------------------------------------------------------------------
+
+def test_s1_onbekende_gebruiker_kost_evenveel_werk(app, client, klaar, monkeypatch):
+    from app.services import wachtwoorden
+
+    echt = wachtwoorden._hasher
+    teller = []
+
+    class Teller:
+        def __getattr__(self, naam):
+            return getattr(echt, naam)
+
+        def verify(self, *args):
+            teller.append(1)
+            return echt.verify(*args)
+
+    monkeypatch.setattr(wachtwoorden, "_hasher", Teller())
+    client.post("/login", data={"gebruikersnaam": "bestaat-niet", "wachtwoord": "x"})
+    assert len(teller) == 1
+
+
+# ---------------------------------------------------------------------------
+# S2 · CSV-export: formules in cellen
+# ---------------------------------------------------------------------------
+
+def test_s2_csv_zonder_formules(app, als_beheerder, klaar):
+    from app.models import Dienst, Medewerker
+
+    m = Medewerker(naam="=HYPERLINK(\"http://x\")", initialen="FX")
+    db.session.add(m)
+    db.session.commit()
+    db.session.add(Dienst(medewerker_id=m.id, datum=MAANDAG, dienstnaam_override="@SUM(A1)",
+                          begin="07:00", eind="15:00", uren_berekend=7.5, opmerking_tekst=""))
+    db.session.commit()
+    uren = als_beheerder.get("/overzicht/uren.csv?jaar=2026").data.decode()
+    assert "'=HYPERLINK" in uren and ";=HYPERLINK" not in uren
+    zoek = als_beheerder.get("/zoeken/export.csv?naam=HYPER").data.decode()
+    assert "'=HYPERLINK" in zoek and "'@SUM" in zoek
+
+
+def test_s2_negatieve_getallen_blijven_getallen():
+    from app.blueprints.hulp import csv_cel
+
+    assert csv_cel("-3,50") == "-3,50" and csv_cel("-tekst") == "'-tekst" and csv_cel("+31") == "'+31"
+    assert csv_cel("Gewoon") == "Gewoon" and csv_cel(5) == 5
+
+
+# ---------------------------------------------------------------------------
+# S3 · Tokens in de toegangslog
+# ---------------------------------------------------------------------------
+
+def test_s3_tokens_gemaskeerd_in_toegangslog():
+    import runpy
+
+    from app.toegangslog import maskeer_tokens
+
+    assert maskeer_tokens("GET /ics/abcdefghijklmnopqrstuvwx.ics HTTP/1.1") == "GET /ics/***.ics HTTP/1.1"
+    assert maskeer_tokens("/deel/geheim123/week/2026/10?dag=x") == "/deel/***/week/2026/10?dag=x"
+    assert maskeer_tokens("/kalender/") == "/kalender/"
+    conf = runpy.run_path(os.path.join(os.path.dirname(__file__), "..", "docker", "gunicorn.conf.py"))
+    assert conf["logger_class"] == "app.toegangslog.ToegangsLogger"
+
+
+def test_s3_logger_maskeert_atomen():
+    from types import SimpleNamespace
+
+    from app.toegangslog import ToegangsLogger
+    from gunicorn.config import Config
+
+    logger = ToegangsLogger(Config())
+    verzoek = SimpleNamespace(headers=[], method="GET", path="/ics/geheimtoken.ics", query="",
+                              version=(1, 1))
+    antwoord = SimpleNamespace(status="200 OK", headers=[], sent=10, response_length=10)
+    omgeving = {"RAW_URI": "/ics/geheimtoken.ics", "REQUEST_METHOD": "GET", "QUERY_STRING": "",
+                "SERVER_PROTOCOL": "HTTP/1.1", "REMOTE_ADDR": "1.2.3.4"}
+    atomen = logger.atoms(antwoord, verzoek, omgeving, timedelta(seconds=0.1))
+    assert "geheimtoken" not in " ".join(str(v) for v in atomen.values())
+
+
+# ---------------------------------------------------------------------------
+# S5 · Duidelijke melding bij verkeerde bestandsrechten
+# ---------------------------------------------------------------------------
+
+def test_s5_geheime_sleutel_zonder_schrijfrechten(tmp_path, monkeypatch):
+    from app import _lees_of_maak_geheime_sleutel
+
+    def geen_rechten(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(os, "open", geen_rechten)
+    with pytest.raises(RuntimeError, match="-u rooster"):
+        _lees_of_maak_geheime_sleutel(str(tmp_path))
+
+
+def test_s5_setup_code_zonder_schrijfrechten(app, monkeypatch):
+    from app.services import setup_code
+
+    def geen_rechten(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(os, "open", geen_rechten)
+    with pytest.raises(RuntimeError, match="-u rooster"):
+        setup_code.haal_of_maak_code()
+
+
+def test_s5_cli_docstring_gebruikt_u_rooster():
+    from app import cli
+
+    regels = [r for r in cli.__doc__.splitlines() if "docker compose exec" in r]
+    assert regels and all("-u rooster" in r for r in regels)
+
+
+# ---------------------------------------------------------------------------
+# S6 · Achtergebleven importbestanden
+# ---------------------------------------------------------------------------
+
+def test_s6_worker_ruimt_oude_importbestanden_op(app, klaar):
+    import time
+
+    map_ = os.path.join(app.config["DATA_MAP"], "import")
+    os.makedirs(map_, exist_ok=True)
+    oud, nieuw = os.path.join(map_, "oud.xlsm"), os.path.join(map_, "nieuw.xlsm")
+    for pad in (oud, nieuw):
+        open(pad, "wb").close()
+    twee_dagen = time.time() - 2 * 24 * 3600
+    os.utime(oud, (twee_dagen, twee_dagen))
+    worker.een_ronde(worker.Planning(), datetime(2026, 3, 2, 1, 0))
+    assert not os.path.exists(oud) and os.path.exists(nieuw)
+
+
+# ---------------------------------------------------------------------------
+# Overig: zoeken, BASE_URL, gelabelde back-ups, kleurregels, import
+# ---------------------------------------------------------------------------
+
+def test_zoeken_wildcards_worden_letterlijk_gezocht(app, als_beheerder, mw):
+    from app.services.overzichten import zoek_diensten
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4")])
+    assert zoek_diensten(naam="___") == [] and zoek_diensten(naam="%%%") == []
+    assert len(zoek_diensten(naam="ewerk")) == 1
+
+
+def test_base_url_voor_externe_links(app, als_beheerder, klaar, mw):
+    from app.models import Gebruiker
+
+    app.config["BASE_URL"] = "https://rooster.voorbeeld.nl"
+    mw.ics_token = "t" * 30
+    gebruiker = db.session.get(Gebruiker, klaar["beheerder"].id)
+    gebruiker.medewerker_id = mw.id
+    db.session.commit()
+    pagina = als_beheerder.get("/mijn/agenda").data.decode()
+    assert f"https://rooster.voorbeeld.nl/ics/{'t' * 30}.ics" in pagina
+    pagina = als_beheerder.get("/beheer/agenda").data.decode()
+    assert f"https://rooster.voorbeeld.nl/ics/{'t' * 30}.ics" in pagina
+
+
+def test_gelabelde_backups_hebben_een_bewaartermijn(app, klaar):
+    map_ = backup.backup_map()
+    for dag in range(1, 16):  # 15 oude handmatige back-ups uit januari 2025
+        with open(os.path.join(map_, f"rooster-202501{dag:02d}-120000-handmatig.db"), "wb") as f:
+            f.write(b"x")
+    with open(os.path.join(map_, "rooster-20250101-020000.db"), "wb") as f:
+        f.write(b"x")
+    backup.ruim_gelabelde_op()
+    namen = [b["naam"] for b in backup.lijst_backups()]
+    assert len([n for n in namen if "handmatig" in n]) == backup.GELABELD_MINIMAAL
+    assert "rooster-20250115-120000-handmatig.db" in namen  # de nieuwste blijven
+    assert "rooster-20250101-020000.db" in namen  # automatische vallen hierbuiten
+
+
+def test_kleurregel_uniek_zonder_hoofdletters_en_max_60(app, als_beheerder, klaar):
+    from app.models import OpmerkingKleurregel
+
+    als_beheerder.post("/beheer/kleurregels/nieuw", data={"tekst": "Locatie A"})
+    als_beheerder.post("/beheer/kleurregels/nieuw", data={"tekst": "locatie a"})
+    als_beheerder.post("/beheer/kleurregels/nieuw", data={"tekst": "x" * 80})
+    teksten = [r.tekst for r in OpmerkingKleurregel.query.all()]
+    assert teksten.count("Locatie A") == 1 and "locatie a" not in teksten
+    assert all(len(t) <= 60 for t in teksten)
+
+
+def test_import_jaar_buiten_bereik(app, klaar, tmp_path):
+    import openpyxl
+
+    from app.services.excel_import import ImportFout, lees_bestand
+
+    boek = openpyxl.Workbook()
+    boek.active.title = "Lijsten"
+    boek.create_sheet("Kalender")["E2"] = 1900
+    pad = str(tmp_path / "oud.xlsx")
+    boek.save(pad)
+    with pytest.raises(ImportFout, match="jaar"):
+        lees_bestand(pad)
+
+
+def test_import_lange_dienstnaam_en_oude_toeslag_gelogd(app, mw):
+    from app.models import Dienst
+    from app.services.excel_import import ImportMedewerker, ImportPlan, importeer
+
+    instellingen.schrijf("toeslag_zaterdag", "1.25")
+    db.session.commit()
+    plan = ImportPlan(jaar=2026, weken=[10], toeslag_zaterdag=1.5,
+                      medewerkers=[ImportMedewerker("Medewerker A", "MA", None)],
+                      diensten=[_import_dienst("Medewerker A", MAANDAG, dienstnaam="d" * 80)])
+    importeer(plan)
+    assert len(Dienst.query.one().dienstnaam_override) == 60
+    regel = Logboek.query.filter_by(actie="Instelling gewijzigd", veld="toeslag_zaterdag").one()
+    assert (regel.oude_waarde, regel.nieuwe_waarde) == ("1.25", "1.5")

@@ -8,7 +8,7 @@ from ...extensions import db
 from ...models import Contracturen, Dienst, Gebruiker, Medewerker
 from ...services import klok, logboek, sync_planning
 from ...services.medewerkers import uniek_voorstel
-from ...services.tijden import parse_datum
+from ...services.tijden import is_cijfers, parse_datum
 from ..hulp import beheerder_vereist, getal
 from . import bp
 
@@ -73,7 +73,7 @@ def _lees_formulier(medewerker: Medewerker | None) -> tuple[dict, list[str]]:
             uren = getal(uren_tekst)
             if not uren_tekst:  # geen uren ingevuld = dit jaar overslaan/verwijderen
                 continue
-            if not jaar_tekst.isdigit() or uren is None or uren < 0:
+            if not is_cijfers(jaar_tekst) or uren is None or uren < 0:
                 fouten.append("Contracturen: vul een geldig jaar en aantal uren in.")
                 continue
             contract[int(jaar_tekst)] = uren

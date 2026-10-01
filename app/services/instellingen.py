@@ -8,6 +8,7 @@ import math
 
 from ..extensions import db
 from ..models import Instelling
+from .tijden import is_cijfers
 
 # Sleutel -> standaardwaarde (altijd als tekst)
 STANDAARD: dict[str, str] = {
@@ -78,7 +79,7 @@ def lees_float(sleutel: str) -> float | None:
 def blanco_code() -> int | None:
     """Het codenummer dat 'geen dienst' betekent (standaard 15), of None."""
     tekst = lees("blanco_code").strip()
-    return int(tekst) if tekst.isdigit() else None
+    return int(tekst) if is_cijfers(tekst) else None
 
 
 def toeslagen() -> dict:

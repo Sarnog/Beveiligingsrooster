@@ -68,12 +68,17 @@ def log(
 
 
 def opschonen(nu: datetime | None = None) -> int:
-    """Verwijder regels ouder dan de bewaartermijn (dagen + uren). Geeft het aantal terug."""
+    """Verwijder regels ouder dan de bewaartermijn (dagen + uren). Geeft het aantal terug.
+
+    Een bewaartermijn van 0 dagen en 0 uur betekent: nooit opschonen.
+    """
     nu = nu or klok.nu()
     dagen = max(instellingen.lees_int("logboek_dagen", 31), 0)
     uren = instellingen.lees_int("logboek_uren", 0)
     if uren < 0 or uren > 23:  # zelfde grenzen als in Excel
         uren = 0
+    if dagen == 0 and uren == 0:
+        return 0
     grens = nu - timedelta(days=dagen, hours=uren)
     aantal = Logboek.query.filter(Logboek.tijdstempel < grens).delete()
     db.session.commit()

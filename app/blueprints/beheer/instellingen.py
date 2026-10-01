@@ -8,6 +8,7 @@ from ...extensions import db
 from ...models import Dienst, Dienstcode, Medewerker
 from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import herbereken_alle
+from ...services.tijden import is_cijfers
 from ..hulp import MAX_FACTOR, beheerder_vereist, factor, vinkje
 from . import bp
 
@@ -42,13 +43,13 @@ def instellingen_scherm():
 
         for veld, (minimum, maximum) in GETALVELDEN.items():
             tekst = formulier.get(veld, "").strip()
-            if not tekst.lstrip("-").isdigit() or not (minimum <= int(tekst) <= maximum):
+            if not is_cijfers(tekst.removeprefix("-")) or not (minimum <= int(tekst) <= maximum):
                 fouten.append(f"Ongeldige waarde voor '{veld}' ({minimum} t/m {maximum}).")
             else:
                 nieuw[veld] = tekst
 
         blanco = formulier.get("blanco_code", "").strip()
-        if blanco and not blanco.isdecimal():
+        if blanco and not is_cijfers(blanco):
             fouten.append("De blanco-code moet een getal zijn (of leeg).")
         elif blanco and Dienstcode.query.filter_by(nummer=int(blanco)).first():
             fouten.append(f"De blanco-code {blanco} is al een dienstcode. Kies een ander nummer, "

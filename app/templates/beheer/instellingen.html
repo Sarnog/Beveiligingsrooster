@@ -27,6 +27,7 @@
       {{ veld('logboek_dagen', 'Bewaren: dagen', w.logboek_dagen, type='number') }}
       {{ veld('logboek_uren', 'Bewaren: uren (0–23)', w.logboek_uren, type='number') }}
     </div>
+    <p class="hulp">0 dagen en 0 uur = het logboek wordt nooit opgeschoond.</p>
 
     <h2>Agenda</h2>
     {{ veld('agenda_voorvoegsel', 'Voorvoegsel afspraaktitel', w.agenda_voorvoegsel, hulp='Bijvoorbeeld "Werk: ". Leeg = alleen de dienstnaam.') }}
@@ -41,7 +42,7 @@
     <h2>Alleen-lezen deellink</h2>
     {{ vink('deellink_actief', 'Rooster zonder account te bekijken via een geheime link', w.deellink_actief == '1') }}
     {% if w.deellink_actief == '1' and w.deellink_token and heeft_route('deel.kalender') %}
-      <p>Link: <code>{{ url_for('deel.kalender', token=w.deellink_token, _external=True) }}</code></p>
+      <p>Link: <code>{{ externe_url('deel.kalender', token=w.deellink_token) }}</code></p>
     {% endif %}
 
     <div class="knoppen"><button class="knop primair" type="submit">Opslaan</button></div>

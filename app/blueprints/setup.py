@@ -16,6 +16,7 @@ from ..extensions import db
 from ..models import ROL_BEHEERDER, Contracturen, Gebruiker, Medewerker
 from ..services import instellingen, klok, logboek, setup_code
 from ..services.medewerkers import uniek_voorstel
+from ..services.tijden import is_cijfers
 from ..services.voorbeeldpakket import laad_voorbeeldpakket
 from ..services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
 from .hulp import factor, getal
@@ -123,8 +124,8 @@ def _stap_algemeen():
         if not klok.is_geldige_tijdzone(tijdzone):
             flash(f"Onbekende tijdzone '{tijdzone}'. Gebruik een naam zoals Europe/Amsterdam.", "fout")
             return render_template("setup/stap2.html", stap=2, w=formulier), 400
-        if za is None or zo is None or not dagen.isdecimal() or not uren.isdecimal() \
-                or not jaar.isdecimal() or not (0 <= int(uren) <= 23) or not (2000 <= int(jaar) <= 2100):
+        if za is None or zo is None or not is_cijfers(dagen) or not is_cijfers(uren) \
+                or not is_cijfers(jaar) or not (0 <= int(uren) <= 23) or not (2000 <= int(jaar) <= 2100):
             flash("Controleer de ingevulde waarden (toeslagfactoren tussen 0 en 10).", "fout")
             return render_template("setup/stap2.html", stap=2, w=formulier), 400
         instellingen.schrijf("teamnaam", formulier.get("teamnaam", "").strip() or "Beveiligingsrooster")

@@ -78,7 +78,7 @@
         </td>
         <td>
           {% if m.ics_token %}
-            <input class="ics-link" readonly value="{{ url_for('ics.feed', token=m.ics_token, _external=True) }}" aria-label="ICS-link">
+            <input class="ics-link" readonly value="{{ externe_url('ics.feed', token=m.ics_token) }}" aria-label="ICS-link">
             {{ post_knop(url_for('beheer.agenda_ics', mid=m.id), 'Vernieuwen', 'knop klein', bevestig='Nieuwe link maken? De oude werkt dan niet meer.') }}
             {{ post_knop(url_for('beheer.agenda_ics', mid=m.id), 'Intrekken', 'knop klein gevaar', bevestig='ICS-link intrekken?', velden={'intrekken': '1'}) }}
           {% else %}

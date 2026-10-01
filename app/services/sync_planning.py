@@ -71,6 +71,18 @@ def plan_volledig(medewerker: Medewerker) -> None:
     db.session.commit()
 
 
+def plan_periode(van: date, tot: date) -> None:
+    """Na een wijziging van vakanties of feestdagen: de dagtekst in de afspraken bijwerken.
+
+    Alleen vandaag en later; de agenda van gekoppelde medewerkers wordt bijgewerkt.
+    """
+    van = max(van, klok.vandaag())
+    if tot < van:
+        return
+    diensten = Dienst.query.filter(Dienst.datum >= van, Dienst.datum <= tot).all()
+    plan_diensten(diensten)
+
+
 def plan_code(code: Dienstcode) -> None:
     """Na het wijzigen van een dienstcode: toekomstige diensten met die code opnieuw zetten."""
     diensten = Dienst.query.filter(

@@ -19,7 +19,7 @@ from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
-from .tijden import OngeldigeTijd, normaliseer_tijd
+from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from .urenberekening import formatteer_uren
 
 VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "dienstnaam", "uren")
@@ -234,7 +234,7 @@ def _lees_code(waarde: str) -> Dienstcode | None:
     tekst = (waarde or "").strip()
     if tekst == "":
         return None
-    if not tekst.isdigit():
+    if not is_cijfers(tekst):
         raise CelFout(f"'{tekst}' is geen dienstcode (alleen een nummer).")
     nummer = int(tekst)
     if nummer == instellingen.blanco_code():
@@ -485,6 +485,7 @@ def wijzig_cellen(wijzigingen: list[Wijziging]) -> tuple[dict, list[dict]]:
 def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | None = None) -> int:
     """Maak de doelweek gelijk aan de bronweek (alle medewerkers of één).
 
+    Een gearchiveerde medewerker krijgt geen diensten op of na zijn archiefdatum.
     Geeft het aantal gewijzigde dagen terug.
     """
     verschuiving = naar_maandag - van_maandag
@@ -504,6 +505,8 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
         for i in range(7):
             dag_bron = van_maandag + timedelta(days=i)
             dag_doel = dag_bron + verschuiving
+            if not medewerker.is_zichtbaar_op(dag_doel):
+                continue  # gearchiveerd: niet meer inplannen
             origineel = bron.get((medewerker.id, dag_bron))
             doel = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=dag_doel).first()
             if origineel is None and doel is None:

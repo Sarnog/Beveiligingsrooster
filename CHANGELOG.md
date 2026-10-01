@@ -54,10 +54,33 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   wijziging niet meer ongemerkt overschrijven; de tweede krijgt een melding (409).
 - **Excel-import:** na de import worden de gekoppelde Google-agenda's automatisch bijgewerkt.
 - De app-log zweeg na het terugzetten van een back-up (de databasemigratie zette de loggers uit).
+- Kleine reparaties:
+  - een agenda-taak die tijdens een fout verdwijnt, of een onverwachte fout bij Google, legt de
+    wachtrij niet meer stil (de taak wordt later opnieuw geprobeerd);
+  - tekens als "²" in een tijd- of codecel geven een gewone foutmelding in plaats van een
+    foutpagina; ongeldige verzoeken en datums buiten 1950–2150 worden netjes geweigerd;
+  - na het wijzigen van een codenummer, een vakantie of een feestdag worden de agenda-afspraken
+    (met de dagtekst) bijgewerkt;
+  - "Week kopiëren" plant geen diensten meer voor een medewerker na zijn archiefdatum;
+  - een standaard feestdag kan niet meer dubbel ontstaan (dubbele worden bij de update
+    opgeruimd);
+  - een bewaartermijn van 0 dagen en 0 uur wiste het hele logboek; nu betekent dat "nooit
+    opschonen";
+  - zoeken op "___" of "%%%" vindt niet meer alles;
+  - kleurregels zijn uniek zonder op hoofdletters te letten en hooguit 60 tekens;
+  - Excel-import: een onmogelijk jaar in Kalender!E2 geeft een duidelijke melding, lange
+    dienstnamen worden ingekort en overschreven toeslagen komen met hun oude waarde in het
+    logboek;
+  - `BASE_URL` wordt nu echt gebruikt voor de ICS-links en de deellink.
+- Een handmatige back-up die mislukt (bijv. volle schijf) geeft een melding in plaats van een
+  foutpagina.
 
 ### Gewijzigd
 - Wachttijden van de agenda-wachtrij en de loginblokkade rekenen in UTC; het dubbele uur bij de
   overgang naar wintertijd heeft er geen invloed meer op.
+- Back-ups met een label (handmatig, voor-update, voor-import, voor-terugzetten, upload) worden
+  na 90 dagen opgeruimd; de nieuwste 10 blijven altijd staan.
+- Geüploade Excel-bestanden van een afgebroken import worden na een dag opgeruimd.
 - Databaseversie 0004 (gaat automatisch bij de start): sessieversie per gebruiker, unieke
   standaard feestdagen per jaar, wachttijden in UTC.
 
@@ -70,6 +93,11 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   juiste wachtwoord er nog steeds in (elke naam krijgt dan nog één poging). Komt er een
   `X-Forwarded-For`-header binnen terwijl `PROXY_VERTROUWEN` uit staat, dan staat er een
   waarschuwing in de log.
+- CSV-exports: cellen die met `=`, `+`, `-` of `@` beginnen, krijgen een `'` ervoor, zodat
+  Excel ze nooit als formule uitvoert.
+- De geheime tokens van de ICS-feed en de deellink staan niet meer in de toegangslog.
+- Verkeerde bestandsrechten in `./data` (na een commando zonder `-u rooster`) geven een
+  duidelijke melding met de oplossing.
 - **Inloggen:** een bezoeker zonder account kon de database onbeperkt laten groeien met extreem
   lange gebruikersnamen. De gebruikersnaam wordt nu op 64 tekens afgekapt, een blokkade komt
   maar één keer in het logboek, alle logboekvelden zijn begrensd en loginpogingen ouder dan een

@@ -7,11 +7,12 @@ from ...extensions import db
 from ...models import Dienst, Dienstcode, OpmerkingKleurregel
 from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import diensten_met_afwijkende_std_tijden, pas_std_tijden_toe
-from ...services.tijden import OngeldigeTijd, normaliseer_tijd
+from ...services.tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from ...services.voorbeeldpakket import laad_voorbeeldpakket
 from ..hulp import beheerder_vereist, getal, kleur, vinkje
 from . import bp
 
+MAX_KLEURREGEL = 60  # zelfde lengte als de kolom in de database
 VELDEN = ("nummer", "omschrijving", "std_begin", "std_eind", "std_uren", "kleur_achtergrond",
           "kleur_tekst", "vet", "cursief", "in_agenda", "hele_dag_zonder_tijden", "actief")
 
@@ -35,7 +36,7 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
     formulier = request.form
     fouten = []
     nummer_tekst = formulier.get("nummer", "").strip()
-    if not nummer_tekst.isdigit() or int(nummer_tekst) < 1:
+    if not is_cijfers(nummer_tekst) or int(nummer_tekst) < 1:
         fouten.append("Het nummer moet een positief geheel getal zijn.")
         nummer = None
     else:
@@ -107,7 +108,7 @@ def dienstcode_bewerk(cid: int):
                 flash(fout, "fout")
             return render_template("beheer/dienstcode_form.html", c=code, w=waarden), 400
         # Naam of agenda-instellingen gewijzigd: toekomstige afspraken bijwerken
-        agenda_velden = ("omschrijving", "in_agenda", "hele_dag_zonder_tijden")
+        agenda_velden = ("nummer", "omschrijving", "in_agenda", "hele_dag_zonder_tijden")
         agenda_geraakt = any(getattr(code, v) != waarden[v] for v in agenda_velden)
         # Standaardtijden gelden alleen voor NIEUWE invoer; bestaande diensten blijven gelijk
         for veld in VELDEN:
@@ -180,9 +181,12 @@ def voorbeeldpakket():
 @beheerder_vereist
 def kleurregel_nieuw():
     tekst = request.form.get("tekst", "").strip()
+    bestaande = {r.tekst.casefold() for r in OpmerkingKleurregel.query.all()}
     if not tekst:
         flash("Vul een tekst in.", "fout")
-    elif OpmerkingKleurregel.query.filter_by(tekst=tekst).first():
+    elif len(tekst) > MAX_KLEURREGEL:
+        flash(f"De tekst mag hooguit {MAX_KLEURREGEL} tekens lang zijn.", "fout")
+    elif tekst.casefold() in bestaande:  # de regels werken hoofdletterongevoelig
         flash(f"Er is al een kleurregel voor '{tekst}'.", "fout")
     else:
         regel = OpmerkingKleurregel(

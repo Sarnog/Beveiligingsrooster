@@ -29,6 +29,10 @@ def lees_code() -> str | None:
             return code or None
     except FileNotFoundError:
         return None
+    except PermissionError as fout:
+        from .. import rechten_melding
+
+        raise RuntimeError(rechten_melding(_pad())) from fout
 
 
 def haal_of_maak_code() -> str:
@@ -39,9 +43,14 @@ def haal_of_maak_code() -> str:
     code = "-".join("".join(secrets.choice(_ALFABET) for _ in range(4)) for _ in range(3))
     pad = _pad()
     # Bestand alleen leesbaar voor de eigenaar (chmod 600)
-    descriptor = os.open(pad, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as bestand:
-        bestand.write(code + "\n")
+    try:
+        descriptor = os.open(pad, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as bestand:
+            bestand.write(code + "\n")
+    except PermissionError as fout:
+        from .. import rechten_melding
+
+        raise RuntimeError(rechten_melding(pad)) from fout
     log.warning("SETUP-CODE voor de eerste installatie: %s", code)
     return code
 

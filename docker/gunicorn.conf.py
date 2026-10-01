@@ -13,5 +13,7 @@ timeout = 120  # ruim, voor een grote Excel-import
 
 # Logs naar de console, zodat 'docker compose logs' ze toont
 accesslog = "-"
+# Geheime tokens van de ICS-feed en de deellink niet in de toegangslog (zie app/toegangslog.py)
+logger_class = "app.toegangslog.ToegangsLogger"
 errorlog = "-"
 loglevel = "info"
