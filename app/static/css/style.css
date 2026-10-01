@@ -241,8 +241,8 @@ tr.gearchiveerd td { opacity: .55; }
 .raster-status.bezig { color: var(--info); }
 .code-paneel .raster-status { max-width: 330px; }
 .raster-status.waarschuwing { color: #000; background: #ffd8a8; font-weight: 600; }
-/* Tweede dienst: dunne stippellijn boven de extra rijen */
-.rooster tr.r-e td { border-top: 1px dashed #8a93a3; }
+/* Twee diensten op een dag: de opmerking van die dag achter de dienstnaam van dienst 1 */
+.rooster .dienstnaam[data-opm]::after { content: " – " attr(data-opm); font-weight: normal; font-style: italic; }
 
 /* Bewerkbare cellen */
 .cel { cursor: cell; position: relative; outline: none; }

@@ -1,8 +1,8 @@
-"""Browsertests (Playwright): twee diensten op één dag (1.4.0).
+"""Browsertests (Playwright): twee diensten op één dag (1.4.0, indeling 1.4.2).
 
-- '17/3' typen in het code-raster → opslaan → beide diensten onder elkaar in het rooster,
-  met eigen uren en het juiste weektotaal; ook na verversen;
-- pijltjes slaan de (verborgen) rijen van dienst 2 over bij iemand zonder tweede dienst;
+- '17/3' typen in het code-raster → opslaan → dienst 1 op de bovenste twee regels van het
+  blok, dienst 2 op de onderste twee, met eigen uren en het juiste weektotaal; ook na verversen;
+- geen extra regels: het blok houdt vier regels; pijltjes en Ctrl+Z werken met de nieuwe indeling;
 - de printversie toont beide diensten en past op één A4 liggend.
 """
 
@@ -39,16 +39,18 @@ def test_twee_diensten_typen_opslaan_en_tonen(server, browser, sessies):
     # Medewerker op de derde regel, maandag
     cel = pagina.locator(".code-paneel td.code").nth(2 * 7)
     mw, datum = cel.get_attribute("data-mw"), cel.get_attribute("data-datum")
-    tweede_rijen = pagina.locator(f'tr[data-tweede="{mw}"]')
-    assert tweede_rijen.count() == 0  # nog geen tweede dienst deze week
+    blok = pagina.locator(f'.rooster tbody.blok[data-blok="{mw}"]')
+    plek_a = blok.locator(f'[data-plek="a"][data-datum="{datum}"]')
+    assert plek_a.get_attribute("data-veld") == "opmerking"  # nog één dienst
 
     cel.click()
     pagina.keyboard.type("17/3")
     pagina.keyboard.press("Enter")
     status = pagina.locator(".code-paneel [data-status]")
     sync_api.expect(status).to_contain_text("niet opgeslagen")
-    # Voorbeeld: de rijen van dienst 2 verschijnen al, de code-cel is gesplitst gekleurd
-    sync_api.expect(tweede_rijen.first).to_be_visible()
+    # Voorbeeld: dienst 1 schuift al naar boven, de code-cel is gesplitst gekleurd
+    sync_api.expect(plek_a).to_have_attribute("data-toon", "dienstnaam")
+    sync_api.expect(plek_a).to_have_text("BHV")
     sync_api.expect(cel).to_have_text("17/3")
     assert "linear-gradient" in cel.get_attribute("style")
     assert _diensten(server, int(mw), datum) != {1: ("BHV", "08:30", "12:30", 4.0),
@@ -65,8 +67,10 @@ def test_twee_diensten_typen_opslaan_en_tonen(server, browser, sessies):
         naam2 = pagina.locator(f'.rooster {dag}[data-toon="dienstnaam"][data-vn="2"]')
         sync_api.expect(naam1).to_have_text("BHV")
         sync_api.expect(naam2).to_have_text("VW Avond")
-        # Onder elkaar: dienst 2 staat lager in het rooster dan dienst 1
+        # Onder elkaar: dienst 1 op de bovenste regel (a), dienst 2 op regel c; geen extra regels
+        assert naam1.get_attribute("data-plek") == "a" and naam2.get_attribute("data-plek") == "c"
         assert naam2.bounding_box()["y"] > naam1.bounding_box()["y"]
+        assert blok.locator("tr").count() == 4
         assert pagina.locator(f'.rooster {dag}[data-veld="begin"][data-vn="2"]').inner_text() == "14:30"
         assert pagina.locator(f'.rooster {dag}[data-toon="uren"]:not([data-vn="2"])').inner_text() == "4,00"
         assert pagina.locator(f'.rooster {dag}[data-toon="uren"][data-vn="2"]').inner_text() == "8,00"
@@ -91,12 +95,11 @@ def test_twee_diensten_typen_opslaan_en_tonen(server, browser, sessies):
     context.close()
 
 
-def test_pijltjes_slaan_verborgen_rijen_over_en_ctrl_z(server, browser, sessies):
+def test_pijltjes_en_ctrl_z_met_twee_diensten(server, browser, sessies):
     context, pagina = nieuwe_pagina(browser, "1280x800", sessies["beheerder"])
     pagina.goto(server.url + "/week")
     blokken = pagina.locator(".rooster tbody.blok")
     eerste, tweede = blokken.nth(5), blokken.nth(6)
-    assert eerste.locator("tr.tweede-rij").count() == 0
     # Van de tijdenregel (rij d) van de ene medewerker naar de opmerking (rij a) van de volgende
     eerste.locator('td[data-veld="begin"]:not([data-vn="2"])').first.click()
     pagina.keyboard.press("ArrowDown")
@@ -107,22 +110,30 @@ def test_pijltjes_slaan_verborgen_rijen_over_en_ctrl_z(server, browser, sessies)
     # Tweede dienst erbij via het code-raster, daarna Ctrl+Z: de oude stand komt terug
     mw = eerste.get_attribute("data-blok")
     cel = pagina.locator(f'.code-paneel td.code[data-mw="{mw}"]').nth(1)
+    datum = cel.get_attribute("data-datum")
     oud = cel.inner_text()
     cel.click()
     pagina.keyboard.type("17/3")
     pagina.keyboard.press("Enter")
     sync_api.expect(cel).to_have_text("17/3")
     sync_api.expect(cel).to_have_class(re.compile("gewijzigd"))  # oranje: nog niet opgeslagen
-    sync_api.expect(eerste.locator("tr.tweede-rij").first).to_be_visible()
-    # De nieuwe rijen doen mee in het raster: pijltje omlaag vanuit de tijden van dienst 1
-    eerste.locator('td[data-veld="begin"]:not([data-vn="2"])').first.click()
+    uren1 = eerste.locator(f'[data-plek="b3"][data-datum="{datum}"]')
+    sync_api.expect(uren1).to_have_attribute("data-veld", "uren")  # was een lege cel
+    # De nieuwe indeling doet mee in het raster: van de uren van dienst 1 (regel b)
+    # omlaag naar de dienstnaam van dienst 2 (regel c), en weer terug
+    uren1.click()
     pagina.keyboard.press("ArrowDown")
     assert actief.get_attribute("data-vn") == "2" and actief.get_attribute("data-toon") == "dienstnaam"
-    cel.click()
+    pagina.keyboard.press("ArrowUp")
+    assert actief.get_attribute("data-plek") == "b1" and actief.get_attribute("data-veld") == "begin"
     cel.click()
     pagina.keyboard.press("Control+z")
     sync_api.expect(cel).to_have_text(oud)
     sync_api.expect(pagina.locator("[data-opslaan]")).to_be_disabled()
+    # Terug naar één dienst: de lege cel is weer leeg en geen raster-cel meer
+    sync_api.expect(uren1).to_have_class("leeg")
+    sync_api.expect(eerste.locator(f'[data-plek="a"][data-datum="{datum}"]')).to_have_attribute(
+        "data-veld", "opmerking")
     context.close()
 
 

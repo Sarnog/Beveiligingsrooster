@@ -542,15 +542,26 @@ def test_voorbeeld_van_twee_diensten_slaat_niets_op(als_beheerder, rooster):
 def test_weekpagina_toont_tweede_dienst(als_beheerder, rooster):
     a = rooster["a"]
     cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cel(als_beheerder, a, MAANDAG, "opmerking", "Later op dienst")
     pagina = als_beheerder.get("/week/2026/10").data.decode()
     assert ">17/3</td>" in pagina  # code-raster
-    # Rijen voor dienst 2 alleen bij wie die week een tweede dienst heeft
-    assert f'<tr class="r-e tweede-rij" data-tweede="{a.id}">' in pagina
-    assert f'data-tweede="{rooster["b"].id}"' not in pagina
-    assert pagina.count('data-vn="2" data-toon="dienstnaam"') == 7 and "VW Avond" in pagina
+    # Geen extra regels: op die dag staat dienst 1 op de bovenste twee regels (plek a en b),
+    # dienst 2 op de onderste twee (plek c en d). De andere dagen blijven zoals ze waren.
+    blok = pagina.split(f'data-blok="{a.id}"')[1].split("</tbody>")[0]
+    assert blok.count("<tr") == 4
+    datum = MAANDAG.isoformat()
+    assert (f'data-plek="a" data-mw="{a.id}" data-datum="{datum}" data-toon="dienstnaam" '
+            f'data-veld="dienstnaam"') in blok
+    assert f'data-plek="b1" data-mw="{a.id}" data-datum="{datum}" data-veld="begin"' in blok
+    assert f'data-plek="c" data-mw="{a.id}" data-datum="{datum}" data-vn="2"' in blok
+    assert blok.count('data-vn="2" data-toon="dienstnaam"') == 1 and "VW Avond" in blok
+    dinsdag = date(2026, 3, 3).isoformat()
+    assert f'data-plek="a" data-mw="{a.id}" data-datum="{dinsdag}" data-veld="opmerking"' in blok
     # Plek voor de printversie (die bouwt print.js in de browser op)
     assert '<section class="print-rooster" data-print-rooster data-week="10"' in pagina
     assert "js/print.js" in pagina
+    # De opmerking van die dag staat achter de dienstnaam van dienst 1
+    assert 'data-opm="Later op dienst" title="Opmerking: Later op dienst"' in blok
 
 
 def test_gebruiker_ziet_tweede_dienst_maar_kan_niets_wijzigen(app, client, rooster, klaar):

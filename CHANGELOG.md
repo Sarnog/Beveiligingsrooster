@@ -2,6 +2,16 @@
 
 ## [Onuitgebracht]
 
+## [1.4.2] – 2026-10-01
+
+### Gewijzigd
+- **Twee diensten op een dag: geen extra regels meer.** Elk medewerkerblok houdt vier regels.
+  Op een dag met één dienst staat bovenaan de opmerking en onderaan de dienst (zoals altijd).
+  Op een dag met twee diensten schuift dienst 1 naar de bovenste twee regels en komt dienst 2
+  op de onderste twee. De opmerking van die dag staat dan achter de dienstnaam van dienst 1
+  (bijv. *VW Vroeg – Later op dienst*); wijzigen kan weer zodra het één dienst is. De indeling
+  wisselt per dag, direct tijdens het typen. De printversie volgt dezelfde indeling.
+
 ## [1.4.1] – 2026-10-01
 
 ### Opgelost
