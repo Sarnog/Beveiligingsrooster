@@ -114,10 +114,16 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
             log.exception("Fout bij het opschonen")
             db.session.rollback()
 
-    # 3. Nachtelijke back-up (na een fout: pas na de backoff opnieuw)
+    # 3. Nachtelijke back-up (na een fout: pas na de backoff opnieuw). Of hij vandaag al
+    #    gemaakt is, staat in de map backups (ook na een herstart van de worker)
     if nu.hour >= BACKUP_UUR and planning.backup_gedaan != nu.date() \
             and (planning.backup_niet_voor is None or nu >= planning.backup_niet_voor):
-        _stap_backup(planning, nu)
+        from .services import backup
+
+        if backup.automatische_van(nu.date()):
+            planning.backup_gedaan = nu.date()
+        else:
+            _stap_backup(planning, nu)
 
 
 def main() -> None:

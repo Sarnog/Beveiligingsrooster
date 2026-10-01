@@ -23,6 +23,7 @@ from ..services.weekrooster import (
 from .hulp import begrensd_getal, beheerder_vereist, externe_url
 
 bp = Blueprint("rooster", __name__)
+MAX_CELLEN = 5000  # wijzigingen + dagopmerkingen + ook_tonen + ook_dagen per verzoek
 
 
 def geldige_week(jaar: int, week: int) -> bool:
@@ -158,8 +159,10 @@ def api_cellen():
         return jsonify(fout="Geen geldige wijzigingen ontvangen."), 400
     ruwe = gegevens.get("wijzigingen") or []
     ruwe_dagen = gegevens.get("dagopmerkingen") or []
-    if not isinstance(ruwe, list) or not isinstance(ruwe_dagen, list) \
-            or len(ruwe) + len(ruwe_dagen) > 5000:
+    ruwe_tonen = gegevens.get("ook_tonen") or []
+    ruwe_ook_dagen = gegevens.get("ook_dagen") or []
+    lijsten = (ruwe, ruwe_dagen, ruwe_tonen, ruwe_ook_dagen)
+    if not all(isinstance(lijst, list) for lijst in lijsten) or sum(map(len, lijsten)) > MAX_CELLEN:
         return jsonify(fout="Geen geldige wijzigingen ontvangen."), 400
 
     try:
@@ -185,10 +188,10 @@ def api_cellen():
         dag_wijzigingen = [(_lees_datum(d["datum"]), str(d.get("tekst") or ""))
                            for d in ruwe_dagen]
         ook_tonen = []
-        for sleutel in gegevens.get("ook_tonen") or []:
+        for sleutel in ruwe_tonen:
             mw, datum = str(sleutel).split("|")
             ook_tonen.append((_lees_getal(mw, 1), _lees_datum(datum)))
-        ook_dagen = [_lees_datum(d) for d in gegevens.get("ook_dagen") or []]
+        ook_dagen = [_lees_datum(d) for d in ruwe_ook_dagen]
     except (KeyError, TypeError, ValueError, AttributeError):
         return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
 

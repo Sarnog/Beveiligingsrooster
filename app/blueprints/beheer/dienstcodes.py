@@ -116,6 +116,7 @@ def dienstcode_bewerk(cid: int):
         # Naam of agenda-instellingen gewijzigd: toekomstige afspraken bijwerken
         agenda_velden = ("nummer", "omschrijving", "in_agenda", "hele_dag_zonder_tijden")
         agenda_geraakt = any(getattr(code, v) != waarden[v] for v in agenda_velden)
+        oude_naam = code.omschrijving
         # Standaardtijden gelden alleen voor NIEUWE invoer; bestaande diensten blijven gelijk
         for veld in VELDEN:
             oud = getattr(code, veld)
@@ -123,6 +124,8 @@ def dienstcode_bewerk(cid: int):
                 logboek.log("Dienstcode gewijzigd", f"Code {code.nummer}", veld=veld,
                             oud=oud, nieuw=waarden[veld])
                 setattr(code, veld, waarden[veld])
+        if oude_naam != code.omschrijving:
+            _hernoem_aanvullingen(code, oude_naam)
         db.session.commit()
         if agenda_geraakt:
             sync_planning.plan_code(code)
@@ -130,6 +133,25 @@ def dienstcode_bewerk(cid: int):
         return redirect(url_for("beheer.dienstcodes"))
     waarden = {veld: getattr(code, veld) for veld in VELDEN}
     return render_template("beheer/dienstcode_form.html", c=code, w=waarden)
+
+
+def _hernoem_aanvullingen(code: Dienstcode, oude_naam: str) -> None:
+    """Na hernoemen: 'VW Vroeg tot 12:00' wordt 'VW Ochtend tot 12:00' (de aanvulling blijft).
+
+    Zonder dit zou de oude naam blijven staan, en vervalt de code bij de volgende bewerking
+    van de dienstnaam (de tekst begint dan niet meer met de naam van de code).
+    """
+    from ...services.weekrooster import begint_met_dienstnaam
+
+    met_aanvulling = Dienst.query.filter(Dienst.dienstcode_id == code.id, Dienst.dienstnaam_override != "")
+    for dienst in met_aanvulling.all():
+        if begint_met_dienstnaam(dienst.dienstnaam_override, oude_naam):
+            oud = dienst.dienstnaam_override
+            dienst.dienstnaam_override = (code.omschrijving + oud[len(oude_naam):])[:MAX_OMSCHRIJVING]
+            dienst.versie += 1
+            logboek.log("Rooster gewijzigd", f"Dienstcode {code.nummer} hernoemd", datum=dienst.datum,
+                        medewerker=dienst.medewerker.naam, veld="dienstnaam", oud=oud,
+                        nieuw=dienst.dienstnaam_override)
 
 
 @bp.route("/dienstcodes/<int:cid>/verwijder", methods=["POST"])

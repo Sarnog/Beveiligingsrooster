@@ -431,7 +431,9 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
         if dienst.dienstcode is not None and begint_met_dienstnaam(tekst, dienst.dienstcode.omschrijving):
             # Dienstnaam met een aanvulling erachter ('VW Vroeg tot 12:00'): de code (en dus de
             # kleur en tijden) blijft, alleen de getoonde tekst krijgt de aanvulling
-            dienst.dienstnaam_override = "" if tekst == dienst.dienstcode.omschrijving else tekst
+            # Alleen hoofdletters anders ('vw vroeg') is geen aanvulling: gewoon de naam van de code
+            gelijk = tekst.casefold() == dienst.dienstcode.omschrijving.strip().casefold()
+            dienst.dienstnaam_override = "" if gelijk else tekst
             return oud, dienst.dienstnaam
         dienst.dienstcode = None
         dienst.dienstcode_id = None

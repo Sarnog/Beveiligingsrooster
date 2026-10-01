@@ -84,6 +84,14 @@ def maak_backup(label: str = "") -> str:
     return doel
 
 
+def automatische_van(datum) -> bool:
+    """Is er al een (geldige) automatische back-up van deze dag? Zo maakt een herstarte
+    worker geen tweede nachtelijke back-up (het geheugen van de worker is dan leeg)."""
+    stempel = f"{VOORVOEGSEL}{datum:%Y%m%d}-"
+    return any(AUTOMATISCH.match(b["naam"]) and b["naam"].startswith(stempel) and b["grootte"] > 0
+               for b in lijst_backups())
+
+
 def lijst_backups() -> list[dict]:
     """Alle back-ups, nieuwste eerst, met naam, grootte en tijdstip."""
     map_ = backup_map()

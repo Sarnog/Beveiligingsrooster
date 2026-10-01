@@ -811,3 +811,162 @@ def test_l8_raster_js_zelfde_regel():
     with open(pad, encoding="utf-8") as f:
         js = f.read()
     assert '(g.opm_begin ? " ("' not in js  # alleen begin telde: ook eind moet meetellen
+
+
+# ---------------------------------------------------------------------------
+# L9 · Zoeken en de CSV-export knippen stil af op 5000 resultaten
+# ---------------------------------------------------------------------------
+
+def test_l9_afkappen_wordt_gemeld(app, als_gebruiker, mw, monkeypatch):
+    from app.services import overzichten
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    monkeypatch.setattr(overzichten, "MAX_RESULTATEN", 2)
+    wijzig_cellen([Wijziging(mw.id, MAANDAG + timedelta(days=i), "code", "4") for i in range(3)])
+    pagina = als_gebruiker.get("/zoeken/?code=4").data.decode()
+    assert "alleen de eerste 2" in pagina
+    csv = als_gebruiker.get("/zoeken/export.csv?code=4").data.decode()
+    assert "alleen de eerste 2" in csv
+    assert overzichten.zoek_diensten(code=4, limiet=5) and len(overzichten.zoek_diensten(code=4)) == 2
+
+
+def test_l9_geen_melding_onder_de_grens(app, als_gebruiker, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4")])
+    assert "alleen de eerste" not in als_gebruiker.get("/zoeken/?code=4").data.decode()
+
+
+# ---------------------------------------------------------------------------
+# L10 · ook_tonen/ook_dagen in /api/cellen onbegrensd
+# ---------------------------------------------------------------------------
+
+def test_l10_ook_tonen_en_ook_dagen_begrensd(app, als_beheerder, mw):
+    veel = [f"{mw.id}|2026-03-02"] * 6000
+    assert als_beheerder.post("/api/cellen", json={"ook_tonen": veel}).status_code == 400
+    assert als_beheerder.post("/api/cellen", json={"ook_dagen": ["2026-03-02"] * 6000}).status_code == 400
+    assert als_beheerder.post("/api/cellen", json={"ook_tonen": "geen lijst"}).status_code == 400
+    assert als_beheerder.post("/api/cellen", json={"ook_tonen": [f"{mw.id}|2026-03-02"]}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# L11 · Laatste-beheerdercontrole niet atomair
+# ---------------------------------------------------------------------------
+
+def test_l11_laatste_beheerder_ook_bij_gelijktijdige_wijziging(app, als_beheerder, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    from app.blueprints.beheer import gebruikers
+    from app.models import Gebruiker
+
+    from .conftest import maak_gebruiker
+
+    tweede = maak_gebruiker("tweede", "beheerder")
+    eerste = Gebruiker.query.filter_by(gebruikersnaam="beheerder").one()
+    echt = gebruikers._aantal_actieve_beheerders
+
+    def tussendoor(behalve_id=None):
+        aantal = echt(behalve_id)
+        with Session(db.engine) as sessie:  # een andere beheerder degradeert 'tweede' tegelijk
+            sessie.query(Gebruiker).filter_by(id=tweede.id).update({"rol": "gebruiker"})
+            sessie.commit()
+        return aantal
+
+    monkeypatch.setattr(gebruikers, "_aantal_actieve_beheerders", tussendoor)
+    antwoord = als_beheerder.post(f"/beheer/gebruikers/{eerste.id}", data={
+        "gebruikersnaam": "beheerder", "weergavenaam": "B", "rol": "gebruiker", "actief": "1"})
+    assert antwoord.status_code == 400
+    db.session.expire_all()
+    assert Gebruiker.query.filter_by(rol="beheerder", actief=True).count() >= 1
+
+
+# ---------------------------------------------------------------------------
+# L12 · Nachtelijke back-up alleen in het geheugen onthouden
+# ---------------------------------------------------------------------------
+
+def test_l12_na_herstart_geen_tweede_nachtelijke_backup(app, klaar, monkeypatch):
+    from app import worker
+    from app.services import backup, klok
+
+    from .test_regressie import Klok
+
+    nu = klok.nu().replace(hour=3)
+    monkeypatch.setattr(klok, "nu", Klok(nu))  # elke back-up een eigen naam (tijd loopt door)
+    worker.een_ronde(worker.Planning(), nu)
+    assert len(backup.lijst_backups()) == 1
+    worker.een_ronde(worker.Planning(), nu)  # worker herstart: nieuw (leeg) geheugen
+    assert len(backup.lijst_backups()) == 1
+
+
+# ---------------------------------------------------------------------------
+# L13 · Dienstcode hernoemen laat aanvullingen achter de oude naam staan
+# ---------------------------------------------------------------------------
+
+def test_l13_hernoemen_werkt_aanvulling_bij(app, als_beheerder, mw):
+    from app.models import Dienstcode
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"),
+                   Wijziging(mw.id, MAANDAG, "dienstnaam", "VW Vroeg tot 12:00")])
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    als_beheerder.post(f"/beheer/dienstcodes/{code.id}", data={
+        "nummer": "4", "omschrijving": "VW Ochtend", "std_begin": "07:15", "std_eind": "15:45",
+        "vet": "1", "actief": "1", "in_agenda": "1"})
+    db.session.expire_all()
+    dienst = Dienst.query.one()
+    assert dienst.dienstnaam == "VW Ochtend tot 12:00" and dienst.dienstcode.nummer == 4
+
+
+def test_l13_alleen_hoofdletters_anders_is_geen_aanvulling(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"),
+                   Wijziging(mw.id, MAANDAG, "dienstnaam", "vw vroeg")])
+    db.session.expire_all()
+    dienst = Dienst.query.one()
+    assert dienst.dienstnaam_override == "" and dienst.dienstcode.nummer == 4
+
+
+# ---------------------------------------------------------------------------
+# L14 · Waarschuwing 'Alle uren herberekenen' bij een eigen roostervrije dag
+# ---------------------------------------------------------------------------
+
+def test_l14_eigen_roostervrije_dag_geeft_herbereken_melding(app, als_beheerder):
+    from app.models import Feestdag
+    from app.services import instellingen
+
+    instellingen.schrijf("toeslag_feestdag", "2")
+    db.session.commit()
+    antwoord = als_beheerder.post("/beheer/feestdagen/nieuw", data={"naam": "Teamdag", "datum": "2026-06-10"},
+                                  follow_redirects=True)
+    assert "Alle uren herberekenen" in antwoord.data.decode()
+    dag = Feestdag.query.filter_by(naam="Teamdag").one()
+    antwoord = als_beheerder.post(f"/beheer/feestdagen/{dag.id}/verwijder", follow_redirects=True)
+    assert "Alle uren herberekenen" in antwoord.data.decode()
+
+
+def test_l14_zonder_feestdagtoeslag_geen_melding(app, als_beheerder):
+    antwoord = als_beheerder.post("/beheer/feestdagen/nieuw", data={"naam": "Teamdag", "datum": "2026-06-10"},
+                                  follow_redirects=True)
+    assert "Alle uren herberekenen" not in antwoord.data.decode()
+
+
+# ---------------------------------------------------------------------------
+# L15 · De tijdzonecache geldt per proces (60 s)
+# ---------------------------------------------------------------------------
+
+def test_l15_andere_processen_zien_een_nieuwe_tijdzone_snel(app, klaar, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    from app.models import Instelling
+    from app.services import klok
+
+    tijd = [1000.0]
+    monkeypatch.setattr(klok.time, "monotonic", lambda: tijd[0])
+    klok.wis_cache()
+    assert klok.tijdzone_naam() == "Europe/Amsterdam"
+    with Session(db.engine) as sessie:  # een ander proces (Beheer) wijzigt de tijdzone
+        sessie.merge(Instelling(sleutel="tijdzone", waarde="Europe/London"))
+        sessie.commit()
+    tijd[0] += 6
+    assert klok.tijdzone_naam() == "Europe/London"

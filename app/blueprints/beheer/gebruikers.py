@@ -21,6 +21,21 @@ def _aantal_actieve_beheerders(behalve_id: int | None = None) -> int:
     return query.count()
 
 
+def _nog_een_beheerder() -> bool:
+    """Controle binnen de schrijftransactie: is er na deze wijziging nog een actieve beheerder?
+
+    De flush schrijft onze wijziging en pakt daarmee de schrijfvergrendeling van SQLite;
+    niemand kan daarna tussendoor nog een beheerder wijzigen. Is er geen beheerder meer
+    over (bijv. omdat een ander tegelijk de andere beheerder degradeerde), dan wordt alles
+    teruggedraaid. De controle vooraf blijft voor een nette melding in het formulier.
+    """
+    db.session.flush()
+    if Gebruiker.query.filter_by(rol=ROL_BEHEERDER, actief=True).count() > 0:
+        return True
+    db.session.rollback()
+    return False
+
+
 def _medewerkers():
     return Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()
 
@@ -115,6 +130,11 @@ def gebruiker_bewerk(gid: int):
                 setattr(gebruiker, veld, waarde)
                 if veld in ("actief", "rol"):
                     gebruiker.maak_sessies_ongeldig()  # direct uitloggen
+        if not _nog_een_beheerder():
+            fout = "Dit is de laatste beheerder. Maak eerst een andere beheerder aan."
+            flash(fout, "fout")
+            return render_template("beheer/gebruiker_form.html", g=gebruiker, w=waarden,
+                                   medewerkers=_medewerkers()), 400
         db.session.commit()
         if gebruiker.id == current_user.id:
             login_user(gebruiker)  # eigen sessie geldig houden
@@ -151,6 +171,9 @@ def gebruiker_verwijder(gid: int):
     else:
         logboek.log("Account verwijderd", oud=gebruiker.gebruikersnaam)
         db.session.delete(gebruiker)
-        db.session.commit()
-        flash("Account verwijderd.", "succes")
+        if _nog_een_beheerder():
+            db.session.commit()
+            flash("Account verwijderd.", "succes")
+        else:
+            flash("De laatste beheerder kan niet verwijderd worden.", "fout")
     return redirect(url_for("beheer.gebruikers"))

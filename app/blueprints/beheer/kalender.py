@@ -5,7 +5,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 
 from ...extensions import db
 from ...models import Feestdag, Vakantie
-from ...services import logboek, sync_planning
+from ...services import instellingen, logboek, sync_planning
 from ...services.feestdagen import zorg_voor_jaar
 from ...services.kalender import werkdagen
 from ...services.tijden import parse_datum
@@ -92,8 +92,15 @@ def feestdag_wissel(fid: int):
                 veld="actief", oud=not feestdag.actief, nieuw=feestdag.actief)
     db.session.commit()
     sync_planning.plan_periode(feestdag.datum, feestdag.datum)
-    flash("Let op: gebruik 'Alle uren herberekenen' als je een feestdagtoeslag gebruikt.", "info")
+    _herbereken_melding()
     return redirect(url_for("beheer.feestdagen", jaar=feestdag.jaar))
+
+
+def _herbereken_melding() -> None:
+    """Met een feestdagtoeslag veranderen de uren op die dag: herberekenen is dan nodig."""
+    if instellingen.lees_float("toeslag_feestdag"):
+        flash("Let op: er is een feestdagtoeslag ingesteld. Gebruik 'Alle uren herberekenen' "
+              "(Beheer → Instellingen) zodat de uren op deze dag kloppen.", "info")
 
 
 @bp.route("/feestdagen/nieuw", methods=["POST"])
@@ -110,6 +117,7 @@ def feestdag_nieuw():
     db.session.commit()
     sync_planning.plan_periode(datum, datum)
     flash("Roostervrije dag toegevoegd.", "succes")
+    _herbereken_melding()
     return redirect(url_for("beheer.feestdagen", jaar=datum.year))
 
 
@@ -126,6 +134,7 @@ def feestdag_verwijder(fid: int):
         db.session.commit()
         sync_planning.plan_periode(datum, datum)
         flash("Roostervrije dag verwijderd.", "succes")
+        _herbereken_melding()
     else:
         flash("Standaard feestdagen kun je alleen uitzetten.", "fout")
     return redirect(url_for("beheer.feestdagen", jaar=jaar))
