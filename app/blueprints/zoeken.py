@@ -9,6 +9,7 @@ from flask_login import login_required
 from ..models import Dienstcode
 from ..services.overzichten import MIN_NAAM, zoek_diensten
 from ..services.tijden import is_cijfers, parse_datum
+from ..services.validatie import is_codenummer
 from .hulp import csv_cel
 
 bp = Blueprint("zoeken", __name__, url_prefix="/zoeken")
@@ -18,13 +19,14 @@ def _lees_filters() -> tuple[dict, str | None]:
     """Lees de zoekvelden. Geeft (filters, foutmelding of None)."""
     naam = request.args.get("naam", "").strip()
     code_tekst = request.args.get("code", "").strip()
+    geldig = is_cijfers(code_tekst) and is_codenummer(int(code_tekst))
     filters = {
         "naam": naam,
-        "code": int(code_tekst) if is_cijfers(code_tekst) else None,
+        "code": int(code_tekst) if geldig else None,
         "van": parse_datum(request.args.get("van")),
         "tot": parse_datum(request.args.get("tot")),
     }
-    if code_tekst and not is_cijfers(code_tekst):
+    if code_tekst and not geldig:
         return filters, "De dienstcode moet een nummer zijn."
     if len(naam) < MIN_NAAM and filters["code"] is None:
         return filters, f"Vul minimaal een naam (≥ {MIN_NAAM} tekens) of een dienstcode in."

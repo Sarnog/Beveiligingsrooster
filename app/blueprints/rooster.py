@@ -10,6 +10,7 @@ from ..extensions import db
 from ..models import MAX_DIENSTEN_PER_DAG, Dienstcode, Medewerker
 from ..services import instellingen, klok
 from ..services.kalender import MAX_JAAR, MIN_JAAR, aantal_weken, maandag_van_week, week_van
+from ..services.validatie import MAX_GETAL
 from ..services.weekrooster import (
     VELDEN,
     VersieConflict,
@@ -19,13 +20,23 @@ from ..services.weekrooster import (
     verwerk_rooster,
     week_gegevens,
 )
-from .hulp import beheerder_vereist, externe_url
+from .hulp import begrensd_getal, beheerder_vereist, externe_url
 
 bp = Blueprint("rooster", __name__)
 
 
 def geldige_week(jaar: int, week: int) -> bool:
     return 1900 < jaar < 2200 and 1 <= week <= aantal_weken(jaar)
+
+
+def _lees_getal(waarde, minimum: int = 0) -> int:
+    """Geheel getal uit de JSON (ID of versie), minimum t/m 2^31-1 (anders ValueError)."""
+    if isinstance(waarde, bool) or not isinstance(waarde, (int, str)):
+        raise ValueError("geen geheel getal")
+    getal = int(waarde)
+    if not minimum <= getal <= MAX_GETAL:
+        raise ValueError("getal buiten bereik")
+    return getal
 
 
 def _lees_datum(waarde) -> date:
@@ -163,20 +174,20 @@ def api_cellen():
             if volgnummer not in range(1, MAX_DIENSTEN_PER_DAG + 1):
                 raise ValueError
             wijzigingen.append(Wijziging(
-                medewerker_id=int(item["mw"]),
+                medewerker_id=_lees_getal(item["mw"], 1),
                 datum=_lees_datum(item["datum"]),
                 veld=veld,
                 waarde="" if item.get("waarde") is None else str(item["waarde"]),
-                versie=None if versie is None else int(versie),
+                versie=None if versie is None else _lees_getal(versie),
                 volgnummer=volgnummer,
-                versie2=None if versie2 is None else int(versie2),
+                versie2=None if versie2 is None else _lees_getal(versie2),
             ))
         dag_wijzigingen = [(_lees_datum(d["datum"]), str(d.get("tekst") or ""))
                            for d in ruwe_dagen]
         ook_tonen = []
         for sleutel in gegevens.get("ook_tonen") or []:
             mw, datum = str(sleutel).split("|")
-            ook_tonen.append((int(mw), _lees_datum(datum)))
+            ook_tonen.append((_lees_getal(mw, 1), _lees_datum(datum)))
         ook_dagen = [_lees_datum(d) for d in gegevens.get("ook_dagen") or []]
     except (KeyError, TypeError, ValueError, AttributeError):
         return jsonify(fout="Ongeldige wijziging in het verzoek."), 400
@@ -207,7 +218,9 @@ def week_kopieren(jaar: int, week: int):
         flash("Kies een andere, geldige doelweek.", "fout")
         return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
 
-    medewerker_id = request.form.get("medewerker_id", type=int) or None
+    medewerker_id = request.form.get("medewerker_id", type=begrensd_getal) or None
+    if request.form.get("medewerker_id") and medewerker_id is None:
+        abort(404)  # onzin of een te groot getal
     if medewerker_id and db.session.get(Medewerker, medewerker_id) is None:
         abort(404)
     aantal = kopieer_week(maandag_van_week(jaar, week), maandag_van_week(doel_jaar, doel_week),

@@ -67,6 +67,20 @@ def getal(tekst: str | None) -> float | None:
 _GETAL = re.compile(r"-?[0-9]+([.,][0-9]+)?")
 
 
+def begrensd_getal(tekst) -> int:
+    """Geheel getal (ID, paginanummer) uit een formulier of URL: 0 t/m 2^31-1, anders ValueError.
+
+    Te gebruiken als type= bij request.args.get/request.form.get: dan geeft een
+    te groot getal gewoon de standaardwaarde, in plaats van een fout in SQLite (500).
+    """
+    from ..services.validatie import MAX_GETAL
+
+    getal_ = int(tekst)
+    if not 0 <= getal_ <= MAX_GETAL:
+        raise ValueError("getal buiten bereik")
+    return getal_
+
+
 def csv_cel(waarde):
     """Tekst voor een CSV-cel die Excel nooit als formule uitvoert.
 

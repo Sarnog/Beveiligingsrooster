@@ -579,3 +579,79 @@ def test_l1_beheer_begrenst_lengtes(app, als_beheerder):
         "gebruikersnaam": "nieuw", "weergavenaam": "W" * 121, "rol": "gebruiker",
         "wachtwoord": "langwachtwoord1"})
     assert antwoord.status_code == 400 and Gebruiker.query.filter_by(gebruikersnaam="nieuw").first() is None
+
+
+# ---------------------------------------------------------------------------
+# L2 · Integer-overflow geeft HTTP 500
+# ---------------------------------------------------------------------------
+
+GROOT = "99999999999999999999"  # past niet in een SQLite INTEGER (64 bits)
+
+
+@pytest.mark.parametrize("pad", [
+    f"/beheer/medewerkers/{GROOT}", f"/beheer/gebruikers/{GROOT}", f"/beheer/dienstcodes/{GROOT}",
+    f"/week/{GROOT}/1", f"/beheer/logboek?pagina={GROOT}", f"/zoeken/?code={GROOT}",
+    f"/kalender/?jaar={GROOT}",
+])
+def test_l2_grote_getallen_in_get_geven_geen_500(app, als_beheerder, mw, pad):
+    assert als_beheerder.get(pad).status_code in (200, 400, 404)
+
+
+def test_l2_grote_getallen_in_formulieren(app, als_beheerder, mw):
+    from app.models import Dienstcode, Gebruiker
+
+    assert als_beheerder.get(f"/zoeken/export.csv?code={GROOT}").status_code == 400
+    antwoord = als_beheerder.post("/week/2026/10/kopieer", data={"naar": "2026-W11", "medewerker_id": GROOT})
+    assert antwoord.status_code in (302, 404)
+    antwoord = als_beheerder.post("/beheer/dienstcodes/nieuw", data={"nummer": GROOT, "omschrijving": "X"})
+    assert antwoord.status_code == 400 and Dienstcode.query.filter_by(omschrijving="X").first() is None
+    antwoord = als_beheerder.post("/beheer/gebruikers/nieuw", data={
+        "gebruikersnaam": "nieuw", "weergavenaam": "N", "rol": "gebruiker", "medewerker_id": GROOT,
+        "wachtwoord": "langwachtwoord1"})
+    assert antwoord.status_code == 400 and Gebruiker.query.filter_by(gebruikersnaam="nieuw").first() is None
+    assert als_beheerder.post("/beheer/vakanties/opslaan", data={"naam": "V", "datum_van": "2026-07-01",
+                                                         "datum_tot": "2026-07-02", "id": GROOT}
+                              ).status_code in (302, 404)
+
+
+def test_l2_blanco_code_te_groot(app, als_beheerder):
+    from .test_regressie import _instellingen_formulier
+
+    pagina = als_beheerder.post("/beheer/instellingen", data=_instellingen_formulier(blanco_code=GROOT),
+                                follow_redirects=True)
+    assert pagina.status_code in (200, 400) and "blanco-code" in pagina.data.decode()
+    from app.services import instellingen
+
+    assert instellingen.lees("blanco_code") != GROOT
+
+
+@pytest.mark.parametrize("wijziging", [
+    {"mw": int(GROOT), "datum": "2026-03-02", "veld": "code", "waarde": "4"},
+    {"mw": 1, "datum": "2026-03-02", "veld": "code", "waarde": "4", "versie": int(GROOT)},
+    {"mw": 1, "datum": "2026-03-02", "veld": "code", "waarde": "4", "versie2": int(GROOT)},
+    {"mw": 1, "datum": "2026-03-02", "veld": "code", "waarde": "4", "versie": -1},
+    {"mw": 1, "datum": "2026-03-02", "veld": "code", "waarde": "4", "volgnummer": int(GROOT)},
+])
+def test_l2_api_cellen_grote_getallen_geven_400(app, als_beheerder, mw, wijziging):
+    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": [wijziging]})
+    assert antwoord.status_code == 400 and antwoord.is_json
+
+
+def test_l2_api_cellen_grote_code_en_ook_tonen(app, als_beheerder, mw):
+    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": [
+        {"mw": mw.id, "datum": "2026-03-02", "veld": "code", "waarde": GROOT}]})
+    assert antwoord.status_code == 200 and antwoord.get_json()["fouten"]
+    antwoord = als_beheerder.post("/api/cellen", json={"ook_tonen": [f"{GROOT}|2026-03-02"]})
+    assert antwoord.status_code == 400
+
+
+def test_l2_onverwachte_fout_op_api_geeft_json(app, als_beheerder, mw, monkeypatch):
+    from app.blueprints import rooster
+
+    def kapot(*args, **kwargs):
+        raise RuntimeError("onverwacht")
+
+    monkeypatch.setattr(rooster, "verwerk_rooster", kapot)
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+    antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": []})
+    assert antwoord.status_code == 500 and antwoord.is_json and "fout" in antwoord.get_json()

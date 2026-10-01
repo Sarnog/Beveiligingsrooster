@@ -28,6 +28,7 @@ from .kalender import dagen_van_week
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
 from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd, tijd_naar_minuten
 from .urenberekening import formatteer_uren
+from .validatie import MAX_GETAL
 
 VELDEN = ("code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "dienstnaam", "uren")
 VELD_NAMEN = {
@@ -329,6 +330,8 @@ def _lees_code(waarde: str) -> Dienstcode | None:
     if not is_cijfers(tekst):
         raise CelFout(f"'{tekst}' is geen dienstcode (alleen een nummer).")
     nummer = int(tekst)
+    if nummer > MAX_GETAL:
+        raise CelFout(f"Onbekende dienstcode: {tekst}")
     if nummer == instellingen.blanco_code():
         return None  # blanco-code betekent: geen dienst
     code = Dienstcode.query.filter_by(nummer=nummer, actief=True).first()

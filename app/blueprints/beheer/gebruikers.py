@@ -10,7 +10,7 @@ from ...models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker, Medewerker
 from ...services import logboek
 from ...services.validatie import MAX_NAAM, gebruikersnaam_fout, lengte_fout
 from ...services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
-from ..hulp import beheerder_vereist, vinkje
+from ..hulp import begrensd_getal, beheerder_vereist, vinkje
 from . import bp
 
 
@@ -50,8 +50,9 @@ def _lees_formulier(gebruiker: Gebruiker | None) -> tuple[dict, list[str]]:
     rol = formulier.get("rol", ROL_GEBRUIKER)
     if rol not in (ROL_BEHEERDER, ROL_GEBRUIKER):
         fouten.append("Ongeldige rol.")
-    medewerker_id = formulier.get("medewerker_id", type=int) or None
-    if medewerker_id and db.session.get(Medewerker, medewerker_id) is None:
+    medewerker_id = formulier.get("medewerker_id", type=begrensd_getal) or None
+    if (formulier.get("medewerker_id") and medewerker_id is None) or (
+            medewerker_id and db.session.get(Medewerker, medewerker_id) is None):
         fouten.append("Onbekende medewerker.")
     return {
         "gebruikersnaam": gebruikersnaam,

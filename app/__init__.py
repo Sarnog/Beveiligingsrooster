@@ -71,6 +71,18 @@ def create_app(config: Config | None = None) -> Flask:
     def logstand_verversen():
         debuglog.ververs(app)  # gewijzigd in Beheer (ander proces)? Hooguit elke 15 s gekeken
 
+    # <int:...> in routes: alleen 0 .. 2^31-1 (groter geeft anders een fout in SQLite -> 500)
+    from werkzeug.routing import IntegerConverter
+
+    from .services.validatie import MAX_GETAL
+
+    class BegrensdGetal(IntegerConverter):
+        def __init__(self, url_map, *args, **kwargs):
+            kwargs.setdefault("max", MAX_GETAL)
+            super().__init__(url_map, *args, **kwargs)
+
+    app.url_map.converters["int"] = BegrensdGetal
+
     _registreer_blueprints(app)
     _registreer_controles(app)
     _registreer_template_helpers(app)
@@ -316,6 +328,17 @@ def _registreer_controles(app: Flask) -> None:
         if request.path.startswith(API_PAD):
             return api_fout(405, "Deze API is alleen-lezen (GET).")
         return fout
+
+    @app.errorhandler(500)
+    def serverfout(fout):
+        """Onverwachte fout: de API's (ook /api/cellen van het raster) antwoorden in JSON."""
+        from flask import render_template
+
+        db.session.rollback()
+        if request.path.startswith("/api/"):
+            return api_fout(500, "Er ging iets mis op de server. Probeer het opnieuw.")
+        return render_template("fout.html", code=500,
+                               melding="Er ging iets mis op de server. Probeer het opnieuw."), 500
 
 
 def _registreer_template_helpers(app: Flask) -> None:

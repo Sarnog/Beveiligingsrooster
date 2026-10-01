@@ -1,7 +1,7 @@
 """Beheer van vakanties en feestdagen / roostervrije dagen."""
 
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 
 from ...extensions import db
 from ...models import Feestdag, Vakantie
@@ -9,7 +9,7 @@ from ...services import logboek, sync_planning
 from ...services.feestdagen import zorg_voor_jaar
 from ...services.kalender import werkdagen
 from ...services.tijden import parse_datum
-from ..hulp import beheerder_vereist
+from ..hulp import begrensd_getal, beheerder_vereist
 from ..kalender import kies_jaar
 from . import bp
 
@@ -36,8 +36,10 @@ def vakantie_opslaan():
     elif tot < van:
         flash("De einddatum ligt voor de begindatum.", "fout")
     else:
-        vid = request.form.get("id", type=int)
+        vid = request.form.get("id", type=begrensd_getal)
         periodes = [(van, tot)]
+        if request.form.get("id") and vid is None:
+            abort(404)
         if vid:
             vakantie = db.get_or_404(Vakantie, vid)
             oud = f"{vakantie.naam} {vakantie.datum_van:%d-%m-%Y} t/m {vakantie.datum_tot:%d-%m-%Y}"

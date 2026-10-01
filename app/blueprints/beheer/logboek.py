@@ -7,7 +7,7 @@ from flask import render_template, request
 from ...extensions import db
 from ...models import Logboek
 from ...services.tijden import parse_datum
-from ..hulp import beheerder_vereist
+from ..hulp import begrensd_getal, beheerder_vereist
 from . import bp
 
 PER_PAGINA = 50
@@ -30,7 +30,7 @@ def logboek():
     if tot:
         query = query.filter(Logboek.tijdstempel < tot + timedelta(days=1))
     pagina = query.order_by(Logboek.tijdstempel.desc(), Logboek.id.desc()).paginate(
-        page=request.args.get("pagina", 1, type=int), per_page=PER_PAGINA, error_out=False)
+        page=request.args.get("pagina", 1, type=begrensd_getal) or 1, per_page=PER_PAGINA, error_out=False)
     gebruikers = [g for (g,) in db.session.query(Logboek.gebruiker).distinct().order_by(Logboek.gebruiker)]
     acties = [a for (a,) in db.session.query(Logboek.actie).distinct().order_by(Logboek.actie)]
     return render_template("beheer/logboek.html", pagina=pagina, gebruikers=gebruikers,
