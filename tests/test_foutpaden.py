@@ -188,6 +188,8 @@ def test_gebruikersschermen(als_beheerder, klaar):
 
 def test_standaardtijden_toepassen(app, als_beheerder, mw):
     morgen = klok.vandaag() + timedelta(days=1)
+    while morgen.weekday() >= 5:  # een werkdag: op vrijdag is 'morgen' anders zaterdag (toeslag)
+        morgen += timedelta(days=1)
     gisteren = klok.vandaag() - timedelta(days=1)
     wijzig_cellen([Wijziging(mw.id, morgen, "code", "4"), Wijziging(mw.id, morgen, "eind", "18:00"),
                    Wijziging(mw.id, gisteren, "code", "4"), Wijziging(mw.id, gisteren, "eind", "18:00")])

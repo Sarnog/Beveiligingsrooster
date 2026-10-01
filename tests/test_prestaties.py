@@ -4,6 +4,7 @@ Eis: de pagina laadt binnen 300 ms, en het aantal databasequery's hangt niet af 
 het aantal medewerkers (geen N+1).
 """
 
+import gc
 import time
 from contextlib import contextmanager
 from datetime import date, timedelta
@@ -139,6 +140,9 @@ def zonder_coverage():
     """Meet de app, niet de coverage-meting van CI (die maakt Python ruim twee keer zo traag).
 
     De export zelf wordt elders in de suite wel onder coverage getest.
+    Ook ruimen we vooraf het geheugen op en 'bevriezen' we wat eerdere tests achterlieten
+    (gc.freeze): de formule-tests laten ruim een miljoen objecten van de bibliotheek
+    'formulas' achter, en elke garbage collection tijdens de meting liep die anders na.
     """
     try:
         import coverage
@@ -148,9 +152,12 @@ def zonder_coverage():
         actief = None
     if actief is not None:
         actief.stop()
+    gc.collect()
+    gc.freeze()
     try:
         yield
     finally:
+        gc.unfreeze()
         if actief is not None:
             actief.start()
 
@@ -161,10 +168,10 @@ def test_excel_export_15_medewerkers_vol_jaar(app, klaar):
 
     _vul(15)
     client = app.test_client()
-    login(client, "collega")
+    login(client, "beheerder")  # sinds 1.6.0 alleen voor de beheerder, mét formules
     with zonder_coverage():
         start = time.perf_counter()
-        antwoord = client.get("/export/rooster.xlsx?jaar=2026")
+        antwoord = client.get("/beheer/exporteren/rooster.xlsx?soort=jaar&jaar=2026")
         duur = time.perf_counter() - start
     assert antwoord.status_code == 200 and len(antwoord.data) > 10_000
     print(f"\nExcel-export (15 medewerkers, 5475 diensten): {duur:.2f} s")

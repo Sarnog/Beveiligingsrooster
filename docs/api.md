@@ -93,7 +93,7 @@ Je eigen diensten. Zonder `van` begint het vandaag; zonder `tot` loopt het 8 wek
 ```
 
 - `volgnummer`: `1` voor de (eerste) dienst van die dag, `2` voor een **tweede dienst** op dezelfde dag (sinds app-versie 1.4.0). Een dag met twee diensten staat er dus twee keer in, op volgorde van `datum` en `volgnummer`. De opmerking hoort bij de dag en staat bij dienst 1.
-- `uren` zijn de berekende uren (met toeslag voor zaterdag en zondag), als getal; `null` bij een dienst zonder uren.
+- `uren` zijn de berekende uren (met de pauzeaftrek en de toeslagen uit *Beheer → Instellingen*), als getal; `null` bij een dienst zonder uren.
 - `begin`/`eind` kunnen `null` zijn (bijvoorbeeld *Bapo* zonder tijden). Loopt `eind` vóór `begin`, dan gaat de dienst door na middernacht.
 
 Fouten: `400` bij een ongeldige datum of periode, `404` als je account niet gekoppeld is.

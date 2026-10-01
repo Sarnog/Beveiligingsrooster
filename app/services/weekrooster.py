@@ -564,6 +564,7 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
         if w.behoud_vrij and dienst is not None and dienst.dienstcode_id is None:
             continue  # '5/': een tweede dienst met vrije dienstnaam (raster '4/') blijft staan
         nieuw_record = dienst is None
+        dienst2_was_leeg = w.volgnummer == 2 and (nieuw_record or dienst.is_leeg)
         if nieuw_record:
             if w.veld == "code" and w.volgnummer == 2 and not w.waarde.strip():
                 continue  # geen dienst 2 en die ook niet aanmaken
@@ -595,12 +596,37 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
         logboek.log("Rooster gewijzigd", datum=w.datum, medewerker=medewerker.naam,
                     veld=_veldnaam(w), oud=oud, nieuw=nieuw)
         sync_planning.plan_dag(medewerker, w.datum, commit=False)
+        if dienst2_was_leeg and not dienst.is_leeg:
+            _tweede_dienst_erbij(medewerker, w.datum, geclaimd, context_cache[w.datum])
 
         db.session.flush()  # zodat een volgende cel van dezelfde dag deze dienst terugvindt
 
     for mw, datum in geraakt:
         ruim_dag_op(mw, datum)
     return geraakt, fouten
+
+
+def _tweede_dienst_erbij(medewerker: Medewerker, datum: date, geclaimd: set, context: UrenContext) -> None:
+    """Er komt een tweede dienst bij: zelf ingevulde uren van dienst 1 vervallen.
+
+    Zulke uren gelden voor de hele dag (bijv. na de import: dienst plus een training op de
+    opmerkingregel, zoals in Excel). Met een echte dienst 2 telt elke dienst zijn eigen uren;
+    anders telt het tweede deel dubbel in het weektotaal. Daarna mag dienst 1 gewoon weer
+    eigen uren krijgen.
+    """
+    dienst1 = Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum, volgnummer=1).first()
+    if dienst1 is None or dienst1.uren_handmatig is None:
+        return
+    sleutel = (medewerker.id, datum, 1)
+    if sleutel not in geclaimd:
+        _claim(dienst1)
+        geclaimd.add(sleutel)
+    oud = formatteer_uren(dienst1.uren_handmatig)
+    dienst1.uren_handmatig = None
+    dienst1.uren_berekend = uren_voor(dienst1, context)
+    dienst1.versie = (dienst1.versie or 0) + 1
+    logboek.log("Rooster gewijzigd", "Zelf ingevulde uren vervallen: er is een tweede dienst bij gekomen",
+                datum=datum, medewerker=medewerker.naam, veld="uren", oud=oud, nieuw="")
 
 
 def ruim_dag_op(medewerker_id: int, datum: date) -> None:

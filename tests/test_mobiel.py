@@ -21,7 +21,7 @@ pytestmark = pytest.mark.browser
 # Pagina's per rol (de beheerder ziet ook alle beheerschermen)
 PAGINAS_COLLEGA = [
     "/kalender/", "/week", "/mijn", "/mijn/agenda", "/overzicht/uren",
-    "/zoeken/?naam=Anna", "/account/wachtwoord", "/account/tokens", "/export/",
+    "/zoeken/?naam=Anna", "/account/wachtwoord", "/account/tokens",
 ]
 PAGINAS_BEHEERDER = [
     "/week", "/kalender/", "/overzicht/uren", "/zoeken/?code=4", "/beheer/",
@@ -30,6 +30,7 @@ PAGINAS_BEHEERDER = [
     "/beheer/gebruikers", "/beheer/gebruikers/nieuw", "/beheer/instellingen",
     "/beheer/vakanties", "/beheer/feestdagen", "/beheer/logboek", "/beheer/backups",
     "/beheer/agenda", "/beheer/importeren", "/beheer/debuglog", "/beheer/herberekenen",
+    "/beheer/statistieken", "/beheer/patronen", "/beheer/patronen/nieuw",
 ]
 
 # Controle in de pagina: wat steekt er buiten beeld?

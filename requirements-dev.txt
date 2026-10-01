@@ -4,3 +4,6 @@ pytest>=8
 pytest-cov>=5
 ruff>=0.5
 playwright>=1.45  # browsertests (tests/test_mobiel*.py); Chromium apart installeren
+# Excel-formules van de export uitrekenen zonder Excel (tests/excel_formules.py). Gekozen boven
+# pycel: 'formulas' kent alle gebruikte functies (ook NETWORKDAYS en WEEKDAY) met Excel-semantiek
+formulas>=1.2

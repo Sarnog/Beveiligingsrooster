@@ -1,4 +1,5 @@
-"""Beheer: importeren uit het oude Excel-bestand (.xlsm) of een eigen Excel-export (.xlsx).
+"""Beheer → Excel import/export: importeren uit het oude Excel-bestand (.xlsm) of een eigen
+Excel-export (.xlsx). Het exporteren zelf staat in exporteren.py (formulier onderaan dit scherm).
 
 Stap 1: bestand uploaden.
 Stap 2: 'Rooster voor jaar' kiezen (verplicht; voorstel uit Kalender!E2 of de bestandsnaam).
@@ -14,7 +15,9 @@ import secrets
 
 from flask import flash, redirect, render_template, request, session, url_for
 
-from ...services import backup
+from ...models import Medewerker
+from ...services import backup, klok
+from ...services.excel_export import SOORTEN
 from ...services.excel_import import (
     MODI,
     MODUS_ALLES,
@@ -54,6 +57,18 @@ def _ruim_op() -> None:
         session.pop(sleutel, None)
 
 
+def _export_context() -> dict:
+    """Het exportformulier onderaan het scherm, met de keuzes van een vorige poging."""
+    vorige = {veld: request.args.get(f"export_{veld}", "") for veld in ("soort", "jaar", "week", "van",
+                                                                       "tot", "medewerker")}
+    huidig = klok.vandaag().isocalendar()
+    vorige["soort"] = vorige["soort"] or "week"
+    vorige["jaar"] = vorige["jaar"] or huidig[0]
+    vorige["week"] = vorige["week"] or huidig[1]
+    return {"export": vorige, "export_soorten": SOORTEN, "min_jaar": MIN_JAAR, "max_jaar": MAX_JAAR,
+            "export_medewerkers": Medewerker.query.order_by(Medewerker.volgorde, Medewerker.naam).all()}
+
+
 def _lees_jaar(tekst: str | None) -> int | None:
     tekst = (tekst or "").strip()
     if not is_cijfers(tekst) or not MIN_JAAR <= int(tekst) <= MAX_JAAR:
@@ -91,12 +106,12 @@ def excel_import():
 
     pad = _opgeslagen_pad()
     if pad is None:
-        return render_template("beheer/importeren.html", stap="upload", plan=None)
+        return render_template("beheer/importeren.html", stap="upload", plan=None, **_export_context())
     # Bestand ontvangen: jaar kiezen. Voorstel: Kalender!E2, anders de bestandsnaam (nooit stil 'nu')
     voorstel = (session.get("import_jaar") or jaar_uit_bestand(pad)
                 or jaar_uit_naam(session.get("import_naam", "")))
     return render_template("beheer/importeren.html", stap="jaar", plan=None, voorstel=voorstel,
-                           bestandsnaam=session.get("import_naam", ""), min_jaar=MIN_JAAR, max_jaar=MAX_JAAR)
+                           bestandsnaam=session.get("import_naam", ""), **_export_context())
 
 
 @bp.route("/importeren/jaar", methods=["POST"])
@@ -205,7 +220,7 @@ def excel_import_voorbeeld():
                            effect=effect(plan, keuzes), modi=MODI, onderdelen=ONDERDELEN,
                            eerste=eerste, laatste=laatste, bestandsnaam=session.get("import_naam", ""),
                            handmatige_uren=plan.handmatige_uren(),
-                           week_verschillen=plan.weektotaal_verschillen())
+                           week_verschillen=plan.weektotaal_verschillen(), **_export_context())
 
 
 @bp.route("/importeren/annuleren", methods=["POST"])

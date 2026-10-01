@@ -3,7 +3,8 @@
 - uploaden zonder jaar -> stap 'Rooster voor jaar' met het voorstel uit Kalender!E2 -> voorbeeld;
 - overschrijfmodus 'gedeeltelijk' met één medewerker -> voorbeeld bijwerken -> alleen die
   medewerker in de tabel -> definitief importeren -> alleen die medewerker gewijzigd;
-- 'Exporteren (Excel)' op de weekpagina en de jaarkalender geeft een .xlsx-download.
+- sinds 1.6.0 alleen in Beheer → Excel import/export: een week exporteren geeft een
+  .xlsx-download met formules; een ongeldige week geeft een melding op hetzelfde scherm.
 """
 
 import io
@@ -52,7 +53,7 @@ def test_import_met_jaarkeuze_en_overschrijfmodus(server, browser, sessies, tmp_
     sync_api.expect(jaarveld).to_have_value(str(jaar))
     assert jaarveld.get_attribute("required") is not None
     pagina.click("button:has-text('Verder naar het voorbeeld')")
-    sync_api.expect(pagina.locator("h2").first).to_contain_text(f"rooster voor {jaar}")
+    sync_api.expect(pagina.locator("section.kaart h2").first).to_contain_text(f"rooster voor {jaar}")
 
     # Overschrijfmodus: gedeeltelijk, alleen Medewerker X
     pagina.check("input[name=modus][value=gedeeltelijk]")
@@ -81,15 +82,34 @@ def test_import_met_jaarkeuze_en_overschrijfmodus(server, browser, sessies, tmp_
     context.close()
 
 
-@pytest.mark.parametrize("pad, verwacht", [("/week", "rooster-"), ("/kalender/", "rooster-")])
-def test_exportknop_geeft_xlsx(server, browser, sessies, pad, verwacht):
-    context, pagina = nieuwe_pagina(browser, "1280x800", sessies["collega"])
+def test_export_in_beheer_geeft_xlsx(server, browser, sessies):
+    context, pagina = nieuwe_pagina(browser, "1280x800", sessies["beheerder"])
     context.set_default_timeout(20000)
-    pagina.goto(server.url + pad)
+    pagina.goto(server.url + "/beheer/importeren")
+    formulier = pagina.locator("[data-export-formulier]")
+    formulier.locator("input[name=soort][value=week]").check()
+    formulier.locator("input[name=jaar]").fill("2026")
+    formulier.locator("input[name=week]").fill("10")
     with pagina.expect_download() as wacht:
-        pagina.locator("[data-export-excel]").first.click()
+        formulier.locator("button[type=submit]").click()
     download = wacht.value
-    assert download.suggested_filename.startswith(verwacht) and download.suggested_filename.endswith(".xlsx")
+    assert download.suggested_filename == "rooster-2026-W10.xlsx"
     boek = openpyxl.load_workbook(io.BytesIO(open(download.path(), "rb").read()))
-    assert "Lijsten" in boek.sheetnames and any(n.startswith("W") for n in boek.sheetnames)
+    assert "Lijsten" in boek.sheetnames and [n for n in boek.sheetnames if n.startswith("W")] == ["W10"]
+    assert str(boek["W10"]["Z6"].value).startswith("=SUM(")  # weektotaal als formule
+    # Ongeldige week (2025 heeft er 52): een melding op het scherm, geen foutpagina
+    formulier.locator("input[name=jaar]").fill("2025")
+    formulier.locator("input[name=week]").fill("53")
+    formulier.locator("button[type=submit]").click()
+    sync_api.expect(pagina.locator(".melding").first).to_contain_text("weken 1 t/m 52")
+    sync_api.expect(pagina.locator("[data-export-formulier] input[name=week]")).to_have_value("53")
+    context.close()
+
+
+def test_collega_ziet_geen_excelexport(server, browser, sessies):
+    context, pagina = nieuwe_pagina(browser, "1280x800", sessies["collega"])
+    for pad in ("/week", "/kalender/", "/overzicht/uren"):
+        pagina.goto(server.url + pad)
+        assert pagina.locator("[data-export-excel]").count() == 0
+        sync_api.expect(pagina.locator("body")).not_to_contain_text("Exporteren (Excel)")
     context.close()

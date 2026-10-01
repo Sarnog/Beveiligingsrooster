@@ -19,8 +19,6 @@
     <a class="knop" href="{{ u.week_url(huidig[0], huidig[1]) }}">Vandaag</a>
     <a class="knop" href="{{ u.kalender_url(jaar) }}">Kalender</a>
     <button class="knop" type="button" data-print>Printen</button>
-    {% if not deel_token %}<a class="knop" href="{{ url_for('export.rooster_xlsx', van=dagen[0].isoformat(), tot=dagen[-1].isoformat()) }}" data-export-excel title="Deze week als Excel-bestand">Exporteren (Excel)</a>
-    <a class="knop" href="{{ url_for('export.kiezen', jaar=jaar) }}" title="Heel jaar, periode of één medewerker">Excel…</a>{% endif %}
     <button class="knop weergave-wissel" type="button" data-weergave-wissel aria-pressed="false">Telefoonweergave</button>
     {% if bewerken %}<button class="knop primair opslaan-knop" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>{% endif %}
   </nav>

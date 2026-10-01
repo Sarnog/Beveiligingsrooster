@@ -18,7 +18,15 @@ ingelezen kan worden; een oud bestand heeft ze niet en wordt gelezen zoals altij
 - een code-cel met twee codes ('4/7', '/3' of '4/'): dienst 1 en dienst 2;
 - tweede dienst per dag in AK..BE (per dag drie kolommen vanaf AK, AN, AQ, ...):
   +2 dienstnaam, +3 begin/eind/uren, net als dienst 1 in D..V;
-- het code-raster ook na de 11e medewerker, als AB de initialen van die medewerker heeft.
+- het code-raster ook na de 11e medewerker, als AB de initialen van die medewerker heeft;
+- sinds 1.6.0 formules (zie excel_export.py). openpyxl bewaart bij formules geen uitkomst; een
+  bestand dat nog niet in Excel is opgeslagen heeft dus lege waarden. Een tweede lees-pass
+  (zonder data_only) vindt die formulecellen: tijden uit een opzoekformule = de standaardtijden
+  van de code, uren uit een formule = niet 'zelf ingevuld', een weektotaal zonder waarde telt
+  niet mee in de controle. Is het bestand in Excel opgeslagen, dan gelden de waarden;
+- in Lijsten de rekenregels van het bestand: N4 feestdagtoeslag, N5 opmerkingtijden meetellen,
+  N6 pauzeaftrek aan, N9:O13 de pauzestaffel, plus het blad Feestdagen. De controles (weektotalen,
+  zelf ingevulde uren) rekenen daarmee; een oud bestand: alleen N2/N3 en > 5,5 uur -> 0,5 pauze.
 
 Werkwijze: eerst een droogloop (lees_bestand) met een voorbeeld van wat er gaat
 gebeuren, daarna pas definitief importeren (importeer).
@@ -40,7 +48,7 @@ from sqlalchemy.orm import joinedload
 
 from ..extensions import db
 from ..models import Contracturen, Dagopmerking, Dienst, Dienstcode, Medewerker, Vakantie
-from . import instellingen, klok, logboek, sync_planning
+from . import instellingen, klok, logboek
 from .feestdagen import zorg_voor_jaar
 from .kalender import (
     MAX_JAAR,
@@ -51,12 +59,13 @@ from .kalender import (
     maandag_van_week,
 )
 from .medewerkers import uniek_voorstel, voorstel_initialen
-from .rooster import UrenContext, dienst_tekst, logveld, markeer_bijgewerkt, uren_voor
+from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
+from .roosteracties import Actie, Inhoud, Telling, plan_agenda, som, voer_uit
 from .tijden import is_cijfers
-from .urenberekening import bereken_uren, dagfactor
+from .urenberekening import STANDAARD_PAUZE, Staffel, bereken_uren, dagfactor
 from .validatie import MAX_NAAM, MAX_OMSCHRIJVING, initialen_fout, is_codenummer
 from .voorbeeldpakket import DIENSTCODES
-from .weekrooster import LEGE_DIENST, automatische_dagopmerkingen, dagopmerkingen, ruim_dag_op
+from .weekrooster import automatische_dagopmerkingen, dagopmerkingen
 
 EXCEL_BLANCO = 15
 DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
@@ -156,7 +165,32 @@ def _datum(waarde) -> date | None:
     return None
 
 
-def _handmatige_uren(d, za: float, zo: float, app_uren: float | None = None) -> float | None:
+@dataclass
+class Bestandsregels:
+    """De rekenregels van het Excel-bestand (zie de docstring bovenaan), voor de controles."""
+
+    zaterdag: float = 1.5
+    zondag: float = 2.0
+    feestdag: float | None = None
+    feestdagen: frozenset = frozenset()
+    opmerkingtijden: bool = False
+    pauze: Staffel = STANDAARD_PAUZE
+
+    def factor(self, datum: date) -> float:
+        return dagfactor(datum, self.zaterdag, self.zondag, datum in self.feestdagen, self.feestdag)
+
+    def uren(self, d) -> float | None:
+        """Wat het bestand voor deze dienst berekent (zonder zelf ingevulde uren)."""
+        factor = self.factor(d.datum)
+        uren = bereken_uren(d.begin, d.eind, factor, self.pauze)
+        if self.opmerkingtijden and d.volgnummer == 1:
+            extra = bereken_uren(d.opm_begin, d.opm_eind, factor, self.pauze)
+            if extra is not None:
+                uren = (uren or 0) + extra
+        return uren
+
+
+def _handmatige_uren(d, regels: "Bestandsregels", app_uren: float | None = None) -> float | None:
     """Uren die in Excel met de hand in de urenkolom zijn gezet, of None.
 
     Dat zijn:
@@ -166,23 +200,25 @@ def _handmatige_uren(d, za: float, zo: float, app_uren: float | None = None) -> 
       dan de uren van de hele dag (9,25). Die nemen we over, precies zoals in Excel.
     Komen de uren overeen met wat de app zelf berekent (app_uren, bijvoorbeeld met een
     feestdagtoeslag), dan zijn ze niet met de hand ingevuld (export en weer import).
+    regels: de rekenregels van het bestand (het oude Excel kende alleen > 5,5 -> 0,5 pauze).
+    Uren uit een formule (export sinds 1.6.0) staan als None in d.excel_uren: niet zelf ingevuld.
     """
     if d.excel_uren is None or (app_uren is not None and abs(app_uren - d.excel_uren) <= 0.001):
         return None
     if not d.begin and not d.eind:
         return d.excel_uren or None
-    berekend = bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
+    berekend = regels.uren(d)
     if berekend is not None and abs(berekend - d.excel_uren) > 0.001:
         return d.excel_uren
     return None
 
 
-def _nieuwe_uren(d, za: float, zo: float) -> float | None:
+def _nieuwe_uren(d, regels: "Bestandsregels") -> float | None:
     """Uren zoals de webapp ze na de import heeft (handmatige uren gaan voor)."""
-    handmatig = _handmatige_uren(d, za, zo)
+    handmatig = _handmatige_uren(d, regels)
     if handmatig is not None:
         return handmatig
-    return bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
+    return regels.uren(d)
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +267,11 @@ class ImportPlan:
     jaar_in_bestand: int | None = None  # Kalender!E2 (ter controle)
     toeslag_zaterdag: float | None = None
     toeslag_zondag: float | None = None
+    # Overige rekenregels van het bestand (export sinds 1.6.0); een oud bestand: zoals de VBA
+    toeslag_feestdag: float | None = None
+    feestdagen: frozenset = frozenset()
+    opmerkingtijden: bool = False
+    pauze: Staffel = STANDAARD_PAUZE
     medewerkers: list[ImportMedewerker] = field(default_factory=list)
     codes: list[ImportCode] = field(default_factory=list)
     vakanties: list[tuple[str, date, date]] = field(default_factory=list)
@@ -240,6 +281,11 @@ class ImportPlan:
     # Controle: weektotalen uit Excel (kolom Z) per (naam, week)
     excel_weektotalen: dict[tuple[str, int], float] = field(default_factory=dict)
     waarschuwingen: list[str] = field(default_factory=list)
+
+    @property
+    def regels(self) -> Bestandsregels:
+        return Bestandsregels(self.toeslag_zaterdag or 1.5, self.toeslag_zondag or 2.0,
+                              self.toeslag_feestdag, self.feestdagen, self.opmerkingtijden, self.pauze)
 
     @property
     def afwijkend(self) -> int:
@@ -253,15 +299,14 @@ class ImportPlan:
 
         Die worden als 'zelf ingevulde uren' overgenomen (zie _handmatige_uren).
         """
-        za = self.toeslag_zaterdag or 1.5
-        zo = self.toeslag_zondag or 2.0
+        bestand = self.regels
         regels = []
         for d in self.diensten:
             if not (d.begin or d.eind):
                 continue
-            handmatig = _handmatige_uren(d, za, zo)
+            handmatig = _handmatige_uren(d, bestand)
             if handmatig is not None:
-                berekend = bereken_uren(d.begin, d.eind, dagfactor(d.datum, za, zo))
+                berekend = bestand.uren(d)
                 extra = f", opmerking '{d.opmerking}'" if d.opmerking else ""
                 regels.append(f"{d.datum:%d-%m-%Y} {d.naam}: {d.begin}-{d.eind}{extra} – "
                               f"tijden geven {berekend:.2f}, Excel {handmatig:.2f} (overgenomen)")
@@ -278,12 +323,11 @@ class ImportPlan:
                 if aantal > 1]
 
     def weektotaal_verschillen(self) -> list[str]:
-        za = self.toeslag_zaterdag or 1.5
-        zo = self.toeslag_zondag or 2.0
+        regels = self.regels
         nieuw: dict[tuple[str, int], float] = {}
         for d in self.diensten:
             sleutel = (d.naam, d.datum.isocalendar()[1])
-            nieuw[sleutel] = nieuw.get(sleutel, 0) + (_nieuwe_uren(d, za, zo) or 0)
+            nieuw[sleutel] = nieuw.get(sleutel, 0) + (_nieuwe_uren(d, regels) or 0)
         verschillen = []
         for (naam, week), excel in sorted(self.excel_weektotalen.items(), key=lambda x: (x[0][1], x[0][0])):
             eigen = nieuw.get((naam, week), 0)
@@ -413,6 +457,11 @@ def lees_bestand(pad: str, jaar: int | None = None) -> ImportPlan:
     _bepaal_koppelingen(plan)
     if "Vakanties" in boek.sheetnames:
         _lees_vakanties(boek["Vakanties"], plan)
+    if "Feestdagen" in boek.sheetnames:
+        plan.feestdagen = frozenset(d for rij in range(2, 400)
+                                    if (d := _datum(boek["Feestdagen"].cell(rij, 1).value)))
+    # Export sinds 1.6.0: welke cellen zijn formules? (zonder Excel hebben ze geen waarde)
+    formules = _formulecellen(pad) if "Rekenhulp" in boek.sheetnames else {}
 
     weekbladen = sorted(
         (int(naam[1:]), naam) for naam in boek.sheetnames if re.fullmatch(r"W\d{1,2}", naam))
@@ -428,7 +477,7 @@ def lees_bestand(pad: str, jaar: int | None = None) -> ImportPlan:
             if _blad_heeft_diensten(boek[naam]):
                 plan.waarschuwingen.append(f"{naam} overgeslagen: {plan.jaar} heeft geen week {week}.")
             continue
-        _lees_weekblad(boek[naam], week, plan)
+        _lees_weekblad(boek[naam], week, plan, formules.get(naam, set()))
     if dubbel := plan.dubbele_diensten():
         plan.waarschuwingen.append(
             "Dubbele diensten (zelfde medewerker en dag staan er meer dan eens in): "
@@ -437,6 +486,23 @@ def lees_bestand(pad: str, jaar: int | None = None) -> ImportPlan:
               "%s waarschuwingen", plan.jaar, len(plan.medewerkers), len(plan.codes),
               len(plan.diensten), len(plan.weken), len(plan.waarschuwingen))
     return plan
+
+
+def _formulecellen(pad: str) -> dict[str, set[tuple[int, int]]]:
+    """Per weekblad de cellen (rij, kolom) met een formule, t/m kolom BE (zonder de rekenhulp)."""
+    import openpyxl
+
+    boek = openpyxl.load_workbook(pad, read_only=True, keep_vba=False)
+    try:
+        resultaat = {}
+        for naam in boek.sheetnames:
+            if re.fullmatch(r"W\d{1,2}", naam):
+                rijen = boek[naam].iter_rows(max_col=TWEEDE_KOLOMMEN[-1] + 2)
+                resultaat[naam] = {(cel.row, cel.column) for rij in rijen for cel in rij
+                                   if getattr(cel, "data_type", "") == "f"}
+        return resultaat
+    finally:
+        boek.close()
 
 
 def _bepaal_koppelingen(plan: ImportPlan) -> None:
@@ -496,6 +562,18 @@ def _lees_lijsten(blad, plan: ImportPlan) -> None:
         ))
     plan.toeslag_zaterdag = _getal(blad["N2"].value)
     plan.toeslag_zondag = _getal(blad["N3"].value)
+    if _tekst(blad["M6"].value).startswith("Pauzeaftrek"):  # export sinds 1.6.0
+        plan.toeslag_feestdag = _getal(blad["N4"].value)
+        plan.opmerkingtijden = _getal(blad["N5"].value) == 1
+        regels = [(g, a) for rij in range(9, 14)
+                  if (g := _getal(blad.cell(rij, 14).value)) is not None
+                  and (a := _getal(blad.cell(rij, 15).value)) is not None]
+        waarde, fouten = instellingen.controleer_pauze(_getal(blad["N6"].value) == 1, regels)
+        if fouten:
+            plan.waarschuwingen.append("De pauzeregels in Lijsten zijn ongeldig (" + " ".join(fouten)
+                                       + "); de controle rekent met meer dan 5,5 uur -> 0,5 pauze.")
+        else:
+            plan.pauze = tuple(waarde["regels"]) if waarde["aan"] else ()
 
 
 def _lees_vakanties(blad, plan: ImportPlan) -> None:
@@ -528,7 +606,7 @@ def _lees_codes(waarde) -> tuple[int | None, int | None]:
     return _code(str(waarde)), None
 
 
-def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
+def _lees_weekblad(blad, week: int, plan: ImportPlan, formules: set[tuple[int, int]] = frozenset()) -> None:
     cel = blad.cell(2, DAG_KOLOMMEN[0]).value
     maandag = (None if _is_leeg(cel) else _datum(cel)) or maandag_van_week(plan.jaar, week)
     if maandag.isocalendar()[:2] != (plan.jaar, week):
@@ -546,6 +624,19 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
 
     namen = {m.naam for m in plan.medewerkers}
     initialen = {m.naam: m.initialen for m in plan.medewerkers}
+    standaard = {c.nummer: (c.begin, c.eind) for c in plan.codes}
+
+    def tijd(rij: int, kolom: int, code: int | None, positie: int) -> str | None:
+        """Een tijd; een opzoekformule zonder waarde = de standaardtijd van de code."""
+        waarde = blad.cell(rij, kolom).value
+        if waarde is None and (rij, kolom) in formules:
+            return standaard.get(code, (None, None))[positie]
+        return _tijd(waarde)
+
+    def uren(rij: int, kolom: int) -> float | None:
+        """Uren uit een formule zijn nooit 'zelf ingevuld' (ook niet met een waarde uit Excel)."""
+        return None if (rij, kolom) in formules else _getal(blad.cell(rij, kolom).value)
+
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
         naam = _tekst(blad.cell(basis, 2).value)[:MAX_NAAM]
@@ -569,12 +660,12 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
                 naam=naam, datum=dagen[i],
                 code=code1,
                 dienstnaam=_tekst(blad.cell(basis + 2, kolom).value),
-                begin=_tijd(blad.cell(basis + 3, kolom).value),
-                eind=_tijd(blad.cell(basis + 3, kolom + 1).value),
+                begin=tijd(basis + 3, kolom, code1, 0),
+                eind=tijd(basis + 3, kolom + 1, code1, 1),
                 opmerking=_tekst(blad.cell(basis, kolom).value),
                 opm_begin=_tijd(blad.cell(basis + 1, kolom).value),
                 opm_eind=_tijd(blad.cell(basis + 1, kolom + 1).value),
-                excel_uren=_getal(blad.cell(basis + 3, kolom + 2).value),
+                excel_uren=uren(basis + 3, kolom + 2),
             )
             if (dienst.code is not None or dienst.dienstnaam or dienst.begin or dienst.eind
                     or dienst.opmerking or dienst.opm_begin or dienst.opm_eind):
@@ -585,10 +676,10 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
             tweede = ImportDienst(
                 naam=naam, datum=dagen[i], code=code2, volgnummer=2,
                 dienstnaam=_tekst(blad.cell(basis + 2, k2).value),
-                begin=_tijd(blad.cell(basis + 3, k2).value),
-                eind=_tijd(blad.cell(basis + 3, k2 + 1).value),
+                begin=tijd(basis + 3, k2, code2, 0),
+                eind=tijd(basis + 3, k2 + 1, code2, 1),
                 opmerking="", opm_begin=None, opm_eind=None,
-                excel_uren=_getal(blad.cell(basis + 3, k2 + 2).value),
+                excel_uren=uren(basis + 3, k2 + 2),
             )
             if tweede.code is not None or tweede.dienstnaam or tweede.begin or tweede.eind:
                 plan.diensten.append(tweede)
@@ -688,53 +779,6 @@ class ImportKeuzes:
 # Het effect van de import (droogloop) en het definitief importeren
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class _Inhoud:
-    """De inhoud van één dienst, om bestaand en nieuw te vergelijken."""
-
-    code: int | None
-    dienstnaam: str  # dienstnaam_override
-    begin: str | None
-    eind: str | None
-    opmerking: str
-    opm_begin: str | None
-    opm_eind: str | None
-    uren_handmatig: float | None
-
-    @classmethod
-    def van_dienst(cls, dienst: Dienst) -> "_Inhoud":
-        return cls(dienst.dienstcode.nummer if dienst.dienstcode else None,
-                   dienst.dienstnaam_override or "", dienst.begin, dienst.eind,
-                   dienst.opmerking_tekst or "", dienst.opmerking_begin, dienst.opmerking_eind,
-                   dienst.uren_handmatig)
-
-    def samenvatting(self) -> str:
-        """Korte tekst voor het logboek (zie rooster.dienst_tekst)."""
-        return dienst_tekst(self.code, self.dienstnaam, self.begin, self.eind, self.uren_handmatig,
-                            self.opmerking, self.opm_begin, self.opm_eind)
-
-
-@dataclass
-class _Actie:
-    """Wat er met één dienst (medewerker, datum, volgnummer) gebeurt."""
-
-    naam: str
-    datum: date
-    volgnummer: int
-    soort: str  # nieuw / vervangen / verwijderd / gelijk / overgeslagen
-    bestaand: Dienst | None = None
-    nieuw: _Inhoud | None = None
-
-
-@dataclass
-class Telling:
-    nieuw: int = 0
-    vervangen: int = 0
-    verwijderd: int = 0
-    gelijk: int = 0
-    overgeslagen: int = 0
-
-
 @dataclass
 class ImportEffect:
     """Wat de import precies gaat doen met de gekozen keuzes (voor de droogloop)."""
@@ -746,15 +790,11 @@ class ImportEffect:
     vakanties: list[tuple[str, date, date]] = field(default_factory=list)
     contracturen: list[tuple[str, float | None, float]] = field(default_factory=list)
     nieuwe_medewerkers: list[str] = field(default_factory=list)
-    acties: list[_Actie] = field(default_factory=list)
+    acties: list[Actie] = field(default_factory=list)
 
     @property
     def totaal(self) -> Telling:
-        som = Telling()
-        for telling in self.per_medewerker.values():
-            for veld in ("nieuw", "vervangen", "verwijderd", "gelijk", "overgeslagen"):
-                setattr(som, veld, getattr(som, veld) + getattr(telling, veld))
-        return som
+        return som(self.per_medewerker.values())
 
 
 def _bereik(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[list[str], list[date]]:
@@ -778,8 +818,8 @@ def _codes_na_import(plan: ImportPlan, keuzes: ImportKeuzes) -> dict[int, tuple[
     return codes
 
 
-def _gewenste_inhoud(d: ImportDienst, codes: dict, per_naam: dict, za: float, zo: float,
-                     context: UrenContext) -> _Inhoud:
+def _gewenste_inhoud(d: ImportDienst, codes: dict, per_naam: dict, regels: Bestandsregels,
+                     context: UrenContext) -> Inhoud:
     """De inhoud die een dienst uit het bestand in de app krijgt."""
     from .weekrooster import begint_met_dienstnaam
 
@@ -798,12 +838,12 @@ def _gewenste_inhoud(d: ImportDienst, codes: dict, per_naam: dict, za: float, zo
     proef = SimpleNamespace(uren_handmatig=None, datum=d.datum, begin=d.begin, eind=d.eind,
                             opmerking_begin=d.opm_begin if d.volgnummer == 1 else None,
                             opmerking_eind=d.opm_eind if d.volgnummer == 1 else None)
-    uren = _handmatige_uren(d, za, zo, app_uren=uren_voor(proef, context))
+    uren = _handmatige_uren(d, regels, app_uren=uren_voor(proef, context))
     if d.volgnummer == 1:
         opmerking = (d.opmerking[:120], d.opm_begin, d.opm_eind)
     else:
         opmerking = ("", None, None)  # de opmerking hoort bij de dag (dienst 1)
-    return _Inhoud(nummer, dienstnaam, d.begin, d.eind, *opmerking, uren)
+    return Inhoud(nummer, dienstnaam, d.begin, d.eind, *opmerking, uren)
 
 
 def effect(plan: ImportPlan, keuzes: ImportKeuzes | None = None) -> ImportEffect:
@@ -850,18 +890,17 @@ def effect(plan: ImportPlan, keuzes: ImportKeuzes | None = None) -> ImportEffect
         return resultaat
 
     # Diensten
-    za = plan.toeslag_zaterdag or 1.5
-    zo = plan.toeslag_zondag or 2.0
+    regels = plan.regels
     codes = _codes_na_import(plan, keuzes)
     per_naam: dict[str, list[int]] = {}
     for nummer, (omschrijving, _, _) in codes.items():
         per_naam.setdefault(omschrijving.casefold(), []).append(nummer)
     context = UrenContext(dagen[0], dagen[-1])
-    gewenst: dict[tuple[str, date], dict[int, _Inhoud]] = {}
+    gewenst: dict[tuple[str, date], dict[int, Inhoud]] = {}
     for d in plan.diensten:
         if d.naam in resultaat.per_medewerker and d.datum in dagenset:
             gewenst.setdefault((d.naam, d.datum), {})[d.volgnummer] = \
-                _gewenste_inhoud(d, codes, per_naam, za, zo, context)
+                _gewenste_inhoud(d, codes, per_naam, regels, context)
     naam_van_id = {m.id: m.naam for m in bestaande_mw.values()}
     bestaand: dict[tuple[str, date], dict[int, Dienst]] = {}
     if naam_van_id:
@@ -886,10 +925,10 @@ def effect(plan: ImportPlan, keuzes: ImportKeuzes | None = None) -> ImportEffect
             elif vn not in gevuld:
                 soort = "nieuw"
             else:
-                soort = "gelijk" if _Inhoud.van_dienst(dienst) == inhoud else "vervangen"
+                soort = "gelijk" if Inhoud.van_dienst(dienst) == inhoud else "vervangen"
             if soort:
                 setattr(telling, soort, getattr(telling, soort) + 1)
-                resultaat.acties.append(_Actie(naam, datum, vn, soort, dienst, inhoud))
+                resultaat.acties.append(Actie(naam, datum, vn, soort, dienst, inhoud))
 
     # Dagopmerkingen: zelfde periode; bij gekozen medewerkers alleen als dat aangevinkt is
     if not keuzes.medewerkers or keuzes.dagopmerkingen_bij_selectie:
@@ -927,33 +966,9 @@ def importeer(plan: ImportPlan, keuzes: ImportKeuzes | None = None) -> dict:
     except Exception:
         db.session.rollback()
         raise
-    _plan_agenda(geraakt)
+    plan_agenda(geraakt, "de import")
     log.info("Excel-import klaar: %s", resultaat)
     return resultaat
-
-
-def _plan_agenda(geraakt: dict[Medewerker, set[date]]) -> None:
-    """Alleen de geraakte medewerkers opnieuw in Google Agenda zetten.
-
-    geraakt: medewerker -> dagen waarop een dienst met een Google-afspraak veranderde.
-    Eén volledige synchronisatie doet de sync-periode; dagen daarbuiten met een afspraak
-    krijgen een eigen taak (een lege regel met een afspraak moet nog opgeruimd worden).
-    De import zelf is al opgeslagen: een fout hier mag niet als 'import mislukt' gelden.
-    """
-    from .sync import sync_periode
-
-    van, tot = sync_periode()
-    for medewerker, dagen in geraakt.items():
-        try:
-            sync_planning.plan_volledig(medewerker)
-            for dag in sorted(dagen):
-                if not van <= dag <= tot:
-                    sync_planning.plan_dag(medewerker, dag, commit=False)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            log.exception("Agenda-synchronisatie na de import niet gepland voor %s; "
-                          "gebruik Beheer → Google Agenda → Volledig synchroniseren", medewerker.naam)
 
 
 def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medewerker, set[date]]]:
@@ -985,7 +1000,6 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
         logboek.log("Dienstcode toegevoegd", f"Excel-import: {ic.nummer} {ic.omschrijving}")
         resultaat["codes"] += 1
     db.session.flush()
-    codes = {c.nummer: c for c in Dienstcode.query.all()}
 
     # Medewerkers: alleen op naam hergebruiken (zie _bepaal_koppelingen)
     medewerkers: dict[str, Medewerker] = {}
@@ -1021,39 +1035,12 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
         resultaat["vakanties"] += 1
     db.session.flush()
 
-    # Diensten: per actie uit de droogloop
-    context = UrenContext(min(a.datum for a in uitkomst.acties), max(a.datum for a in uitkomst.acties)) \
-        if uitkomst.acties else None
-    geraakt: dict[Medewerker, set[date]] = {}
-    tellers = {"nieuw": "diensten", "vervangen": "vervangen", "verwijderd": "verwijderd"}
-    opruimen: set[tuple[int, date]] = set()
-    for actie in uitkomst.acties:
-        if actie.soort not in tellers:
-            continue  # gelijk of overgeslagen: niets aan doen
-        medewerker = medewerkers[actie.naam]
-        dienst = actie.bestaand
-        oud = _Inhoud.van_dienst(dienst).samenvatting() if dienst and not dienst.is_leeg else ""
-        if dienst is None:
-            dienst = Dienst(medewerker_id=medewerker.id, datum=actie.datum, volgnummer=actie.volgnummer,
-                            versie=0, google_event_id="")
-            db.session.add(dienst)
-        _vul_dienst(dienst, actie.nieuw, codes)
-        dienst.uren_berekend = uren_voor(dienst, context)
-        dienst.versie = (dienst.versie or 0) + 1
-        logboek.log("Excel-import", f"Dienst {actie.soort}", datum=actie.datum, medewerker=actie.naam,
-                    veld=logveld(actie.volgnummer), oud=oud,
-                    nieuw=actie.nieuw.samenvatting() if actie.nieuw else "")
-        resultaat[tellers[actie.soort]] += 1
-        opruimen.add((medewerker.id, actie.datum))
-        dagen = geraakt.setdefault(medewerker, set())
-        if dienst.google_event_id:
-            dagen.add(actie.datum)
-
-    # Lege regels weg (met een Google-afspraak blijven ze staan tot de worker die
-    # verwijderd heeft, zoals in het rooster); nooit een dienst 2 zonder dienst 1
-    db.session.flush()
-    for medewerker_id, datum in opruimen:
-        ruim_dag_op(medewerker_id, datum)
+    # Diensten: per actie uit de droogloop (gedeeld met roosterpatronen, zie roosteracties.py)
+    aantallen, geraakt = voer_uit(uitkomst.acties, lambda actie: medewerkers[actie.sleutel], "Excel-import",
+                                  lambda actie: f"Dienst {actie.soort}")
+    resultaat["diensten"] = aantallen["nieuw"]
+    resultaat["vervangen"] = aantallen["vervangen"]
+    resultaat["verwijderd"] = aantallen["verwijderd"]
 
     # Dagopmerkingen: alleen bewaren als ze afwijken van de automatische tekst
     if uitkomst.dagopmerkingen:
@@ -1080,21 +1067,3 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
     markeer_bijgewerkt()
     db.session.flush()
     return resultaat, geraakt
-
-
-def _vul_dienst(dienst: Dienst, inhoud: _Inhoud | None, codes: dict[int, Dienstcode]) -> None:
-    """Zet de inhoud uit het bestand in een (nieuwe of bestaande) dienst; None = leegmaken."""
-    if inhoud is None:
-        for kolom, leeg in LEGE_DIENST.items():
-            setattr(dienst, kolom, leeg)
-        dienst.dienstcode = None
-        return
-    code = codes.get(inhoud.code) if inhoud.code is not None else None
-    dienst.dienstcode = code
-    dienst.dienstcode_id = code.id if code else None
-    dienst.dienstnaam_override = inhoud.dienstnaam
-    dienst.begin, dienst.eind = inhoud.begin, inhoud.eind
-    dienst.tijden_handmatig = bool(code and (inhoud.begin, inhoud.eind) != (code.std_begin, code.std_eind))
-    dienst.opmerking_tekst = inhoud.opmerking
-    dienst.opmerking_begin, dienst.opmerking_eind = inhoud.opm_begin, inhoud.opm_eind
-    dienst.uren_handmatig = inhoud.uren_handmatig

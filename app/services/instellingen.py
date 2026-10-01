@@ -4,11 +4,15 @@ Alle instellingen met hun standaardwaarde staan in STANDAARD. Waarden worden als
 tekst opgeslagen; de hulpfuncties zetten ze om naar het juiste type.
 """
 
+import json
 import math
 
 from ..extensions import db
 from ..models import Instelling
 from .tijden import is_cijfers
+from .urenberekening import STANDAARD_PAUZE, Staffel
+
+MAX_PAUZEREGELS = 5
 
 # Sleutel -> standaardwaarde (altijd als tekst)
 STANDAARD: dict[str, str] = {
@@ -23,6 +27,8 @@ STANDAARD: dict[str, str] = {
     "logboek_uren": "0",
     "blanco_code": "15",
     "opmerkingtijden_meetellen": "0",
+    # Pauzestaffel als JSON: {"aan": ja/nee, "regels": [[grens, aftrek], ...]} (zie pauze())
+    "pauze": '{"aan": true, "regels": [[5.5, 0.5]]}',
     "voettekst": "",
     "deellink_actief": "0",
     "deellink_token": "",
@@ -91,6 +97,83 @@ def toeslagen() -> dict:
         "factor_zondag": lees_float("toeslag_zondag") or 2.0,
         "factor_feestdag": lees_float("toeslag_feestdag"),
     }
+
+
+def pauze_json(aan: bool, regels) -> str:
+    """De waarde voor de instelling 'pauze'."""
+    return json.dumps({"aan": bool(aan), "regels": [[float(g), float(a)] for g, a in regels]})
+
+
+def pauze_instelling() -> dict:
+    """{'aan': bool, 'regels': [(grens, aftrek), ...]}; onleesbaar -> de standaard (de oude VBA).
+
+    De regels blijven bewaard als de pauzeaftrek uit staat (dan weer aan te zetten).
+    """
+    try:
+        gegevens = json.loads(lees("pauze"))
+        regels = [(float(g), float(a)) for g, a in gegevens["regels"]]
+        aan = bool(gegevens["aan"])
+    except (ValueError, TypeError, KeyError):
+        return {"aan": True, "regels": list(STANDAARD_PAUZE)}
+    _, fouten = controleer_pauze(aan, regels)
+    if fouten:  # met de hand gewijzigd en ongeldig: nooit vreemd rekenen
+        return {"aan": True, "regels": list(STANDAARD_PAUZE)}
+    return {"aan": aan, "regels": regels}
+
+
+def pauze() -> Staffel:
+    """De pauzestaffel voor de urenberekening; () als de pauzeaftrek uit staat."""
+    instelling = pauze_instelling()
+    return tuple(instelling["regels"]) if instelling["aan"] else ()
+
+
+def _getal_nl(waarde: float) -> str:
+    return f"{waarde:g}".replace(".", ",")
+
+
+def pauze_tekst(instelling: dict) -> str:
+    """Leesbaar voor het logboek, bijv. 'aan: meer dan 5,5 uur: 0,5 eraf'."""
+    regels = "; ".join(f"meer dan {_getal_nl(g)} uur: {_getal_nl(a)} eraf" for g, a in instelling["regels"])
+    return ("aan" if instelling["aan"] else "uit") + (f": {regels}" if regels else "")
+
+
+def controleer_pauze(aan: bool, regels) -> tuple[dict, list[str]]:
+    """Controleer een pauzestaffel uit het formulier: ({'aan', 'regels'}, foutmeldingen).
+
+    regels: paren (grens, aftrek) als tekst (komma of punt) of getal; een leeg paar telt niet.
+    Eisen: getallen eindig en 0 of meer, grens hooguit 24, aftrek kleiner dan de grens,
+    grenzen uniek en oplopend, hooguit MAX_PAUZEREGELS regels; aan = minstens één regel.
+    """
+    fouten: list[str] = []
+    gelezen: list[tuple[float, float]] = []
+    for nummer, (grens_tekst, aftrek_tekst) in enumerate(regels, start=1):
+        delen = [("" if x is None else str(x)).strip().replace(",", ".") for x in (grens_tekst, aftrek_tekst)]
+        if delen == ["", ""]:
+            continue
+        if "" in delen:
+            fouten.append(f"Pauzeregel {nummer}: vul beide getallen in (grens en aftrek), of geen van beide.")
+            continue
+        try:
+            grens, aftrek = (float(d) for d in delen)
+        except ValueError:
+            grens = aftrek = math.nan
+        if not (math.isfinite(grens) and math.isfinite(aftrek)):
+            fouten.append(f"Pauzeregel {nummer}: vul een getal in (bijvoorbeeld 5,5 en 0,5).")
+        elif grens < 0 or aftrek < 0:
+            fouten.append(f"Pauzeregel {nummer}: de getallen moeten 0 of meer zijn.")
+        elif grens > 24:
+            fouten.append(f"Pauzeregel {nummer}: de grens is hooguit 24 uur.")
+        elif aftrek >= grens:
+            fouten.append(f"Pauzeregel {nummer}: de pauze moet kleiner dan de grens zijn.")
+        else:
+            gelezen.append((grens, aftrek))
+    if len(gelezen) > MAX_PAUZEREGELS:
+        fouten.append(f"Je kunt hooguit {MAX_PAUZEREGELS} pauzeregels gebruiken.")
+    if any(b[0] <= a[0] for a, b in zip(gelezen, gelezen[1:], strict=False)):
+        fouten.append("De grenzen van de pauzeregels moeten uniek en oplopend zijn (bijvoorbeeld 5,5 en 9).")
+    if aan and not gelezen and not fouten:
+        fouten.append("Vul minstens één pauzeregel in, of zet de pauzeaftrek uit.")
+    return {"aan": bool(aan), "regels": gelezen}, fouten
 
 
 def setup_voltooid() -> bool:
