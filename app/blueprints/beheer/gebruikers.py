@@ -1,6 +1,5 @@
 """Beheer van gebruikersaccounts (vervangt de Excel-bladen Rechten en Beveiliging)."""
 
-import re
 import secrets
 
 from flask import flash, redirect, render_template, request, url_for
@@ -9,11 +8,10 @@ from flask_login import current_user, login_user
 from ...extensions import db
 from ...models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker, Medewerker
 from ...services import logboek
+from ...services.validatie import MAX_NAAM, gebruikersnaam_fout, lengte_fout
 from ...services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
-
-GEBRUIKERSNAAM_PATROON = re.compile(r"^[a-z0-9._-]{2,64}$")
 
 
 def _aantal_actieve_beheerders(behalve_id: int | None = None) -> int:
@@ -38,8 +36,8 @@ def _lees_formulier(gebruiker: Gebruiker | None) -> tuple[dict, list[str]]:
     formulier = request.form
     fouten = []
     gebruikersnaam = formulier.get("gebruikersnaam", "").strip().lower()
-    if not GEBRUIKERSNAAM_PATROON.match(gebruikersnaam):
-        fouten.append("Gebruikersnaam: 2-64 tekens, alleen a-z, 0-9, punt, streepje of underscore.")
+    if fout := gebruikersnaam_fout(gebruikersnaam):
+        fouten.append(fout)
     else:
         bestaand = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
         if bestaand and (gebruiker is None or bestaand.id != gebruiker.id):
@@ -47,6 +45,8 @@ def _lees_formulier(gebruiker: Gebruiker | None) -> tuple[dict, list[str]]:
     weergavenaam = formulier.get("weergavenaam", "").strip()
     if not weergavenaam:
         fouten.append("Vul een weergavenaam in.")
+    elif fout := lengte_fout(weergavenaam, MAX_NAAM, "Weergavenaam"):
+        fouten.append(fout)
     rol = formulier.get("rol", ROL_GEBRUIKER)
     if rol not in (ROL_BEHEERDER, ROL_GEBRUIKER):
         fouten.append("Ongeldige rol.")

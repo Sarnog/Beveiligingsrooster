@@ -8,6 +8,7 @@ from ...models import Dienst, Dienstcode, OpmerkingKleurregel
 from ...services import instellingen, klok, logboek, sync_planning
 from ...services.rooster import diensten_met_afwijkende_std_tijden, pas_std_tijden_toe
 from ...services.tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
+from ...services.validatie import MAX_OMSCHRIJVING, is_codenummer, lengte_fout
 from ...services.voorbeeldpakket import laad_voorbeeldpakket
 from ..hulp import beheerder_vereist, getal, kleur, vinkje
 from . import bp
@@ -36,7 +37,7 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
     formulier = request.form
     fouten = []
     nummer_tekst = formulier.get("nummer", "").strip()
-    if not is_cijfers(nummer_tekst) or int(nummer_tekst) < 1:
+    if not is_cijfers(nummer_tekst) or not is_codenummer(int(nummer_tekst)):
         fouten.append("Het nummer moet een positief geheel getal zijn.")
         nummer = None
     else:
@@ -50,6 +51,8 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
     omschrijving = formulier.get("omschrijving", "").strip()
     if not omschrijving:
         fouten.append("Vul een omschrijving in.")
+    elif fout := lengte_fout(omschrijving, MAX_OMSCHRIJVING, "Omschrijving"):
+        fouten.append(fout)
 
     try:
         begin = normaliseer_tijd(formulier.get("std_begin"))

@@ -19,6 +19,7 @@ Wachtwoorden en rechten uit de bladen 'Beveiliging' en 'Rechten' worden bewust N
 """
 
 import logging
+import math
 import os
 import re
 import time as _time
@@ -42,10 +43,11 @@ from .kalender import (
     eerste_en_laatste_dag_isojaar,
     maandag_van_week,
 )
-from .medewerkers import uniek_voorstel
+from .medewerkers import uniek_voorstel, voorstel_initialen
 from .rooster import UrenContext, markeer_bijgewerkt, uren_voor
 from .tijden import is_cijfers
 from .urenberekening import bereken_uren, dagfactor
+from .validatie import MAX_NAAM, MAX_OMSCHRIJVING, initialen_fout, is_codenummer
 from .voorbeeldpakket import DIENSTCODES
 from .weekrooster import LEGE_DIENST, automatische_dagopmerkingen, dagopmerkingen
 
@@ -122,14 +124,14 @@ def _tekst(waarde) -> str:
 
 
 def _getal(waarde) -> float | None:
+    """Getal uit een cel; leeg, tekst, oneindig of NaN -> None."""
     if isinstance(waarde, bool) or waarde is None:
         return None
-    if isinstance(waarde, (int, float)):
-        return float(waarde)
     try:
-        return float(str(waarde).replace(",", "."))
-    except ValueError:
+        getal = float(waarde) if isinstance(waarde, (int, float)) else float(str(waarde).replace(",", "."))
+    except (ValueError, OverflowError):
         return None
+    return getal if math.isfinite(getal) else None
 
 
 def _datum(waarde) -> date | None:
@@ -348,18 +350,28 @@ def _bepaal_koppelingen(plan: ImportPlan) -> None:
 
 def _lees_lijsten(blad, plan: ImportPlan) -> None:
     for rij in range(2, 200):
-        naam = _tekst(blad.cell(rij, 3).value)
+        naam = _tekst(blad.cell(rij, 3).value)[:MAX_NAAM]
         if not naam:
             continue
+        # Initialen volgens dezelfde regel als in Beheer (A-Z en 0-9, hooguit 10 tekens)
+        ruw = _tekst(blad.cell(rij, 2).value).upper()
+        initialen = re.sub(r"[^A-Z0-9]", "", ruw)[:10] or voorstel_initialen(naam)
+        if ruw and initialen != ruw:
+            plan.waarschuwingen.append(f"Initialen '{ruw}' van '{naam}' zijn ongeldig (alleen letters en "
+                                       f"cijfers, maximaal 10); '{initialen}' wordt gebruikt.")
         plan.medewerkers.append(ImportMedewerker(
             naam=naam,
-            initialen=_tekst(blad.cell(rij, 2).value).upper(),
+            initialen=initialen if not initialen_fout(initialen) else "",
             contracturen=_getal(blad.cell(rij, 4).value),
         ))
     for rij in range(2, 200):
         nummer = _getal(blad.cell(rij, 6).value)
-        omschrijving = _tekst(blad.cell(rij, 7).value)
+        omschrijving = _tekst(blad.cell(rij, 7).value)[:MAX_OMSCHRIJVING]
         if nummer is None or int(nummer) == EXCEL_BLANCO or not omschrijving:
+            continue
+        if nummer != int(nummer) or not is_codenummer(int(nummer)):
+            plan.waarschuwingen.append(f"Dienstcode {nummer:g} ({omschrijving}) overgeslagen: het nummer "
+                                       "moet een positief geheel getal zijn.")
             continue
         plan.codes.append(ImportCode(
             nummer=int(nummer), omschrijving=omschrijving,
@@ -401,7 +413,7 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
     namen = {m.naam for m in plan.medewerkers}
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
-        naam = _tekst(blad.cell(basis, 2).value)
+        naam = _tekst(blad.cell(basis, 2).value)[:MAX_NAAM]
         if is_cijfers(naam):  # bijv. 0 uit een formule naar een lege cel
             naam = ""
         if not naam:
@@ -416,6 +428,8 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan) -> None:
         for i, kolom in enumerate(DAG_KOLOMMEN):
             code_waarde = blad.cell(6 + 2 * n, CODE_KOLOMMEN[i]).value if n < 11 else None
             code = None if _is_leeg(code_waarde) else _getal(code_waarde)
+            if code is not None and (code != int(code) or not is_codenummer(int(code))):
+                code = None  # geen geldig codenummer: de dienstnaam telt
             dienst = ImportDienst(
                 naam=naam, datum=dagen[i],
                 code=int(code) if code is not None else None,

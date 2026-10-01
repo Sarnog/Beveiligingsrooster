@@ -20,6 +20,7 @@ from flask import Flask
 from .extensions import db
 from .models import ROL_BEHEERDER, Gebruiker
 from .services import instellingen, logboek, setup_code
+from .services.validatie import MAX_NAAM, gebruikersnaam_fout, lengte_fout
 from .services.wachtwoorden import hash_wachtwoord, wachtwoord_fout
 
 
@@ -64,6 +65,10 @@ def registreer_commando_s(app: Flask) -> None:
     def maak_beheerder(gebruikersnaam: str, weergavenaam: str):
         """Maak een (extra) beheerder aan, of maak een bestaande gebruiker beheerder."""
         gebruikersnaam = gebruikersnaam.strip().lower()
+        weergavenaam = weergavenaam.strip()
+        # Zelfde regels als in Beheer → Gebruikers en de setup-wizard
+        if fout := gebruikersnaam_fout(gebruikersnaam) or lengte_fout(weergavenaam, MAX_NAAM, "Weergavenaam"):
+            raise click.ClickException(fout)
         gebruiker = Gebruiker.query.filter_by(gebruikersnaam=gebruikersnaam).first()
         wachtwoord = _vraag_wachtwoord()
         if gebruiker is None:

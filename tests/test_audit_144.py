@@ -472,3 +472,110 @@ def test_m6_docstring_deellink_klopt():
     from app.blueprints import deel
 
     assert "contracturen" in deel.__doc__ and "weektotalen" in deel.__doc__
+
+
+# ---------------------------------------------------------------------------
+# L1 · Setup, maak-beheerder en de import valideren invoer niet
+# ---------------------------------------------------------------------------
+
+def _setup_tot_stap(client, stap):
+    from app.services import setup_code
+
+    from .conftest import WACHTWOORD
+
+    client.get("/setup/")
+    client.post("/setup/", data={"code": setup_code.lees_code()})
+    if stap > 1:
+        client.post("/setup/stap/1", data={"gebruikersnaam": "planner", "weergavenaam": "Planner",
+                                           "wachtwoord": WACHTWOORD, "herhaling": WACHTWOORD})
+
+
+@pytest.mark.parametrize("naam", ["met spatie", "x", "a" * 65, "<script>", "ü-teken"])
+def test_l1_setup_weigert_ongeldige_gebruikersnaam(app, client, naam):
+    from app.models import Gebruiker
+
+    from .conftest import WACHTWOORD
+
+    _setup_tot_stap(client, 1)
+    antwoord = client.post("/setup/stap/1", data={"gebruikersnaam": naam, "weergavenaam": "P",
+                                                  "wachtwoord": WACHTWOORD, "herhaling": WACHTWOORD})
+    assert antwoord.status_code == 400 and Gebruiker.query.count() == 0
+
+
+def test_l1_setup_weigert_te_lange_weergavenaam(app, client):
+    from app.models import Gebruiker
+
+    from .conftest import WACHTWOORD
+
+    _setup_tot_stap(client, 1)
+    antwoord = client.post("/setup/stap/1", data={"gebruikersnaam": "planner", "weergavenaam": "P" * 121,
+                                                  "wachtwoord": WACHTWOORD, "herhaling": WACHTWOORD})
+    assert antwoord.status_code == 400 and Gebruiker.query.count() == 0
+
+
+def test_l1_maak_beheerder_weigert_ongeldige_naam(app, klaar, monkeypatch):
+    import getpass
+
+    from app.models import Gebruiker
+
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "nieuwwachtwoord1")
+    resultaat = app.test_cli_runner().invoke(
+        args=["maak-beheerder", "--gebruikersnaam", "met spatie", "--weergavenaam", "X"])
+    assert resultaat.exit_code != 0 and "Gebruikersnaam" in resultaat.output
+    assert Gebruiker.query.filter_by(gebruikersnaam="met spatie").first() is None
+
+
+def test_l1_setup_stap4_geeft_geldige_initialen_en_begrenst_naam(app, client):
+    from app.services.validatie import INITIALEN_PATROON
+
+    _setup_tot_stap(client, 4)
+    client.post("/setup/stap/4", data={"medewerkers": "Ömer Øzdemir\nÉva Ångström\n" + "N" * 200})
+    medewerkers = Medewerker.query.all()
+    assert len(medewerkers) == 3
+    assert all(INITIALEN_PATROON.fullmatch(m.initialen) for m in medewerkers)
+    assert {m.initialen for m in medewerkers} >= {"OOZ", "EAN"}
+    assert all(len(m.naam) <= 120 for m in medewerkers)
+
+
+def test_l1_import_corrigeert_initialen_en_slaat_ongeldige_codes_over(app, klaar, tmp_path):
+    import openpyxl
+
+    from app.models import Dienstcode
+    from app.services.excel_import import importeer, lees_bestand
+    from app.services.validatie import INITIALEN_PATROON
+
+    boek = openpyxl.Workbook()
+    lijsten = boek.active
+    lijsten.title = "Lijsten"
+    lijsten.cell(2, 2, "J.J.")
+    lijsten.cell(2, 3, "Jan Jansen")
+    lijsten.cell(3, 2, "ABCDEFGHIJKLM")
+    lijsten.cell(3, 3, "Piet " + "P" * 200)
+    for rij, nummer in enumerate((0, -3, 7), start=2):
+        lijsten.cell(rij, 6, nummer)
+        lijsten.cell(rij, 7, f"Code {nummer} " + "x" * 80)
+    boek.create_sheet("Kalender")["E2"] = 2026
+    pad = str(tmp_path / "x.xlsx")
+    boek.save(pad)
+    plan = lees_bestand(pad)
+    assert [c.nummer for c in plan.codes] == [7]
+    assert any("0" in w and "dienstcode" in w.lower() for w in plan.waarschuwingen)
+    assert all(INITIALEN_PATROON.fullmatch(m.initialen) for m in plan.medewerkers)
+    importeer(plan)
+    assert all(INITIALEN_PATROON.fullmatch(m.initialen) for m in Medewerker.query.all())
+    assert all(len(m.naam) <= 120 for m in Medewerker.query.all())
+    assert len(Dienstcode.query.one().omschrijving) <= 60
+
+
+def test_l1_beheer_begrenst_lengtes(app, als_beheerder):
+    from app.models import Dienstcode, Gebruiker
+
+    antwoord = als_beheerder.post("/beheer/medewerkers/nieuw", data={"naam": "N" * 121, "initialen": "NN"})
+    assert antwoord.status_code == 400 and Medewerker.query.count() == 0
+    antwoord = als_beheerder.post("/beheer/dienstcodes/nieuw", data={
+        "nummer": "77", "omschrijving": "o" * 61, "kleur_achtergrond": "#FFFFFF", "kleur_tekst": "#000000"})
+    assert antwoord.status_code == 400 and Dienstcode.query.count() == 0
+    antwoord = als_beheerder.post("/beheer/gebruikers/nieuw", data={
+        "gebruikersnaam": "nieuw", "weergavenaam": "W" * 121, "rol": "gebruiker",
+        "wachtwoord": "langwachtwoord1"})
+    assert antwoord.status_code == 400 and Gebruiker.query.filter_by(gebruikersnaam="nieuw").first() is None

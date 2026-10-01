@@ -9,6 +9,7 @@ from ...models import Contracturen, Dienst, Gebruiker, Medewerker
 from ...services import klok, logboek, sync_planning
 from ...services.medewerkers import uniek_voorstel
 from ...services.tijden import is_cijfers, parse_datum
+from ...services.validatie import MAX_NAAM, initialen_fout, lengte_fout
 from ..hulp import beheerder_vereist, getal
 from . import bp
 
@@ -50,12 +51,17 @@ def _lees_formulier(medewerker: Medewerker | None) -> tuple[dict, list[str]]:
     initialen = formulier.get("initialen", "").strip().upper()
     email = formulier.get("email", "").strip()
 
+    functie = formulier.get("functie_opmerking", "").strip()
     if not naam:
         fouten.append("Vul een naam in.")
+    for fout in (lengte_fout(naam, MAX_NAAM, "Naam"), lengte_fout(functie, MAX_NAAM, "Functie/opmerking"),
+                 lengte_fout(email, 255, "E-mailadres")):
+        if fout:
+            fouten.append(fout)
     if not initialen:
         initialen = uniek_voorstel(naam, medewerker.id if medewerker else None)
-    if not re.fullmatch(r"[A-Z0-9]{1,10}", initialen or ""):
-        fouten.append("Initialen: alleen letters en cijfers, maximaal 10 tekens.")
+    if fout := initialen_fout(initialen):
+        fouten.append(fout)
     else:
         bestaand = Medewerker.query.filter_by(initialen=initialen).first()
         if bestaand and (medewerker is None or bestaand.id != medewerker.id):
@@ -81,7 +87,7 @@ def _lees_formulier(medewerker: Medewerker | None) -> tuple[dict, list[str]]:
     waarden = {
         "naam": naam,
         "initialen": initialen,
-        "functie_opmerking": formulier.get("functie_opmerking", "").strip(),
+        "functie_opmerking": functie,
         "email": email,
         "contract": contract,
     }
