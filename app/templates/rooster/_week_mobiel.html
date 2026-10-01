@@ -12,10 +12,10 @@
   <span class="dk-dienst" data-m="dienstnaam" style="{{ d.dienst_stijl }}">{{ d.dienstnaam }}</span>
   <span class="dk-tijden" data-m="tijden">{% if d.begin %}{{ d.begin }} – {{ d.eind }}{% endif %}</span>
   <span class="dk-uren" data-m="uren">{{ d.uren }}</span>
-  {% set t = d.tweede or {} %}
-  <span class="dk-tweede" data-m="tweede"{% if not d.tweede %} hidden{% endif %}><span class="dk-dienst" data-m="dienstnaam2" style="{{ t.dienst_stijl }}">{{ t.dienstnaam }}</span>
+  {% if d.tweede %}{% set t = d.tweede %}
+  <span class="dk-tweede" data-m="tweede"><span class="dk-dienst" data-m="dienstnaam2" style="{{ t.dienst_stijl }}">{{ t.dienstnaam }}</span>
     <span class="dk-tijden" data-m="tijden2">{% if t.begin %}{{ t.begin }} – {{ t.eind }}{% endif %}</span>
-    <span class="dk-uren" data-m="uren2">{{ t.uren }}</span></span>
+    <span class="dk-uren" data-m="uren2">{{ t.uren }}</span></span>{% endif %}
   <span class="dk-opm" data-m="opmerking" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}{% if d.opm_begin %} ({{ d.opm_begin }}–{{ d.opm_eind }}){% endif %}</span>
 {% if bewerken %}</button>{% else %}</div>{% endif %}
 {%- endmacro %}

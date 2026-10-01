@@ -10,9 +10,10 @@
      data-vn                     "2" bij de tweede dienst van die dag (anders dienst 1)
 
    Twee diensten op één dag: typ in het code-raster bijvoorbeeld 4/7 (ook 4+7 of
-   4 7). In het visuele rooster komen dan twee extra rijen per medewerker
-   (dienstnaam en tijden van dienst 2); die zijn verborgen zolang de medewerker
-   die week geen tweede dienst heeft. Verborgen rijen slaat het raster over.
+   4 7). In het visuele rooster heeft een medewerker dan twee extra rijen
+   (dienstnaam en tijden van dienst 2). De server stuurt die rijen alleen mee bij
+   wie die week een tweede dienst heeft; komt er tijdens het bewerken een tweede
+   dienst bij, dan voegt dit script ze toe (zorgVoorTweedeRijen).
 
    Bediening: pijltjes, Tab, Enter, direct typen, F2/dubbelklik, Delete,
    Esc, Shift+pijltjes (selecteren), Ctrl+C / Ctrl+V (ook vanuit Excel),
@@ -55,29 +56,29 @@
     this.tabel = tabel;
     this.matrix = {};   // matrix[r][c] = cel
     this.rijen = [];    // gesorteerde rijnummers
-    this.tr = {};       // tr[r] = de tabelrij (om verborgen rijen over te slaan)
+    this.maxC = 0;
+    this.voegToe(tabel.querySelectorAll(".cel"));
+  }
+
+  // Cellen in het raster opnemen (bij het laden, en nieuwe rijen voor een tweede dienst)
+  Raster.prototype.voegToe = function (cellen) {
     var zelf = this;
-    tabel.querySelectorAll(".cel").forEach(function (cel) {
+    cellen.forEach(function (cel) {
       cel.setAttribute("tabindex", "-1");
       cel._raster = zelf;
       var r = parseInt(cel.getAttribute("data-r"), 10);
-      zelf.maxC = Math.max(zelf.maxC || 0, parseInt(cel.getAttribute("data-c"), 10) + parseInt(cel.getAttribute("data-cs") || "1", 10) - 1);
       var c = parseInt(cel.getAttribute("data-c"), 10);
       var cs = parseInt(cel.getAttribute("data-cs") || "1", 10);
+      zelf.maxC = Math.max(zelf.maxC, c + cs - 1);
       cel._r = r; cel._c = c; cel._cs = cs;
-      if (!zelf.matrix[r]) { zelf.matrix[r] = {}; zelf.rijen.push(r); zelf.tr[r] = cel.parentNode; }
+      if (!zelf.matrix[r]) { zelf.matrix[r] = {}; zelf.rijen.push(r); }
       for (var k = 0; k < cs; k++) zelf.matrix[r][c + k] = cel;
     });
     this.rijen.sort(function (a, b) { return a - b; });
-  }
+  };
 
   Raster.prototype.op = function (r, c) {
     return this.matrix[r] ? this.matrix[r][c] : undefined;
-  };
-
-  // Verborgen rijen (tweede dienst bij iemand zonder tweede dienst) tellen niet mee
-  Raster.prototype.zichtbaar = function (r) {
-    return !(this.tr[r] && this.tr[r].hidden);
   };
 
   // Eén stap in een richting; blijft staan aan de rand van het raster
@@ -90,7 +91,6 @@
       return cel;
     }
     var index = this.rijen.indexOf(cel._r) + dr;
-    while (index >= 0 && index < this.rijen.length && !this.zichtbaar(this.rijen[index])) index += dr;
     if (index < 0 || index >= this.rijen.length) return cel;
     var rij = this.rijen[index];
     // Zoek in de nieuwe rij de cel op dezelfde kolom (of de dichtstbijzijnde links)
@@ -108,7 +108,7 @@
     var resultaat = [];
     var zelf = this;
     this.rijen.forEach(function (r) {
-      if (r < r1 || r > r2 || !zelf.zichtbaar(r)) return;
+      if (r < r1 || r > r2) return;
       var rij = [];
       for (var c = c1; c <= c2; c++) {
         var cel = zelf.op(r, c);
@@ -428,8 +428,6 @@
     });
     Object.keys(antwoord.dagopmerkingen || {}).forEach(function (datum) {
       var g = antwoord.dagopmerkingen[datum];
-      var label = document.querySelector('[data-pdagopm="' + datum + '"]');  // printversie
-      if (label) label.textContent = g.tekst;
       var cel = document.querySelector('.dagopm[data-datum="' + datum + '"]');
       if (!cel) return;
       cel.textContent = g.tekst;
@@ -458,6 +456,7 @@
     // Overlappende tijden van twee diensten: niet tegenhouden, wel waarschuwen
     var waarschuwingen = antwoord.waarschuwingen || [];
     if (waarschuwingen.length && !antwoord.fouten.length && !opgeslagen) status(waarschuwingen[0].melding, "waarschuwing");
+    if (window.bouwPrintRooster) window.bouwPrintRooster();  // printversie bijwerken (print.js)
   }
 
   function markeerGewijzigd() {
@@ -495,6 +494,7 @@
   // g = dienst 1 (met de opmerking en de code(s) voor het code-raster), g.tweede = dienst 2.
   function werkBij(mw, datum, g, opgeslagen) {
     var tweede = g.tweede || LEEG;
+    if (g.tweede) zorgVoorTweedeRijen(mw);
     var selector = '[data-mw="' + mw + '"][data-datum="' + datum + '"]';
     document.querySelectorAll(selector).forEach(function (el) {
       var veld = el.getAttribute("data-veld");
@@ -524,35 +524,38 @@
       if (veld === "begin" || veld === "eind") el.title = d.handmatig ? "Handmatig aangepast" : "";
       if (veld === "uren" && d.uren_handmatig) el.title = "Zelf ingevulde uren";
     });
-    // Een tweede dienst erbij: de rijen voor dienst 2 van deze medewerker tonen
-    if (g.tweede) {
-      document.querySelectorAll('[data-tweede="' + mw + '"], [data-ptweede="' + mw + '"]').forEach(function (rij) {
-        rij.hidden = false;
-      });
-    }
     var totaal = document.querySelector('[data-totaal="' + mw + '"]');
     if (totaal) totaal.textContent = g.weektotaal;
-    werkPrintBij(mw, datum, g);
     werkKaartenBij(mw, datum, g);
   }
 
-  // Printversie van het rooster bijwerken (zodat een print na een wijziging klopt)
-  function werkPrintBij(mw, datum, g) {
-    document.querySelectorAll('[data-pmw="' + mw + '"][data-pdatum="' + datum + '"]').forEach(function (el) {
-      var d = el.getAttribute("data-pvn") === "2" ? (g.tweede || LEEG) : g;
-      var veld = el.getAttribute("data-p");
-      if (veld === "opmerking") {
-        el.textContent = g.opmerking + (g.opm_begin ? " (" + g.opm_begin + "–" + g.opm_eind + ")" : "");
-        el.setAttribute("style", g.opmerking_stijl);
-      } else if (veld === "dienstnaam") {
-        el.textContent = d.dienstnaam;
-        el.setAttribute("style", d.dienst_stijl);
-      } else {
-        el.textContent = d[veld];
-      }
+  // Rijen voor dienst 2 toevoegen bij een medewerker die die week nog geen tweede dienst had:
+  // een kopie van de dienstnaam- en tijdenrij (rij c en d), twee rijnummers lager
+  function zorgVoorTweedeRijen(mw) {
+    var blok = document.querySelector('tbody.blok[data-blok="' + mw + '"]');
+    if (!blok || blok.querySelector("tr.tweede-rij")) return;
+    var nieuweCellen = [];
+    [["tr.r-c", "r-e"], ["tr.r-d", "r-f"]].forEach(function (paar) {
+      var rij = blok.querySelector(paar[0]).cloneNode(true);
+      rij.className = paar[1] + " tweede-rij";
+      rij.setAttribute("data-tweede", mw);
+      rij.querySelectorAll(".urenkol").forEach(function (c) { c.remove(); });  // weektotaal niet dubbel
+      rij.appendChild(document.createElement("td")).className = "urenkol";
+      rij.querySelectorAll("[data-mw]").forEach(function (cel) {
+        cel.setAttribute("data-vn", "2");
+        cel.setAttribute("data-r", String(parseInt(cel.getAttribute("data-r"), 10) + 2));
+        if (cel.hasAttribute("data-versie")) cel.setAttribute("data-versie", "0");
+        cel.textContent = "";
+        cel.removeAttribute("style");
+        cel.removeAttribute("title");
+        cel.classList.remove("handmatig", "gewijzigd", "fout", "actief", "geselecteerd", "bewerken");
+        nieuweCellen.push(cel);
+      });
+      blok.appendChild(rij);
     });
-    var totaal = document.querySelector('[data-ptotaal="' + mw + '"]');
-    if (totaal) totaal.textContent = g.weektotaal;
+    blok.querySelector(".naamkol").rowSpan = 6;
+    var raster = rasters.filter(function (r) { return r.tabel.contains(blok); })[0];
+    if (raster) raster.voegToe(nieuweCellen);
   }
 
   // Kaarten in de telefoonweergave bijwerken (zelfde gegevens als het raster)
@@ -568,6 +571,19 @@
       opm.textContent = g.opmerking + (g.opm_begin ? " (" + g.opm_begin + "–" + g.opm_eind + ")" : "");
       opm.setAttribute("style", g.opmerking_stijl);
       var blok = kaart.querySelector('[data-m="tweede"]');
+      if (!blok && g.tweede) {
+        // Eerste tweede dienst op deze dag: het blok aanmaken (zelfde opbouw als in de template)
+        blok = document.createElement("span");
+        blok.className = "dk-tweede";
+        blok.setAttribute("data-m", "tweede");
+        ["dk-dienst|dienstnaam2", "dk-tijden|tijden2", "dk-uren|uren2"].forEach(function (d) {
+          var deel = document.createElement("span");
+          deel.className = d.split("|")[0];
+          deel.setAttribute("data-m", d.split("|")[1]);
+          blok.appendChild(deel);
+        });
+        kaart.insertBefore(blok, opm);
+      }
       if (blok) {
         blok.hidden = !g.tweede;
         var naam2 = blok.querySelector('[data-m="dienstnaam2"]');

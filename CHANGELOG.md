@@ -36,6 +36,13 @@ Zet anders een back-up van vóór de update terug.
   (grijs) het weektotaal. Weekenden staan er altijd op. Past het, dan komt er onderaan één lege
   regel *Reserve 1*. Bij veel medewerkers krimpen eerst de regels en pas daarna de letters,
   zodat de week op één pagina blijft. De schermweergave is niet veranderd.
+  De printtabel wordt in de browser opgebouwd uit het rooster (`app/static/js/print.js`),
+  zodat de server de week maar één keer hoeft te maken; zonder JavaScript print de browser
+  het gewone rooster.
+- **Weekrooster sneller:** de extra regels voor een tweede dienst staan alleen in de pagina bij
+  wie die week een tweede dienst heeft (het raster voegt ze toe als er een bij komt), en de
+  feestdagen worden per pagina nog maar één keer opgehaald. De pagina is daardoor even snel
+  als in 1.3.0 (de prestatietest eist < 300 ms).
 - Datamodel: een dienst heeft nu een `volgnummer` (1 of 2); de unieke sleutel is
   (medewerker, datum, volgnummer). Databasemigratie `0006`.
 - Logboek: wijzigingen aan de tweede dienst staan als *dienst 2: …* in het veld.

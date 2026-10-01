@@ -346,7 +346,7 @@ td.positief { color: #1565c0; font-weight: 600; }
 
 /* ==========================================================
    Printen: A4 liggend, één week per pagina, zoals het papieren rooster.
-   Het weekrooster heeft een eigen printtabel (.print-rooster in week.html);
+   Het weekrooster heeft een eigen printtabel (.print-rooster, opgebouwd door print.js);
    het schermrooster, het code-raster en de telefoonweergave gaan niet mee.
    ========================================================== */
 .print-rooster { display: none; }
@@ -540,9 +540,12 @@ button.dag-kaart:hover, button.dag-kaart:focus-visible { border-color: var(--pri
 .paneel-knoppen .knop { flex: 1 1 0; min-height: 48px; }
 @media (min-width: 761px) { .paneel { margin: auto; border-radius: var(--radius); } }
 
-/* Printen: altijd de printtabel van het rooster (A4 liggend), ook vanaf een telefoon */
+/* Printen: de printtabel van het rooster (A4 liggend), ook vanaf een telefoon.
+   Zonder JavaScript (geen printtabel) print de browser het gewone rooster. */
 @media print {
   .week-mobiel, .paneel, .weergave-wissel, .schuif-hint { display: none !important; }
-  html .week-opmaak { display: none !important; }
+  html.print-klaar .week-opmaak { display: none !important; }
+  html:not(.print-klaar) .week-opmaak { display: block !important; }
+  html:not(.print-klaar) .rooster { min-width: 0; font-size: 7pt; }
 }
 .paneel .raster-status:empty { display: none; }

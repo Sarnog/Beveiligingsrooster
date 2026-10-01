@@ -187,16 +187,19 @@ def diensten_van_dag(medewerker_id: int, datum: date) -> tuple[Dienst | None, Di
 # Dagopmerkingen (automatisch uit feestdagen/vakanties, of handmatig)
 # ---------------------------------------------------------------------------
 
-def automatische_dagopmerkingen(van: date, tot: date) -> dict[date, str]:
-    """Feestdag gaat voor vakantie. Vakantie alleen op werkdagen (zoals in Excel)."""
+def automatische_dagopmerkingen(van: date, tot: date, feestdagen: dict | None = None) -> dict[date, str]:
+    """Feestdag gaat voor vakantie. Vakantie alleen op werkdagen (zoals in Excel).
+
+    feestdagen: de feestdagen van deze periode, als de aanroeper die al heeft.
+    """
     teksten = dict(vakantiedagen_in_periode(van, tot))
-    teksten.update(feestdagen_in_periode(van, tot))
+    teksten.update(feestdagen if feestdagen is not None else feestdagen_in_periode(van, tot))
     return teksten
 
 
-def dagopmerkingen(dagen: list[date]) -> dict[date, dict]:
+def dagopmerkingen(dagen: list[date], feestdagen: dict | None = None) -> dict[date, dict]:
     """Per dag: {'tekst': ..., 'handmatig': bool}."""
-    automatisch = automatische_dagopmerkingen(dagen[0], dagen[-1])
+    automatisch = automatische_dagopmerkingen(dagen[0], dagen[-1], feestdagen)
     handmatig = {
         d.datum: d for d in Dagopmerking.query.filter(
             Dagopmerking.datum >= dagen[0], Dagopmerking.datum <= dagen[-1]).all()
@@ -290,12 +293,14 @@ def week_gegevens(jaar: int, week: int) -> dict:
             rij.heeft_tweede = rij.heeft_tweede or dienst2 is not None
         rijen.append(rij)
 
+    feestdagen = feestdagen_in_periode(dagen[0], dagen[-1])  # één keer ophalen
     return {
         "jaar": jaar,
         "week": week,
         "dagen": dagen,
-        "dagopmerkingen": dagopmerkingen(dagen),
-        "feestdagen": feestdagen_in_periode(dagen[0], dagen[-1]),
+        "dag_iso": [dag.isoformat() for dag in dagen],  # voor de template (scheelt rekenwerk)
+        "dagopmerkingen": dagopmerkingen(dagen, feestdagen),
+        "feestdagen": feestdagen,
         "rijen": rijen,
         "diensten": per_sleutel,  # (medewerker_id, datum) -> dienst 1, o.a. voor de API
         "tweede_diensten": tweede,  # (medewerker_id, datum) -> dienst 2
