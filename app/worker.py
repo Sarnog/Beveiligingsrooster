@@ -59,14 +59,14 @@ def _stap_backup(planning: Planning, nu: datetime) -> None:
         pad = backup.maak_backup()
         backup.ruim_oude_op()
         backup.ruim_gelabelde_op()
-    except Exception as fout:  # noqa: BLE001 - nooit elke ronde opnieuw proberen
+    except Exception as fout:  # nooit elke ronde opnieuw proberen
         planning.backup_niet_voor = nu + BACKUP_BACKOFF
         log.exception("Back-up mislukt; volgende poging na %s", planning.backup_niet_voor)
         db.session.rollback()
         try:
             logboek.log("Back-up mislukt", f"{type(fout).__name__}: {fout}", gebruiker="systeem")
             db.session.commit()
-        except Exception:  # noqa: BLE001 - bijv. de schijf is vol
+        except Exception:  # bijv. de schijf is vol
             db.session.rollback()
         return
     planning.backup_gedaan = nu.date()
@@ -81,7 +81,7 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
     # 1. Agenda-synchronisatie
     try:
         _stap_sync()
-    except Exception:  # noqa: BLE001 - een sync-fout mag de rest niet tegenhouden
+    except Exception:  # een sync-fout mag de rest niet tegenhouden
         log.exception("Fout in de agenda-synchronisatie")
         db.session.rollback()
 
@@ -93,7 +93,7 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
         planning.opschonen_gedaan = nu.date()
         try:
             _stap_opschonen(nu)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("Fout bij het opschonen")
             db.session.rollback()
 
@@ -111,7 +111,7 @@ def main() -> None:
         while True:
             try:
                 een_ronde(planning)
-            except Exception:  # noqa: BLE001 - worker mag nooit stoppen door één fout
+            except Exception:  # worker mag nooit stoppen door één fout
                 log.exception("Fout in worker-ronde")
                 db.session.rollback()
             finally:

@@ -87,7 +87,7 @@ def test_c1_mislukte_backups_verdringen_goede_niet(app, klaar, monkeypatch):
     for _ in range(10):
         try:
             worker.een_ronde(planning, moment)
-        except Exception:  # noqa: BLE001 - oude code liet de fout door
+        except Exception:  # oude code liet de fout door
             pass
         moment += timedelta(minutes=31)  # na de backoff mag het opnieuw
     monkeypatch.setattr(backup, "sqlite3", sqlite3)
@@ -1271,8 +1271,9 @@ def test_s3_tokens_gemaskeerd_in_toegangslog():
 def test_s3_logger_maskeert_atomen():
     from types import SimpleNamespace
 
-    from app.toegangslog import ToegangsLogger
     from gunicorn.config import Config
+
+    from app.toegangslog import ToegangsLogger
 
     logger = ToegangsLogger(Config())
     verzoek = SimpleNamespace(headers=[], method="GET", path="/ics/geheimtoken.ics", query="",
@@ -1414,3 +1415,18 @@ def test_import_lange_dienstnaam_en_oude_toeslag_gelogd(app, mw):
     assert len(Dienst.query.one().dienstnaam_override) == 60
     regel = Logboek.query.filter_by(actie="Instelling gewijzigd", veld="toeslag_zaterdag").one()
     assert (regel.oude_waarde, regel.nieuwe_waarde) == ("1.25", "1.5")
+
+
+def test_voorbeeldpakket_zonder_echte_plaatsnamen(app, klaar):
+    from app.models import OpmerkingKleurregel
+    from app.services.voorbeeldpakket import laad_voorbeeldpakket
+
+    laad_voorbeeldpakket()
+    assert sorted(r.tekst for r in OpmerkingKleurregel.query.all()) == ["Locatie A", "Locatie B"]
+
+
+def test_dagnamen_staan_op_een_plek(app, als_beheerder, mw):
+    from app.services.kalender import DAGNAMEN_KORT
+
+    pagina = als_beheerder.get("/week/2026/10").data.decode()
+    assert f"{DAGNAMEN_KORT[0]} 02-03-26" in pagina

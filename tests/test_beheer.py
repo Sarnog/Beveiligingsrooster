@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from app.extensions import db
 from app.models import Dienst, Dienstcode, Feestdag, Logboek, Medewerker, Vakantie
 from app.services import instellingen
-from app.services.rooster import bereken_dienst
+from app.services.rooster import UrenContext, uren_voor
 from app.services.voorbeeldpakket import laad_voorbeeldpakket
 
 
@@ -149,7 +149,7 @@ def test_toeslagen_wijzigen_en_herberekenen(als_beheerder):
     db.session.flush()
     zaterdag = date(2026, 3, 7)
     dienst = Dienst(medewerker_id=medewerker.id, datum=zaterdag, begin="07:15", eind="15:45")
-    bereken_dienst(dienst)
+    dienst.uren_berekend = uren_voor(dienst, UrenContext(zaterdag, zaterdag))
     db.session.add(dienst)
     db.session.commit()
     assert dienst.uren_berekend == 12.0

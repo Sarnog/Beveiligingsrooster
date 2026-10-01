@@ -1,7 +1,7 @@
 """Berekeningen voor de kalender, het urenoverzicht en zoeken."""
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
 from ..extensions import db
 from ..models import Dienst, Dienstcode, Feestdag, Medewerker
@@ -142,7 +142,3 @@ def zoek_diensten(naam: str = "", code: int | None = None, van: date | None = No
         query = query.filter(Dienst.datum <= tot)
     return query.order_by(Dienst.datum, Medewerker.volgorde).limit(limiet).all()
 
-
-def week_bereik(datum: date) -> tuple[date, date]:
-    maandag = datum - timedelta(days=datum.weekday())
-    return maandag, maandag + timedelta(days=6)

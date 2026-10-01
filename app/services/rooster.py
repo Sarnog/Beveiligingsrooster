@@ -48,13 +48,6 @@ def uren_voor(dienst: Dienst, context: UrenContext) -> float | None:
     return uren
 
 
-def bereken_dienst(dienst: Dienst, context: UrenContext | None = None) -> None:
-    """Zet dienst.uren_berekend opnieuw."""
-    if context is None:
-        context = UrenContext(dienst.datum, dienst.datum)
-    dienst.uren_berekend = uren_voor(dienst, context)
-
-
 def herbereken_alle(van: date | None = None, tot: date | None = None) -> int:
     """Herbereken de uren van alle diensten (optioneel binnen een periode).
 

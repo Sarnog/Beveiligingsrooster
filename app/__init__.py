@@ -213,10 +213,13 @@ def _registreer_controles(app: Flask) -> None:
 def _registreer_template_helpers(app: Flask) -> None:
     from .blueprints.hulp import externe_url
     from .services import instellingen
+    from .services.kalender import DAGNAMEN, DAGNAMEN_KORT
     from .services.tijden import datum_nl
     from .services.urenberekening import formatteer_uren
 
     app.jinja_env.globals["externe_url"] = externe_url
+    app.jinja_env.globals["dagnamen"] = DAGNAMEN
+    app.jinja_env.globals["dagnamen_kort"] = DAGNAMEN_KORT
     app.jinja_env.filters["datum_nl"] = datum_nl
     app.jinja_env.filters["uren"] = formatteer_uren
 

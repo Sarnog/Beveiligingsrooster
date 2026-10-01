@@ -95,7 +95,7 @@ def _vertaal_fout(fout: Exception) -> AgendaFout:
         reden = ""
         try:
             reden = json.loads(fout.content.decode())["error"]["errors"][0].get("reason", "")
-        except Exception:  # noqa: BLE001 - reden is alleen extra informatie
+        except Exception:  # reden is alleen extra informatie
             reden = ""
         tijdelijk = status == 429 or status >= 500 or reden in (
             "rateLimitExceeded", "userRateLimitExceeded", "backendError")
@@ -137,7 +137,7 @@ class AgendaKlant:
     def _voer_uit(self, verzoek):
         try:
             return verzoek.execute()
-        except Exception as fout:  # noqa: BLE001 - wordt vertaald
+        except Exception as fout:  # wordt vertaald
             raise _vertaal_fout(fout) from fout
 
     def maak_agenda(self, titel: str, tijdzone: str) -> str:

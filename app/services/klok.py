@@ -58,7 +58,7 @@ def _lees_instelling() -> str:
         with db.engine.connect() as verbinding:
             waarde = verbinding.execute(
                 text("SELECT waarde FROM instelling WHERE sleutel = 'tijdzone'")).scalar() or ""
-    except Exception:  # noqa: BLE001 - database nog niet aangemaakt (eerste start)
+    except Exception:  # database nog niet aangemaakt (eerste start)
         waarde = ""
     _cache[sleutel] = (time.monotonic(), waarde.strip())
     return waarde.strip()

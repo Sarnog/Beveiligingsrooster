@@ -76,7 +76,7 @@ def excel_import_voorbeeld():
             except ImportFout as fout:
                 flash(str(fout), "fout")
                 return redirect(url_for("beheer.excel_import_voorbeeld"))
-            except Exception as fout:  # noqa: BLE001 - nooit een kale foutpagina
+            except Exception as fout:  # nooit een kale foutpagina
                 log.exception("Excel-import mislukt")
                 flash(f"De import is mislukt; er is niets geïmporteerd ({type(fout).__name__}).", "fout")
                 return redirect(url_for("beheer.excel_import_voorbeeld"))

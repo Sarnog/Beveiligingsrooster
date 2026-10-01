@@ -24,7 +24,7 @@ def backups():
 def backup_maken():
     try:
         pad = backup.maak_backup("handmatig")
-    except Exception as fout:  # noqa: BLE001 - bijv. schijf vol
+    except Exception as fout:  # bijv. schijf vol
         log.exception("Handmatige back-up mislukt")
         flash(f"Back-up maken is mislukt: {fout}", "fout")
         return redirect(url_for("beheer.backups"))
@@ -69,7 +69,7 @@ def backup_terugzetten():
 
     try:
         veiligheid = backup.zet_terug(pad)
-    except Exception as fout:  # noqa: BLE001 - altijd een nette melding, nooit een foutpagina
+    except Exception as fout:  # altijd een nette melding, nooit een foutpagina
         if not isinstance(fout, ValueError):
             log.exception("Terugzetten van %s mislukt", naam)
         if naam.endswith("-upload.db") and os.path.exists(pad):

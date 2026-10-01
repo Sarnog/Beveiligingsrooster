@@ -236,7 +236,7 @@ def verwerk_wachtrij(klant_maker=None) -> int:
             SyncTaak.query.filter_by(id=taak_id).delete(synchronize_session=False)
             db.session.commit()
             verwerkt += 1
-        except Exception as fout:  # noqa: BLE001 - één taak mag de wachtrij niet stilleggen
+        except Exception as fout:  # één taak mag de wachtrij niet stilleggen
             db.session.rollback()
             if not isinstance(fout, AgendaFout):
                 log.exception("Onverwachte fout bij agenda-taak %s", taak_id)

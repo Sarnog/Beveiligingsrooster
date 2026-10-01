@@ -40,14 +40,13 @@ class Config:
         self.PROXY_VERTROUWEN = _bool(os.environ.get("PROXY_VERTROUWEN"))
 
         # Sessiecookies: altijd HttpOnly en SameSite=Lax; Secure bij HTTPS
+        # (COOKIE_SECURE=1/0 overschrijft de keuze op basis van BASE_URL).
+        # Er is geen 'ingelogd blijven'-cookie: de sessie duurt SESSIE_UREN.
         self.SESSION_COOKIE_HTTPONLY = True
         self.SESSION_COOKIE_SAMESITE = "Lax"
         self.SESSION_COOKIE_SECURE = _bool(
             os.environ.get("COOKIE_SECURE"), self.BASE_URL.startswith("https://")
         )
-        self.REMEMBER_COOKIE_HTTPONLY = True
-        self.REMEMBER_COOKIE_SAMESITE = "Lax"
-        self.REMEMBER_COOKIE_SECURE = self.SESSION_COOKIE_SECURE
 
         # Hoe lang een sessie geldig blijft (in uren)
         sessie_uren = int(os.environ.get("SESSIE_UREN", "12"))

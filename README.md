@@ -57,12 +57,14 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
   - `rooster.db` is de database;
   - `backups/` bevat de nachtelijke back-ups;
   - `secret_key` wordt automatisch aangemaakt;
-  - later komt hier ook het Google-sleutelbestand.
+  - `google-service-account.json` is het Google-sleutelbestand (alleen als je de agenda-koppeling gebruikt);
+  - `import/` bevat tijdelijk een geüpload Excel-bestand (wordt na de import, of na een dag, opgeruimd).
 
   Een back-up van deze map (of van de hele LXC met Proxmox) is dus genoeg.
 - **Bij elke start** werkt de `web`-container de database automatisch bij (migraties). Daarna start de webserver.
 - **Rechten worden op de server gecontroleerd.** Een gewone gebruiker krijgt bij elke wijzigpoging een foutmelding (HTTP 403), ook als hij de knoppen omzeilt. Dit staat vast in de tests.
-- **Geen wachtwoorden in platte tekst.** Wachtwoorden worden versleuteld opgeslagen (argon2). Na 5 foute pogingen in 15 minuten wordt inloggen tijdelijk geblokkeerd.
+- **Geen wachtwoorden in platte tekst.** Wachtwoorden worden versleuteld opgeslagen (argon2). Zie [Inlogblokkade](#inlogblokkade-en-reverse-proxy) voor de beperking van foute pogingen.
+- **Sessies.** Na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of een rolwijziging zijn alle andere sessies van die gebruiker direct ongeldig. Na het terugzetten van een back-up moet iedereen opnieuw inloggen.
 - **Urenberekening** (per dag, alleen over begin- en eindtijd):
   1. Eindtijd vóór de begintijd? Dan loopt de dienst door na middernacht.
   2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af.
@@ -163,6 +165,12 @@ services:
 | `PROXY_VERTROUWEN` | `0` | `1` achter Caddy, Cloudflare Tunnel of Tailscale |
 | `SESSIE_UREN` | `12` | Hoe lang je ingelogd blijft |
 | `SECRET_KEY` | leeg | Leeg laten; wordt dan bewaard in `data/secret_key` |
+| `COOKIE_SECURE` | volgt `BASE_URL` | `1` = sessiecookie alleen via HTTPS, `0` = ook via HTTP. Standaard aan als `BASE_URL` met `https://` begint |
+| `TZ` | `Europe/Amsterdam` | Standaardtijdzone. De instelling *Tijdzone* in Beheer → Instellingen gaat voor; die geldt voor de klok, de ICS-feed en Google Agenda |
+| `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `2` / `4` | Aantal webserverprocessen en threads per proces. Ruim genoeg voor 10–15 collega's |
+| `DATABASE_URL` | SQLite in `./data` | Alleen voor ontwikkelaars. Back-ups, terugzetten en de feestdagenlogica werken alleen met SQLite; gebruik dit dus niet in productie |
+
+`TZ`, `COOKIE_SECURE` en de `GUNICORN_*`-variabelen staan niet in het standaardbestand. Voeg ze zo nodig toe onder `environment:` van de `web`-container (en `TZ` ook bij `worker`).
 
 **Zelf de image bouwen** (in plaats van downloaden), vanuit een kopie van de repository:
 
@@ -235,11 +243,30 @@ De database wordt bij het starten automatisch bijgewerkt. `./data` en `.env` bli
 
 Zonder script kan het ook met de hand: `docker compose pull && docker compose up -d`.
 
+### Terug naar de vorige versie (na een mislukte update)
+
+Start de app na een update niet meer (`docker compose ps` toont `web` niet als *healthy*, of `docker compose logs web` toont een fout bij "Database bijwerken")? Ga dan zo terug:
+
+1. Zoek de versie die je had in het CHANGELOG of op GitHub (bijvoorbeeld `1.1.2`).
+2. Zet in `docker-compose.yml` bij **beide** containers `image: ghcr.io/sarnog/beveiligingsrooster:1.1.2` (in plaats van `latest`).
+3. Zet de database terug van vóór de update (een nieuwere versie kan het databaseschema al hebben bijgewerkt):
+   ```sh
+   docker compose down
+   ls data/backups/*-voor-update.db          # kies de nieuwste
+   cp data/backups/rooster-JJJJMMDD-HHMMSS-voor-update.db data/rooster.db
+   rm -f data/rooster.db-wal data/rooster.db-shm
+   docker compose up -d
+   ```
+4. Meld het probleem (met de log) op GitHub. Zet `image:` weer op `latest` zodra er een nieuwe versie is.
+
+Wijzigingen die ná de update zijn gedaan, zitten niet in die back-up.
+
 ## Back-ups en terugzetten
 
-- **Automatisch:** de worker maakt elke nacht na 02:00 een back-up in `data/backups/`. Het aantal dat bewaard blijft stel je in bij Instellingen (standaard 30).
+- **Automatisch:** de worker maakt elke nacht na 02:00 een back-up in `data/backups/`. Het aantal dat bewaard blijft stel je in bij Instellingen (standaard 30). Een back-up wordt eerst gecontroleerd en pas daarna bewaard. Mislukt hij (bijvoorbeeld een volle schijf), dan staat er "Back-up mislukt" in het logboek en probeert de worker het na 30 minuten opnieuw.
+- **Back-ups met een label** (`handmatig`, `voor-update`, `voor-import`, `voor-terugzetten`, `upload`) tellen daar niet bij. Ze blijven 90 dagen staan; de nieuwste 10 blijven altijd bewaard.
 - **Handmatig:** `docker compose exec -u rooster web flask backup`.
-- **Downloaden en terugzetten in de webinterface:** *Beheer → Back-ups*. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`).
+- **Downloaden en terugzetten in de webinterface:** *Beheer → Back-ups*. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`). Een beschadigde back-up, of een back-up van een nieuwere versie van de app, wordt geweigerd. Lukt het bijwerken van een oude back-up niet, dan zet de app automatisch de vorige stand terug.
 - **Terugzetten via de command line** (als de webinterface niet meer werkt):
   ```sh
   docker compose down
@@ -257,9 +284,17 @@ Er zijn drie mogelijkheden:
 - **(b) Reverse proxy met Caddy.** Caddy regelt automatisch HTTPS.
 - **(c) Tunnel.** Via Cloudflare Tunnel of Tailscale bereik je de app van buitenaf, zonder poorten open te zetten.
 
-Voor (b) en (c) zet je `BASE_URL=https://…` en `PROXY_VERTROUWEN=1` in `.env`. De uitleg en een voorbeeld-`Caddyfile` staan in [docs/proxmox-lxc.md](docs/proxmox-lxc.md#https-en-bereikbaarheid).
+Voor (b) en (c) zet je `BASE_URL=https://…` en `PROXY_VERTROUWEN=1` in `.env`. `BASE_URL` wordt ook gebruikt voor de ICS-links en de deellink. De uitleg en een voorbeeld-`Caddyfile` staan in [docs/proxmox-lxc.md](docs/proxmox-lxc.md#https-en-bereikbaarheid).
 
 De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de ICS-feed moet de app bereikbaar zijn voor Google, dus dan heb je (b) of (c) nodig.
+
+### Inlogblokkade en reverse proxy
+
+- **Per gebruiker + IP-adres:** na 5 foute pogingen binnen 15 minuten kan die gebruiker vanaf dat adres 15 minuten niet inloggen.
+- **Per IP-adres:** na 20 foute pogingen (met verschillende namen) vanaf één adres krijgt elke gebruikersnaam vanaf dat adres nog precies één poging. Een collega die meteen het juiste wachtwoord geeft, komt er dus nog in.
+- **Achter een reverse proxy of tunnel** ziet de app zonder `PROXY_VERTROUWEN=1` het adres van de proxy in plaats van dat van de bezoeker. Dan telt de blokkade voor het hele team samen. De app zet een waarschuwing in de log als er een `X-Forwarded-For`-header binnenkomt terwijl `PROXY_VERTROUWEN` uit staat.
+- **Zet `PROXY_VERTROUWEN=1` alleen als er écht een proxy voor staat.** Anders kan een bezoeker zelf een `X-Forwarded-For`-header meesturen en zo de blokkade omzeilen.
+- De geheime tokens van de ICS-feed en de deellink worden in de toegangslog vervangen door `***`.
 
 ## Veelgestelde problemen
 
@@ -271,8 +306,10 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 | Wachtwoord kwijt | `docker compose exec -u rooster web flask reset-wachtwoord <naam>` |
 | Pagina niet bereikbaar | `docker compose ps`: staat `web` op *healthy*? Bekijk `docker compose logs web`. Controleer `LUISTER_ADRES` en `POORT`. |
 | Na inloggen meteen weer uitgelogd (achter HTTPS-proxy) | Zet `BASE_URL=https://…` en `PROXY_VERTROUWEN=1` in `.env`, en daarna `docker compose up -d`. |
-| "Te veel mislukte pogingen" | Wacht 15 minuten, of reset het wachtwoord met het commando hierboven. |
-| Tijden kloppen niet | De container gebruikt `TZ=Europe/Amsterdam`. Pas dat alleen aan als je echt een andere tijdzone wilt. |
+| "Te veel mislukte pogingen" | Wacht 15 minuten, of reset het wachtwoord met het commando hierboven. Overkomt het het hele team tegelijk? Zie [Inlogblokkade en reverse proxy](#inlogblokkade-en-reverse-proxy). |
+| Tijden kloppen niet | Controleer *Beheer → Instellingen → Tijdzone* (bijv. `Europe/Amsterdam`). Leeg = `TZ` uit docker-compose. |
+| "Geen toegang tot /data/…" bij de start | Er is een commando zonder `-u rooster` uitgevoerd. Herstel met `docker compose run --rm -u root web chown -R 1000:1000 /data`. |
+| Na de update naar 1.2.0 moet iedereen opnieuw inloggen | Klopt: sessies zijn veiliger gemaakt. Eén keer opnieuw inloggen is genoeg. |
 
 ## Ontwikkelen
 
@@ -284,7 +321,9 @@ flask --app wsgi:app db upgrade
 flask --app wsgi:app setup-code
 flask --app wsgi:app run --debug        # http://127.0.0.1:5000
 pytest -q                               # tests
+pytest -q --cov=app --cov-branch        # tests met (branch-)coverage
 ruff check .                            # lint
+flask --app wsgi:app db check           # klopt het datamodel met de migraties?
 ```
 
 Structuur:
@@ -303,6 +342,15 @@ docs/                handleidingen (planner, collega, Proxmox)
 ```
 
 Een nieuwe databasemigratie maak je na een wijziging in `models.py` met `flask --app wsgi:app db migrate -m "omschrijving"`.
+
+**Afhankelijkheden.** `requirements.txt` is de bron (met ondergrenzen). De Docker-image wordt gebouwd met de vastgezette versies uit `requirements.lock`, zodat elke build hetzelfde is. Na een wijziging in `requirements.txt` maak je het lock-bestand opnieuw:
+
+```sh
+pip install pip-tools
+pip-compile --strip-extras --output-file requirements.lock requirements.txt
+```
+
+**Tijdstempels** in de database zijn zonder tijdzone opgeslagen: lokale tijd voor alles wat je ziet (logboek, diensten, back-upnamen), UTC voor interne wachttijden (agenda-wachtrij, loginblokkade).
 
 ## Handleidingen
 

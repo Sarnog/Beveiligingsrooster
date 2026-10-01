@@ -81,6 +81,13 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
 - Back-ups met een label (handmatig, voor-update, voor-import, voor-terugzetten, upload) worden
   na 90 dagen opgeruimd; de nieuwste 10 blijven altijd staan.
 - Geüploade Excel-bestanden van een afgebroken import worden na een dag opgeruimd.
+- Voorbeeldpakket: de kleurregels heten nu "Locatie A" en "Locatie B" (geen echte plaatsnamen).
+  Bestaande kleurregels blijven ongewijzigd.
+- Opgeruimd: ongebruikte code (o.a. dubbele dagnamen, oude hulpfuncties) en een ongebruikte
+  cookie-instelling.
+- README aangevuld: inlogblokkade en reverse proxy, `COOKIE_SECURE`, `TZ`, `GUNICORN_*`,
+  `DATABASE_URL`, bewaartermijn van back-ups en terug naar de vorige versie na een mislukte
+  update.
 - Databaseversie 0004 (gaat automatisch bij de start): sessieversie per gebruiker, unieke
   standaard feestdagen per jaar, wachttijden in UTC.
 

@@ -38,8 +38,8 @@ DIENSTCODES = [
 
 # (tekst, achtergrond, tweede kleur voor verloop, tekstkleur)
 KLEURREGELS = [
-    ("Oss", "#FF0000", "#FFFF00", ZWART),
-    ("Veghel", "#FFFF00", "#A9D08E", ZWART),
+    ("Locatie A", "#FF0000", "#FFFF00", ZWART),
+    ("Locatie B", "#FFFF00", "#A9D08E", ZWART),
 ]
 
 

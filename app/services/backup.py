@@ -183,7 +183,7 @@ def _controleer_revisie(revisie: str) -> None:
     config.set_main_option("script_location", _migraties_map())
     try:
         bekend = ScriptDirectory.from_config(config).get_revision(revisie) is not None
-    except Exception:  # noqa: BLE001 - onbekende revisie geeft een alembic-fout
+    except Exception:  # onbekende revisie geeft een alembic-fout
         bekend = False
     if not bekend:
         raise ValueError(f"Deze back-up komt van een nieuwere versie van de app (databaseversie "

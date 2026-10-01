@@ -178,7 +178,6 @@ class ImportCode:
     begin: str | None
     eind: str | None
     uren: float | None
-    bestaat: bool = False
 
 
 @dataclass
@@ -271,7 +270,7 @@ def lees_bestand(pad: str) -> ImportPlan:
     try:
         # data_only: de laatst berekende waarden (datums, totalen) in plaats van formules
         boek = openpyxl.load_workbook(pad, data_only=True, keep_vba=False)
-    except Exception as fout:  # noqa: BLE001 - elk leesprobleem is een importfout
+    except Exception as fout:  # elk leesprobleem is een importfout
         raise ImportFout(f"Het bestand kan niet gelezen worden: {fout}") from fout
     if "Lijsten" not in boek.sheetnames:
         raise ImportFout("Dit lijkt geen oud rooster: het blad 'Lijsten' ontbreekt.")

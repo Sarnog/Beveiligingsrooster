@@ -157,12 +157,6 @@ def pas_dagopmerking_toe(datum: date, tekst: str) -> None:
         sync_planning.plan_dag(dienst.medewerker, datum, commit=False)
 
 
-def wijzig_dagopmerking(datum: date, tekst: str) -> dict:
-    """Wijzig en sla direct op (gebruikt door scripts en tests)."""
-    resultaat = verwerk_rooster([], [(datum, tekst)], opslaan=True)
-    return resultaat["dagopmerkingen"][datum.isoformat()]
-
-
 # ---------------------------------------------------------------------------
 # Weekgegevens
 # ---------------------------------------------------------------------------
