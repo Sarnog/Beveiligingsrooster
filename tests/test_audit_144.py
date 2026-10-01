@@ -434,3 +434,41 @@ def test_m5_een_kans_per_naam_blijft_tot_de_harde_grens(app, client, klaar):
 
     _mislukte_pogingen_vanaf_ip(auth.HARDE_GRENS_PER_IP - 1)
     assert login(client, "collega").status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# M6 · Privacy van de deellink: geen contracturen en weektotalen
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def deellink(mw):
+    from app.models import Contracturen
+    from app.services import instellingen
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    db.session.add(Contracturen(medewerker_id=mw.id, jaar=2026, uren=1234))
+    instellingen.schrijf("deellink_actief", "1")
+    instellingen.schrijf("deellink_token", "geheim-token-voor-de-test")
+    db.session.commit()
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4"), Wijziging(mw.id, MAANDAG + timedelta(days=1),
+                                                                        "code", "4")])
+    return "geheim-token-voor-de-test"
+
+
+def test_m6_deellink_toont_geen_contracturen_en_weektotalen(app, client, deellink):
+    pagina = client.get(f"/deel/{deellink}/week/2026/10").data.decode()
+    assert "VW Vroeg" in pagina  # het rooster zelf wel
+    assert "1234" not in pagina and "1.234" not in pagina and "data-pcontract" not in pagina
+    assert "16,00" not in pagina  # weektotaal (2 x 8 uur)
+    assert "Weektotaal" not in pagina and "contracturen" not in pagina.lower()
+
+
+def test_m6_ingelogd_ziet_contracturen_en_weektotalen_wel(app, als_gebruiker, deellink):
+    pagina = als_gebruiker.get("/week/2026/10").data.decode()
+    assert 'data-pcontract="1234"' in pagina and "16,00" in pagina
+
+
+def test_m6_docstring_deellink_klopt():
+    from app.blueprints import deel
+
+    assert "contracturen" in deel.__doc__ and "weektotalen" in deel.__doc__

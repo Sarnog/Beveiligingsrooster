@@ -1,7 +1,11 @@
 """Alleen-lezen deellink: het rooster bekijken zonder account (via een geheim token).
 
 Staat standaard uit (Beheer -> Instellingen). Alleen GET-routes; er kan hier niets
-gewijzigd worden. De urenoverzichten per medewerker worden via de deellink niet getoond.
+gewijzigd worden.
+
+Wat de deellink toont: de jaarkalender (met feestdagen en vakanties) en per week het
+rooster: dienstnamen, tijden, uren per dienst en opmerkingen. Wat hij NIET toont:
+contracturen en weektotalen per medewerker, het urenoverzicht, zoeken en de exports.
 """
 
 import hmac
