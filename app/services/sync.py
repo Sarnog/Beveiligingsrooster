@@ -18,6 +18,8 @@ de melding in het logboek en bij de medewerker (Beheer -> Google Agenda).
 Alle wachttijden (niet_voor) zijn in UTC (klok.utc_nu).
 """
 
+import base64
+import hashlib
 import json
 import logging
 from datetime import date, timedelta
@@ -25,7 +27,7 @@ from datetime import date, timedelta
 from ..extensions import db
 from ..models import Dienst, Medewerker, SyncTaak
 from . import google_agenda, instellingen, klok, logboek
-from .google_agenda import AgendaFout, afspraak_voor, dagtekst_voor
+from .google_agenda import BRON, AgendaFout, afspraak_voor, dagtekst_voor
 
 log = logging.getLogger(__name__)
 MAX_POGINGEN = 6
@@ -49,6 +51,18 @@ def sync_periode() -> tuple[date, date]:
 # Losse acties
 # ---------------------------------------------------------------------------
 
+def event_id_voor(dienst: Dienst) -> str:
+    """Vaste Google-event-ID van een dienst: altijd dezelfde voor medewerker + dag + volgnummer.
+
+    Zo is aanmaken idempotent: mislukt een sync halverwege (of gaat het antwoord van Google
+    verloren), dan maakt de volgende poging geen tweede afspraak maar vindt hij de eerste
+    terug (Google antwoordt 409 'bestaat al'). Google eist base32hex (0-9, a-v), 5-1024 tekens.
+    """
+    sleutel = f"{BRON}|{dienst.medewerker_id}|{dienst.datum.isoformat()}|{dienst.volgnummer or 1}"
+    code = base64.b32hexencode(hashlib.sha256(sleutel.encode()).digest()).decode()
+    return "br" + code.rstrip("=").lower()
+
+
 def _zet_afspraak(klant, agenda_id: str, dienst: Dienst, gewenst, bestaande_id: str) -> None:
     """Maak, wijzig of verwijder de afspraak van één dienst."""
     if gewenst is None:
@@ -64,7 +78,15 @@ def _zet_afspraak(klant, agenda_id: str, dienst: Dienst, gewenst, bestaande_id: 
             if fout.status not in (404, 410):
                 raise
             # Afspraak is handmatig weggehaald: opnieuw aanmaken
-    dienst.google_event_id = klant.maak_afspraak(agenda_id, gewenst.body)
+    event_id = event_id_voor(dienst)
+    try:
+        dienst.google_event_id = klant.maak_afspraak(agenda_id, dict(gewenst.body, id=event_id))
+    except AgendaFout as fout:
+        if fout.status != 409:
+            raise
+        # Bestaat al: aangemaakt bij een eerdere (half mislukte) poging, of ooit verwijderd
+        # (Google bewaart het ID dan als geannuleerd). Bijwerken zet hem weer goed.
+        dienst.google_event_id = klant.wijzig_afspraak(agenda_id, event_id, gewenst.body)
 
 
 def _ruim_lege_dienst_op(dienst: Dienst) -> None:

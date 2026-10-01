@@ -97,3 +97,89 @@ def test_h1_droogloopscherm_toont_verwijderde_diensten_per_medewerker(app, als_b
     pagina = als_beheerder.get("/beheer/importeren/voorbeeld").data.decode()
     rij = pagina.split("data-effect")[1].split("Medewerker Vijf B")[1].split("</tr>")[0]
     assert "<strong>2</strong>" in rij
+
+
+# ---------------------------------------------------------------------------
+# H2 · Dubbele Google-afspraken na een gedeeltelijk mislukte dag-sync
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def gekoppeld(mw):
+    mw.agenda_modus, mw.agenda_id = "B", "agenda-a"
+    db.session.commit()
+    return mw
+
+
+@pytest.fixture
+def nep(app, monkeypatch):
+    from app.services import google_agenda
+
+    from .test_agenda import NepKlant
+
+    klant = NepKlant()
+    klant.agendas["agenda-a"] = {}
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    return klant
+
+
+def test_h2_tijdelijke_fout_bij_tweede_afspraak_geeft_geen_dubbele(app, gekoppeld, nep):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "17/3")])  # twee diensten
+    nep.faal_bij = {"maak_afspraak": {2}}  # de tweede insert geeft een tijdelijke 503
+    _wachtrij_nu()
+    assert SyncTaak.query.one().pogingen == 1  # opnieuw proberen
+    _wachtrij_nu()
+    assert SyncTaak.query.count() == 0
+    assert sorted(a["summary"] for a in nep.agendas["agenda-a"].values()) == ["BHV", "VW Avond"]
+    ids = {d.google_event_id for d in Dienst.query.all()}
+    assert len(ids) == 2 and ids == set(nep.agendas["agenda-a"])
+
+
+def test_h2_mislukte_commit_na_insert_geeft_geen_dubbele(app, gekoppeld, nep, monkeypatch):
+    """Google maakte de afspraak wel, maar het antwoord (of de commit) ging verloren."""
+    from app.services import sync
+    from app.services.google_agenda import AgendaFout
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    echt = nep.maak_afspraak
+
+    def antwoord_kwijt(agenda_id, body):
+        echt(agenda_id, body)
+        raise AgendaFout("time-out", tijdelijk=True)
+
+    monkeypatch.setattr(nep, "maak_afspraak", antwoord_kwijt)
+    _wachtrij_nu()
+    monkeypatch.setattr(nep, "maak_afspraak", echt)
+    _wachtrij_nu()
+    assert len(nep.agendas["agenda-a"]) == 1
+    assert Dienst.query.one().google_event_id in nep.agendas["agenda-a"]
+    assert sync.event_id_voor(Dienst.query.one()) == Dienst.query.one().google_event_id
+
+
+def test_h2_event_id_is_geldig_voor_google(app, mw):
+    import re
+
+    from app.services import sync
+
+    dienst = Dienst(id=12, medewerker_id=mw.id, datum=MAANDAG, volgnummer=2)
+    event_id = sync.event_id_voor(dienst)
+    assert re.fullmatch(r"[a-v0-9]{5,1024}", event_id)
+    assert event_id == sync.event_id_voor(dienst)
+    assert event_id != sync.event_id_voor(Dienst(medewerker_id=mw.id, datum=MAANDAG, volgnummer=1))
+
+
+def test_h2_afspraak_opnieuw_na_verwijderen_werkt(app, gekoppeld, nep):
+    """Na wissen en opnieuw invullen bestaat het ID al bij Google (geannuleerd): bijwerken."""
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    _wachtrij_nu()
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "")])
+    _wachtrij_nu()
+    assert nep.agendas["agenda-a"] == {} and Dienst.query.count() == 0
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "5")])
+    _wachtrij_nu()
+    assert SyncTaak.query.count() == 0
+    assert [a["summary"] for a in nep.agendas["agenda-a"].values()] == ["VW Dag"]

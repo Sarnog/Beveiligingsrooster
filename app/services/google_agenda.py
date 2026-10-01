@@ -106,6 +106,7 @@ def _vertaal_fout(fout: Exception) -> AgendaFout:
             403: "Geen toegang tot deze agenda (403). Is de agenda gedeeld met het service-account?",
             404: "Agenda of afspraak niet gevonden (404).",
             410: "Afspraak bestaat niet meer (410).",
+            409: "Afspraak bestaat al (409).",
             429: "Te veel verzoeken aan Google (429); wordt later opnieuw geprobeerd.",
         }
         melding = meldingen.get(status, f"Google gaf fout {status} {reden}".strip())
@@ -272,6 +273,7 @@ def afspraak_voor(dienst: Dienst | None, dagtekst: str = "") -> Afspraak | None:
             "bron": BRON, "dienst_id": str(dienst.id), "medewerker_id": str(dienst.medewerker_id),
         }},
         "reminders": {"useDefault": False},
+        "status": "confirmed",  # ook een eerder verwijderde (geannuleerde) afspraak weer tonen
     }
 
     if dienst.begin and dienst.eind:
