@@ -4,7 +4,7 @@ Stappen per dag (alleen de tijdenregel telt):
 1. begin en eind afronden op hele minuten
 2. eind < begin  -> eind + 24 uur (nachtdienst over middernacht)
 3. uren = eind - begin
-4. uren > 5,5    -> 0,5 uur pauze eraf
+4. pauze: uren > 5,5 -> 0,5 uur eraf (standaard, zie STANDAARD_PAUZE)
 5. factor: zaterdag / zondag uit de instellingen, anders 1
    (optioneel: feestdagfactor; de hoogste factor telt, er wordt niet vermenigvuldigd)
 6. afronden op kwartieren: round(uren * factor * 4) / 4
@@ -23,6 +23,12 @@ Excel-bestand: alle uitkomsten gelijk (op 5 cellen na waarin de planner de uren
 met de hand had aangepast; die worden bij de import als 'zelf ingevulde uren'
 overgenomen).
 
+Pauze (sinds 1.6.0 instelbaar in Beheer → Instellingen): een staffel met regels "meer dan
+X uur gewerkt: Y uur eraf". De hoogste regel die van toepassing is telt (niet optellen);
+precies op de grens telt niet. De pauze geldt per dienst (ook bij twee diensten op een dag)
+en apart voor de opmerkingtijden. De standaard is nog steeds de Excel-VBA: één regel,
+meer dan 5,5 uur -> 0,5 eraf. Pauzeaftrek uit = een lege staffel.
+
 Zomer-/wintertijd: we rekenen met wandkloktijd, net als Excel. Een nachtdienst
 22:00-06:30 telt dus altijd 8,00 uur, ook in de nacht dat de klok verzet wordt.
 """
@@ -31,8 +37,9 @@ from datetime import date
 
 from .tijden import tijd_naar_minuten
 
-PAUZE_GRENS = 5.5  # meer dan zoveel uur -> pauze-aftrek
-PAUZE_AFTREK = 0.5
+# Pauzestaffel: ((grens, aftrek), ...) met oplopende grenzen; () = geen pauzeaftrek
+Staffel = tuple[tuple[float, float], ...]
+STANDAARD_PAUZE: Staffel = ((5.5, 0.5),)  # meer dan 5,5 uur -> 0,5 eraf (de oude VBA)
 
 
 def dagfactor(
@@ -62,16 +69,35 @@ def dagfactor(
     return factor
 
 
-def bereken_uren(begin: str | None, eind: str | None, factor: float = 1.0) -> float | None:
+def pauze_aftrek(uren: float, staffel: Staffel) -> float:
+    """De pauze die eraf gaat: de aftrek van de hoogste grens die overschreden is (anders 0).
+
+    Precies op de grens telt niet (net als 'uren > 5,5' in de VBA).
+    """
+    aftrek = 0.0
+    for grens, regel_aftrek in staffel:  # grenzen staan oplopend
+        if uren > grens:
+            aftrek = regel_aftrek
+    return aftrek
+
+
+def bereken_uren(begin: str | None, eind: str | None, factor: float = 1.0,
+                 pauze: Staffel = STANDAARD_PAUZE) -> float | None:
     """Bereken de uren van één dag, precies zoals de Excel-VBA.
 
-    begin/eind: 'HH:MM' of None. factor: zie dagfactor().
+    begin/eind: 'HH:MM' of None. factor: zie dagfactor(). pauze: de pauzestaffel.
     Geeft None als begin of eind ontbreekt.
     """
     begin_min = tijd_naar_minuten(begin)
     eind_min = tijd_naar_minuten(eind)
     if begin_min is None or eind_min is None:
         return None
+    return uren_uit_minuten(begin_min, eind_min, factor, pauze)
+
+
+def uren_uit_minuten(begin_min: int, eind_min: int, factor: float = 1.0,
+                     pauze: Staffel = STANDAARD_PAUZE) -> float:
+    """bereken_uren vanaf minuten sinds middernacht (ook gebruikt door de Excel-export)."""
 
     # Stap 1: tijden als fractie van een dag, afgerond op hele minuten (zoals VBA)
     dbl_begin = round(begin_min / 1440 * 1440) / 1440
@@ -84,9 +110,10 @@ def bereken_uren(begin: str | None, eind: str | None, factor: float = 1.0) -> fl
     # Stap 3: verschil in uren
     uren = (dbl_eind - dbl_begin) * 24
 
-    # Stap 4: pauze-aftrek
-    if uren > PAUZE_GRENS:
-        uren = uren - PAUZE_AFTREK
+    # Stap 4: pauze-aftrek (zonder aftrek blijft het getal precies gelijk, zoals in de VBA)
+    aftrek = pauze_aftrek(uren, pauze)
+    if aftrek:
+        uren = uren - aftrek
 
     # Stap 5 + 6: factor en afronden op kwartieren (bankiersafronding, zie boven)
     return round(uren * factor * 4) / 4

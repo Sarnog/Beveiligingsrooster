@@ -19,6 +19,7 @@ class UrenContext:
     def __init__(self, van: date, tot: date) -> None:
         self.toeslagen = instellingen.toeslagen()
         self.opmerkingtijden_meetellen = instellingen.lees_bool("opmerkingtijden_meetellen")
+        self.pauze = instellingen.pauze()
         self.feestdagen = set(feestdagen_in_periode(van, tot).keys())
 
     def factor(self, datum: date) -> float:
@@ -34,15 +35,17 @@ class UrenContext:
 def uren_voor(dienst: Dienst, context: UrenContext) -> float | None:
     """Uren van één dienst: de tijdenregel, plus eventueel de opmerkingtijden.
 
+    De pauzestaffel geldt per dienst, en apart voor de opmerkingtijden.
+
     Zelf ingevulde uren (uren_handmatig) gaan altijd voor, zonder toeslagfactor:
     zo werkte het ook in Excel als je een getal in de urenkolom typte.
     """
     if dienst.uren_handmatig is not None:
         return dienst.uren_handmatig
     factor = context.factor(dienst.datum)
-    uren = bereken_uren(dienst.begin, dienst.eind, factor)
+    uren = bereken_uren(dienst.begin, dienst.eind, factor, context.pauze)
     if context.opmerkingtijden_meetellen:
-        extra = bereken_uren(dienst.opmerking_begin, dienst.opmerking_eind, factor)
+        extra = bereken_uren(dienst.opmerking_begin, dienst.opmerking_eind, factor, context.pauze)
         if extra is not None:
             uren = (uren or 0) + extra
     return uren
@@ -51,7 +54,7 @@ def uren_voor(dienst: Dienst, context: UrenContext) -> float | None:
 def herbereken_alle(van: date | None = None, tot: date | None = None) -> int:
     """Herbereken de uren van alle diensten (optioneel binnen een periode).
 
-    Nodig na het wijzigen van toeslagfactoren of feestdagen. Geeft het aantal
+    Nodig na het wijzigen van toeslagfactoren, de pauzeaftrek of feestdagen. Geeft het aantal
     diensten terug waarvan de uren veranderd zijn.
     """
     query = Dienst.query

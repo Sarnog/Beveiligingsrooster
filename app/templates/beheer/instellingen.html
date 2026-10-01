@@ -20,6 +20,18 @@
     {{ vink('feestdagtoeslag_aan', 'Toeslag op feestdagen (standaard uit, zoals in Excel)', w.toeslag_feestdag) }}
     {{ veld('toeslag_feestdag', 'Factor feestdag', w.toeslag_feestdag|replace('.', ','), hulp='Valt een feestdag in het weekend, dan telt de hoogste factor.') }}
     {{ vink('opmerkingtijden_meetellen', 'Opmerkingtijden (regel b) meetellen in de uren', w.opmerkingtijden_meetellen == '1') }}
+    <h3>Pauze</h3>
+    <input type="hidden" name="pauze_formulier" value="1">
+    {{ vink('pauze_aan', 'Pauzeaftrek aan', pauze.aan, hulp='Standaard aan, zoals in Excel: meer dan 5,5 uur gewerkt → 0,5 uur pauze eraf.') }}
+    <p class="hulp">Per dienst: <em>meer dan X uur gewerkt → Y uur pauze eraf</em>. De hoogste regel die van toepassing is telt (de aftrek wordt niet opgeteld); precies op de grens telt niet. Grenzen oplopend, hooguit {{ pauze.regels|length }} regels; een lege regel telt niet.</p>
+    <div class="pauze-regels" data-pauze-regels>
+      {% for grens, aftrek in pauze.regels %}
+      <div class="rij">
+        {{ veld('pauze_grens_' ~ loop.index, 'Meer dan (uur)', grens, extra='inputmode="decimal" class="klein"') }}
+        {{ veld('pauze_aftrek_' ~ loop.index, 'Pauze eraf (uur)', aftrek, extra='inputmode="decimal" class="klein"') }}
+      </div>
+      {% endfor %}
+    </div>
     {{ veld('blanco_code', 'Blanco-code (betekent "geen dienst")', w.blanco_code, hulp='Standaard 15. Leeg = uit. Een lege cel betekent altijd geen dienst.') }}
 
     <h2>Logboek</h2>

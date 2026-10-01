@@ -74,12 +74,21 @@ def instellingen_scherm():
             nieuw["toeslag_feestdag"] = ""
 
         nieuw["opmerkingtijden_meetellen"] = "1" if vinkje(formulier, "opmerkingtijden_meetellen") else "0"
+        # Pauze: alleen als het blok in het formulier stond (een ouder formulier laat hem ongemoeid)
+        pauze_nieuw = None
+        if formulier.get("pauze_formulier"):
+            pauze_nieuw, pauze_fouten = instellingen.controleer_pauze(
+                vinkje(formulier, "pauze_aan"),
+                [(formulier.get(f"pauze_grens_{i}", ""), formulier.get(f"pauze_aftrek_{i}", ""))
+                 for i in range(1, instellingen.MAX_PAUZEREGELS + 1)])
+            fouten += pauze_fouten
         nieuw["deellink_actief"] = "1" if vinkje(formulier, "deellink_actief") else "0"
 
         if fouten:
             for fout in fouten:
                 flash(fout, "fout")
-            return render_template("beheer/instellingen.html", w={**_huidig(), **nieuw}), 400
+            return render_template("beheer/instellingen.html", w={**_huidig(), **nieuw},
+                                   pauze=_pauze_formulier(formulier)), 400
 
         # Deellink aan zonder token: token aanmaken
         if nieuw["deellink_actief"] == "1" and not instellingen.lees("deellink_token"):
@@ -95,6 +104,12 @@ def instellingen_scherm():
                 logboek.log("Instelling gewijzigd", veld=sleutel, oud=oud, nieuw=waarde)
                 instellingen.schrijf(sleutel, waarde)
                 uren_gewijzigd = uren_gewijzigd or sleutel in uren_relevant
+        oude_pauze = instellingen.pauze_instelling()
+        if pauze_nieuw is not None and pauze_nieuw != oude_pauze:
+            logboek.log("Instelling gewijzigd", veld="pauze", oud=instellingen.pauze_tekst(oude_pauze),
+                        nieuw=instellingen.pauze_tekst(pauze_nieuw))
+            instellingen.schrijf("pauze", instellingen.pauze_json(pauze_nieuw["aan"], pauze_nieuw["regels"]))
+            uren_gewijzigd = True
         db.session.commit()
         klok.wis_cache()  # nieuwe tijdzone direct gebruiken
         # Titel of tijdzone van afspraken gewijzigd: alle gekoppelde agenda's bijwerken
@@ -106,7 +121,19 @@ def instellingen_scherm():
             flash("Je hebt iets gewijzigd dat de uren beïnvloedt. Bestaande uren zijn nog niet "
                   "aangepast: gebruik 'Alle uren herberekenen' als dat de bedoeling is.", "info")
         return redirect(url_for("beheer.instellingen_scherm"))
-    return render_template("beheer/instellingen.html", w=_huidig())
+    return render_template("beheer/instellingen.html", w=_huidig(), pauze=_pauze_formulier())
+
+
+def _pauze_formulier(formulier=None) -> dict:
+    """Het blok 'Pauze': aan/uit en MAX_PAUZEREGELS regels (grens, aftrek) als tekst."""
+    if formulier is not None and formulier.get("pauze_formulier"):  # na een fout: wat er ingevuld was
+        regels = [(formulier.get(f"pauze_grens_{i}", ""), formulier.get(f"pauze_aftrek_{i}", ""))
+                  for i in range(1, instellingen.MAX_PAUZEREGELS + 1)]
+        return {"aan": vinkje(formulier, "pauze_aan"), "regels": regels}
+    instelling = instellingen.pauze_instelling()
+    regels = [(f"{g:g}".replace(".", ","), f"{a:g}".replace(".", ",")) for g, a in instelling["regels"]]
+    regels += [("", "")] * (instellingen.MAX_PAUZEREGELS - len(regels))
+    return {"aan": instelling["aan"], "regels": regels}
 
 
 def _huidig() -> dict:
