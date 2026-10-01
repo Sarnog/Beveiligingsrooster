@@ -16,7 +16,7 @@ REGEL_EINDE = "\r\n"
 def _escape(tekst: str) -> str:
     """Speciale tekens escapen volgens RFC 5545."""
     return (tekst.replace("\\", "\\\\").replace(";", r"\;").replace(",", "\\,")
-            .replace("\r\n", "\\n").replace("\n", "\\n"))
+            .replace("\r\n", "\\n").replace("\r", "\\n").replace("\n", "\\n"))
 
 
 def _vouw(regel: str) -> str:

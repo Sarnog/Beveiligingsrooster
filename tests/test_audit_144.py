@@ -970,3 +970,101 @@ def test_l15_andere_processen_zien_een_nieuwe_tijdzone_snel(app, klaar, monkeypa
         sessie.commit()
     tijd[0] += 6
     assert klok.tijdzone_naam() == "Europe/London"
+
+
+# ---------------------------------------------------------------------------
+# S1 · xlsx-import zonder bescherming tegen XML-bommen
+# ---------------------------------------------------------------------------
+
+def _xlsx_met(tmp_path, naam, extra: dict[str, bytes]):
+    """Een geldig xlsx-bestand met extra (of vervangen) onderdelen in de zip."""
+    import zipfile
+
+    import openpyxl
+
+    boek = openpyxl.Workbook()
+    boek.active.title = "Lijsten"
+    bron = tmp_path / "bron.xlsx"
+    boek.save(bron)
+    doel = tmp_path / naam
+    with zipfile.ZipFile(bron) as oud, zipfile.ZipFile(doel, "w", zipfile.ZIP_DEFLATED) as nieuw:
+        for item in oud.infolist():
+            if item.filename not in extra:
+                nieuw.writestr(item, oud.read(item.filename))
+        for pad, inhoud in extra.items():
+            nieuw.writestr(pad, inhoud)
+    return str(doel)
+
+
+def test_s1_entiteiten_worden_geweigerd(app, klaar, tmp_path):
+    from app.services.excel_import import ImportFout, lees_bestand
+
+    bom = (b'<?xml version="1.0"?><!DOCTYPE lol [<!ENTITY a "aaaaaaaaaa">'
+           b'<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]><x>&b;</x>')
+    pad = _xlsx_met(tmp_path, "bom.xlsx", {"xl/sharedStrings.xml": bom})
+    with pytest.raises(ImportFout, match="niet veilig"):
+        lees_bestand(pad)
+
+
+def test_s1_te_groot_uitgepakt_wordt_geweigerd(app, klaar, tmp_path, monkeypatch):
+    from app.services import excel_import
+    from app.services.excel_import import ImportFout, lees_bestand
+
+    monkeypatch.setattr(excel_import, "MAX_UITGEPAKT", 100_000)
+    pad = _xlsx_met(tmp_path, "groot.xlsx", {"xl/media/vulling.bin": b"0" * 200_000})
+    with pytest.raises(ImportFout, match="te groot"):
+        lees_bestand(pad)
+
+
+def test_s1_te_veel_bladen_wordt_geweigerd(app, klaar, tmp_path, monkeypatch):
+    import openpyxl
+
+    from app.services import excel_import
+    from app.services.excel_import import ImportFout, lees_bestand
+
+    monkeypatch.setattr(excel_import, "MAX_BLADEN", 3)
+    boek = openpyxl.Workbook()
+    boek.active.title = "Lijsten"
+    for i in range(5):
+        boek.create_sheet(f"W{i + 1}")
+    pad = str(tmp_path / "bladen.xlsx")
+    boek.save(pad)
+    with pytest.raises(ImportFout, match="bladen"):
+        lees_bestand(pad)
+
+
+# ---------------------------------------------------------------------------
+# S2 · ICS: een losse \r werd niet ge-escaped
+# ---------------------------------------------------------------------------
+
+def test_s2_ics_escape_losse_carriage_return():
+    from app.services.ics import _escape
+
+    assert "\r" not in _escape("regel1\rSUMMARY:nep") and "\n" not in _escape("a\r\nb\nc")
+    assert _escape("a\rb") == "a\\nb"
+
+
+# ---------------------------------------------------------------------------
+# S3 · Back-up met eigen triggers of views werd geaccepteerd
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sql", [
+    "CREATE TRIGGER stiekem AFTER INSERT ON logboek BEGIN DELETE FROM logboek; END",
+    "CREATE VIEW kijk AS SELECT * FROM gebruiker",
+])
+def test_s3_backup_met_trigger_of_view_geweigerd(gemigreerd, sql):
+    import shutil
+    import sqlite3
+
+    from app.services import backup
+
+    pad = backup.maak_backup("handmatig")
+    kopie = pad.replace("handmatig", "kopie")
+    shutil.copy(pad, kopie)
+    verbinding = sqlite3.connect(kopie)
+    verbinding.execute(sql)
+    verbinding.commit()
+    verbinding.close()
+    with pytest.raises(ValueError, match="trigger|view"):
+        backup.controleer_backupbestand(kopie)
+    assert backup.controleer_backupbestand(pad)  # de gewone back-up is in orde

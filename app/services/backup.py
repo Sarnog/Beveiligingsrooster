@@ -160,6 +160,10 @@ def controleer_backupbestand(pad: str) -> str:
         try:
             tabellen = {r[0] for r in verbinding.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")}
+            # De app maakt zelf nooit triggers of views: die zouden bij elk gebruik code
+            # (SQL) uitvoeren die niet van de app komt
+            extra = [f"{r[0]} '{r[1]}'" for r in verbinding.execute(
+                "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view')")]
             uitkomst = verbinding.execute("PRAGMA integrity_check").fetchall()
             revisie = None
             if "alembic_version" in tabellen:
@@ -171,6 +175,9 @@ def controleer_backupbestand(pad: str) -> str:
         raise ValueError("Dit is geen geldige database-back-up.") from fout
     if not {"medewerker", "dienst", "alembic_version"} <= tabellen:
         raise ValueError("Dit bestand is geen back-up van het Beveiligingsrooster.")
+    if extra:
+        raise ValueError("Deze back-up bevat onderdelen die de app zelf nooit maakt ("
+                         + ", ".join(extra) + ") en wordt daarom niet teruggezet.")
     if [r[0] for r in uitkomst] != ["ok"]:
         raise ValueError("Deze back-up is beschadigd (de integriteitscontrole van SQLite faalt). "
                          "Kies een andere back-up.")

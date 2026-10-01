@@ -56,6 +56,11 @@ DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
 CODE_KOLOMMEN = list(range(29, 36))  # AC..AI
 MAX_BLOKKEN = 30
 UPLOAD_BEWAREN_SECONDEN = 24 * 3600
+# Grenzen tegen 'zip-' en 'XML-bommen' (een klein bestand dat uitgepakt enorm wordt).
+# Een echt jaarrooster is uitgepakt een paar MB met zo'n 60 bladen.
+MAX_UITGEPAKT = 100 * 1024 * 1024  # bytes, alle onderdelen samen
+MAX_ONDERDELEN = 2000
+MAX_BLADEN = 120
 log = logging.getLogger(__name__)
 
 
@@ -281,10 +286,41 @@ class ImportPlan:
 # Lezen (droogloop)
 # ---------------------------------------------------------------------------
 
+def controleer_zip(pad: str) -> None:
+    """Controleer het bestand vóór openpyxl het uitpakt (ImportFout als het niet veilig is).
+
+    - een xlsx/xlsm is een zip: uitgepakte grootte en aantal onderdelen zijn begrensd;
+    - Excel gebruikt nooit een DOCTYPE of ENTITY in zijn XML; die worden geweigerd
+      (zo kan een 'billion laughs'-bestand het geheugen niet vullen);
+    - het aantal bladen is begrensd.
+    """
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(pad) as archief:
+            onderdelen = archief.infolist()
+            if len(onderdelen) > MAX_ONDERDELEN or sum(o.file_size for o in onderdelen) > MAX_UITGEPAKT:
+                raise ImportFout("Het bestand is uitgepakt te groot (of bevat te veel onderdelen) "
+                                 "voor een rooster; het is niet ingelezen.")
+            for onderdeel in onderdelen:
+                if onderdeel.filename.lower().endswith((".xml", ".rels", ".vml")):
+                    with archief.open(onderdeel) as bestand:
+                        begin = bestand.read(64 * 1024).upper()
+                    if b"<!DOCTYPE" in begin or b"<!ENTITY" in begin:
+                        raise ImportFout("Het bestand is niet veilig om in te lezen (het bevat "
+                                         "XML-definities die Excel zelf nooit maakt).")
+            bladen = [o for o in onderdelen if re.fullmatch(r"xl/worksheets/[^/]+\.xml", o.filename)]
+            if len(bladen) > MAX_BLADEN:
+                raise ImportFout(f"Het bestand heeft te veel bladen ({len(bladen)}; hooguit {MAX_BLADEN}).")
+    except zipfile.BadZipFile as fout:
+        raise ImportFout(f"Het bestand kan niet gelezen worden: {fout}") from fout
+
+
 def lees_bestand(pad: str) -> ImportPlan:
     """Lees het Excel-bestand en maak een plan. Er wordt nog niets opgeslagen."""
     import openpyxl
 
+    controleer_zip(pad)
     try:
         # data_only: de laatst berekende waarden (datums, totalen) in plaats van formules
         boek = openpyxl.load_workbook(pad, data_only=True, keep_vba=False)
