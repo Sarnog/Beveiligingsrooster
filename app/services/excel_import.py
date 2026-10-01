@@ -49,7 +49,7 @@ from .tijden import is_cijfers
 from .urenberekening import bereken_uren, dagfactor
 from .validatie import MAX_NAAM, MAX_OMSCHRIJVING, initialen_fout, is_codenummer
 from .voorbeeldpakket import DIENSTCODES
-from .weekrooster import LEGE_DIENST, automatische_dagopmerkingen, dagopmerkingen
+from .weekrooster import LEGE_DIENST, automatische_dagopmerkingen, dagopmerkingen, ruim_dag_op
 
 EXCEL_BLANCO = 15
 DAG_KOLOMMEN = [4, 7, 10, 13, 16, 19, 22]  # D, G, J, M, P, S, V
@@ -722,9 +722,6 @@ def effect(plan: ImportPlan, keuzes: ImportKeuzes | None = None) -> ImportEffect
         if d.naam in resultaat.per_medewerker and d.datum in dagenset:
             gewenst.setdefault((d.naam, d.datum), {})[d.volgnummer] = \
                 _gewenste_inhoud(d, codes, per_naam, za, zo, context)
-    for per_vn in gewenst.values():
-        if 2 in per_vn and 1 not in per_vn:  # nooit alleen een tweede dienst (L3)
-            per_vn[1] = per_vn.pop(2)
     naam_van_id = {m.id: m.naam for m in bestaande_mw.values()}
     bestaand: dict[tuple[str, date], dict[int, Dienst]] = {}
     if naam_van_id:
@@ -889,6 +886,7 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
         if uitkomst.acties else None
     geraakt: dict[Medewerker, set[date]] = {}
     tellers = {"nieuw": "diensten", "vervangen": "vervangen", "verwijderd": "verwijderd"}
+    opruimen: set[tuple[int, date]] = set()
     for actie in uitkomst.acties:
         if actie.soort not in tellers:
             continue  # gelijk of overgeslagen: niets aan doen
@@ -902,20 +900,20 @@ def _importeer(plan: ImportPlan, keuzes: ImportKeuzes) -> tuple[dict, dict[Medew
         _vul_dienst(dienst, actie.nieuw, codes)
         dienst.uren_berekend = uren_voor(dienst, context)
         dienst.versie = (dienst.versie or 0) + 1
-        if dienst.is_leeg and not dienst.google_event_id:
-            # Geen afspraak in Google: direct weg. Met een afspraak blijft de lege regel
-            # staan tot de worker de afspraak verwijderd heeft (zoals in het rooster).
-            if dienst in db.session.new:
-                db.session.expunge(dienst)
-            else:
-                db.session.delete(dienst)
         logboek.log("Excel-import", f"Dienst {actie.soort}", datum=actie.datum, medewerker=actie.naam,
                     veld="dienst 2" if actie.volgnummer == 2 else "dienst", oud=oud,
                     nieuw=actie.nieuw.samenvatting() if actie.nieuw else "")
         resultaat[tellers[actie.soort]] += 1
+        opruimen.add((medewerker.id, actie.datum))
         dagen = geraakt.setdefault(medewerker, set())
         if dienst.google_event_id:
             dagen.add(actie.datum)
+
+    # Lege regels weg (met een Google-afspraak blijven ze staan tot de worker die
+    # verwijderd heeft, zoals in het rooster); nooit een dienst 2 zonder dienst 1
+    db.session.flush()
+    for medewerker_id, datum in opruimen:
+        ruim_dag_op(medewerker_id, datum)
 
     # Dagopmerkingen: alleen bewaren als ze afwijken van de automatische tekst
     if uitkomst.dagopmerkingen:

@@ -655,3 +655,52 @@ def test_l2_onverwachte_fout_op_api_geeft_json(app, als_beheerder, mw, monkeypat
     app.config["PROPAGATE_EXCEPTIONS"] = False
     antwoord = als_beheerder.post("/api/cellen", json={"wijzigingen": []})
     assert antwoord.status_code == 500 and antwoord.is_json and "fout" in antwoord.get_json()
+
+
+# ---------------------------------------------------------------------------
+# L3 · Dienst 2 blijft bestaan terwijl dienst 1 wordt opgeruimd
+# ---------------------------------------------------------------------------
+
+def _volgnummers(mw_id):
+    db.session.expire_all()
+    return sorted(d.volgnummer for d in Dienst.query.filter_by(medewerker_id=mw_id, datum=MAANDAG))
+
+
+def test_l3_dienst1_blijft_als_dienst2_er_nog_is(app, mw):
+    from app.services.weekrooster import Wijziging, matrix_code, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/3")])
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "/3")])
+    assert _volgnummers(mw.id) == [1, 2]  # lege dienst 1 blijft als plaatshouder
+    d1, d2 = _dag(mw.id)
+    assert d1.is_leeg and d2.dienstcode.nummer == 3 and matrix_code(d1, d2) == "/3"
+    # Dienst 2 ook weg: dan gaan ze allebei
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "")])
+    assert _volgnummers(mw.id) == []
+
+
+def test_l3_alleen_tweede_dienst_op_lege_dag_krijgt_dienst1(app, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "/3")])
+    assert _volgnummers(mw.id) == [1, 2]
+
+
+def test_l3_worker_ruimt_dienst1_niet_op_naast_dienst2(app, gekoppeld, nep):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4/3")])
+    _wachtrij_nu()
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "/3")])  # dienst 1 leeg, met afspraak
+    _wachtrij_nu()
+    assert _volgnummers(gekoppeld.id) == [1, 2]
+    assert [a["summary"] for a in nep.agendas["agenda-a"].values()] == ["VW Avond"]
+
+
+def test_l3_api_toont_lege_plaatshouder_als_null(app, als_beheerder, mw):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "/3")])
+    gegevens = als_beheerder.get("/api/v1/week/2026/10").get_json()
+    rij = gegevens["medewerkers"][0]
+    assert rij["dagen"][0] is None and rij["tweede_diensten"][0]["code"] == 3

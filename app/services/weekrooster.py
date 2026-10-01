@@ -587,16 +587,35 @@ def _pas_cellen_toe(wijzigingen: list[Wijziging]) -> tuple[set, list[dict]]:
                     veld=_veldnaam(w), oud=oud, nieuw=nieuw)
         sync_planning.plan_dag(medewerker, w.datum, commit=False)
 
-        # Een helemaal lege regel ruimen we op (behalve als er nog een agenda-afspraak
-        # aan hangt: die moet de worker eerst verwijderen)
-        if dienst.is_leeg and not dienst.google_event_id:
-            if nieuw_record:
-                db.session.expunge(dienst)
-            else:
-                db.session.delete(dienst)
         db.session.flush()  # zodat een volgende cel van dezelfde dag deze dienst terugvindt
 
+    for mw, datum in geraakt:
+        ruim_dag_op(mw, datum)
     return geraakt, fouten
+
+
+def ruim_dag_op(medewerker_id: int, datum: date) -> None:
+    """Lege regels van één dag opruimen; nooit een dienst 2 zonder dienst 1.
+
+    - Een helemaal lege regel gaat weg, behalve als er nog een agenda-afspraak aan hangt
+      (die moet de worker eerst verwijderen).
+    - Dienst 1 blijft (leeg) staan zolang er een gevulde dienst 2 is, en wordt zo nodig
+      als lege plaatshouder aangemaakt (bijv. '/3' in het code-raster). Zo hoort de dag
+      altijd bij dienst 1 (opmerking, versie) en is de volgorde van de diensten vast.
+    """
+    db.session.flush()
+    per_vn = {d.volgnummer: d for d in Dienst.query.filter_by(medewerker_id=medewerker_id, datum=datum)}
+    dienst1, dienst2 = per_vn.get(1), per_vn.get(2)
+    if dienst2 is not None and dienst2.is_leeg and not dienst2.google_event_id:
+        db.session.delete(dienst2)
+        dienst2 = None
+    tweede_gevuld = dienst2 is not None and not dienst2.is_leeg
+    if dienst1 is None and tweede_gevuld:
+        db.session.add(Dienst(medewerker_id=medewerker_id, datum=datum, volgnummer=1, versie=1,
+                              dienstnaam_override="", opmerking_tekst="", tijden_handmatig=False))
+    elif dienst1 is not None and dienst1.is_leeg and not dienst1.google_event_id and not tweede_gevuld:
+        db.session.delete(dienst1)
+    db.session.flush()
 
 
 def overlap_waarschuwingen(geraakt) -> list[dict]:
@@ -720,13 +739,9 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
                     setattr(doel, kolom, getattr(origineel, kolom) if origineel else leeg)
                 doel.uren_berekend = uren_voor(doel, context)
                 doel.versie = (doel.versie or 0) + 1
-                if doel.is_leeg and not doel.google_event_id:
-                    if doel in db.session.new:
-                        db.session.expunge(doel)
-                    else:
-                        db.session.delete(doel)
                 dag_gewijzigd = True
             if dag_gewijzigd:
+                ruim_dag_op(medewerker.id, dag_doel)
                 sync_planning.plan_dag(medewerker, dag_doel, commit=False)
                 gewijzigd += 1
 
@@ -744,8 +759,9 @@ def kopieer_week(van_maandag: date, naar_maandag: date, medewerker_id: int | Non
 def komende_diensten(medewerker: Medewerker, weken: int = 8) -> list[Dienst]:
     """Diensten van vandaag t/m `weken` weken vooruit (voor 'Mijn rooster')."""
     vandaag = klok.vandaag()
-    return (
+    diensten = (
         Dienst.query.filter(Dienst.medewerker_id == medewerker.id, Dienst.datum >= vandaag,
                             Dienst.datum < vandaag + timedelta(weeks=weken))
         .order_by(Dienst.datum, Dienst.volgnummer).all()
     )
+    return [d for d in diensten if not d.is_leeg]  # geen lege plaatshouders (zie ruim_dag_op)

@@ -104,13 +104,21 @@ def _bewaar_event_id(dienst: Dienst, event_id: str) -> None:
     set_committed_value(dienst, "google_event_id", event_id)
 
 
-def _ruim_lege_dienst_op(dienst: Dienst) -> None:
+def _dagen_met_tweede_dienst(diensten: list[Dienst]) -> set[tuple[int, date]]:
+    """(medewerker, datum) met een gevulde dienst 2: daar blijft een lege dienst 1 staan."""
+    return {(d.medewerker_id, d.datum) for d in diensten if d.volgnummer == 2 and not d.is_leeg}
+
+
+def _ruim_lege_dienst_op(dienst: Dienst, met_tweede: set[tuple[int, date]]) -> None:
     """Een lege regel die alleen nog bestond voor de agenda-afspraak mag nu weg.
+
+    Behalve een lege dienst 1 naast een gevulde dienst 2 (zie weekrooster.ruim_dag_op).
 
     Voorwaardelijk (zelfde versie als bij het lezen, nog steeds zonder afspraak): heeft de
     planner de dag intussen opnieuw ingevuld, dan is de versie hoger en blijft de dienst staan.
     """
-    if not dienst.is_leeg or dienst.google_event_id:
+    if not dienst.is_leeg or dienst.google_event_id \
+            or (dienst.volgnummer == 1 and (dienst.medewerker_id, dienst.datum) in met_tweede):
         return
     tabel = Dienst.__table__
     resultaat = db.session.execute(tabel.delete().where(
@@ -127,10 +135,11 @@ def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:
     diensten = (Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum)
                 .order_by(Dienst.volgnummer).all())
     dagtekst = dagtekst_voor(datum) if diensten else ""
+    met_tweede = _dagen_met_tweede_dienst(diensten)
     for dienst in diensten:
         gewenst = afspraak_voor(dienst, dagtekst)
         _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, dienst.google_event_id)
-        _ruim_lege_dienst_op(dienst)
+        _ruim_lege_dienst_op(dienst, met_tweede)
 
 
 def _privé(afspraak: dict) -> dict:
@@ -161,6 +170,7 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
     per_dienst = {_privé(e).get("dienst_id"): e["id"] for e in bestaande.values()}
     gebruikt: set[str] = set()
     aantal = 0
+    met_tweede = _dagen_met_tweede_dienst(diensten)
     for dienst in diensten:
         huidig = dienst.google_event_id if dienst.google_event_id in bestaande else ""
         huidig = huidig or per_dienst.get(str(dienst.id), "")
@@ -169,7 +179,7 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
         if dienst.google_event_id:
             gebruikt.add(dienst.google_event_id)
             aantal += 1
-        _ruim_lege_dienst_op(dienst)
+        _ruim_lege_dienst_op(dienst, met_tweede)
     # 'Wezen': afspraken van deze app zonder bijbehorende dienst
     for event_id in bestaande:
         if event_id not in gebruikt:
