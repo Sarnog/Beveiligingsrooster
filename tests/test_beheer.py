@@ -198,3 +198,24 @@ def test_worker_ronde_schoont_logboek_op(app, klaar):
     db.session.commit()
     een_ronde(Planning(), nu=datetime(2026, 9, 30, 12, 0))
     assert Logboek.query.filter_by(actie="Oud").count() == 0
+
+
+def test_paginatitels_zonder_html(app):
+    """De titel in het browsertabblad is platte tekst (er stond eens '<p class=...' in)."""
+    import os
+    import re
+
+    map_ = os.path.join(app.root_path, "templates")
+    for wortel, _mappen, bestanden in os.walk(map_):
+        for naam in bestanden:
+            with open(os.path.join(wortel, naam), encoding="utf-8") as f:
+                for titel in re.findall(r"{% block titel %}(.*?){% endblock %}", f.read(), re.S):
+                    assert "<" not in titel, f"HTML in de paginatitel van {naam}: {titel!r}"
+
+
+def test_beheer_titel_en_versie(als_beheerder):
+    from app import VERSIE
+
+    pagina = als_beheerder.get("/beheer/").data.decode()
+    assert "<title>Beheer</title>" in pagina
+    assert f"Beveiligingsrooster versie {VERSIE}</p>" in pagina.split("<main", 1)[1]

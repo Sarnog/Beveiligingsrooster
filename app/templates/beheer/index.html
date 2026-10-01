@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block titel %}Beheer<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
-{% endblock %}
+{% block titel %}Beheer{% endblock %}
 {% block inhoud %}
 <h1>Beheer</h1>
+<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
 <div class="tegels">
   <a class="tegel" href="{{ url_for('beheer.medewerkers') }}"><strong>Medewerkers</strong><span>Toevoegen, volgorde, contracturen, archiveren</span></a>
   <a class="tegel" href="{{ url_for('beheer.dienstcodes') }}"><strong>Dienstcodes</strong><span>Codes, tijden, kleuren en kleurregels</span></a>
