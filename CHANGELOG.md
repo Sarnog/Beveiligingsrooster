@@ -2,6 +2,12 @@
 
 ## [Onuitgebracht]
 
+## [1.4.1] – 2026-10-01
+
+### Opgelost
+- Op de pagina **Beheer** stond in het browsertabblad `Beheer<p class="hulp">…`. Nu staat er
+  alleen *Beheer*; het versienummer staat weer op de pagina zelf, onder de kop.
+
 ## [1.4.0] – 2026-10-01
 
 **Bijwerken vanaf 1.3.0:** de database krijgt een nieuwe kolom (`update.sh` maakt eerst een
