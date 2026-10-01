@@ -498,6 +498,49 @@ def test_tweede_dienst_eigen_tijden_uren_en_logboek(als_beheerder, rooster):
     assert diensten(a, MAANDAG)[2].uren_berekend == 5.0
 
 
+def test_tweede_dienst_erbij_zelf_ingevulde_uren_dienst1_vervallen(als_beheerder, rooster):
+    """Melding 1.6.0: na de import staan dienst + 'Soc. Veiligh. OB' (opmerkingregel) samen als
+    zelf ingevulde uren bij dienst 1. Wordt het tweede deel een echte dienst 2 ('4/13'), dan telt
+    elke dienst zijn eigen uren en het weektotaal beide één keer (niet 9,25 + dienst 2)."""
+    a = rooster["a"]
+    donderdag = date(2026, 10, 29)
+    db.session.add(Dienst(medewerker_id=a.id, datum=donderdag, volgnummer=1, versie=1,
+                          dienstcode_id=_code_id(4), begin="07:15", eind="13:00", tijden_handmatig=True,
+                          uren_handmatig=9.25, uren_berekend=9.25, opmerking_tekst="Soc. Veiligh. OB",
+                          opmerking_begin="13:00", opmerking_eind="17:00"))
+    db.session.commit()
+    antwoord = cel(als_beheerder, a, donderdag, "code", "4/13")
+    assert antwoord.json["fouten"] == []
+    cellen(als_beheerder, [
+        {"mw": a.id, "datum": donderdag.isoformat(), "veld": "begin", "volgnummer": 2, "waarde": "13:00"},
+        {"mw": a.id, "datum": donderdag.isoformat(), "veld": "eind", "volgnummer": 2, "waarde": "17:00"}])
+    per_vn = diensten(a, donderdag)
+    assert per_vn[1].uren_handmatig is None and per_vn[1].uren_berekend == 5.25  # 5,75 - pauze
+    assert per_vn[2].uren_berekend == 4.0
+    gegevens = cel(als_beheerder, a, donderdag, "opmerking", "Soc. Veiligh. OB").json  # niets gewijzigd
+    week = als_beheerder.get("/week/2026/44").data.decode()
+    assert "9,25" in week and "17,25" not in week and "13,25" not in week
+    regel = Logboek.query.filter_by(veld="uren", nieuwe_waarde="").one()
+    assert regel.oude_waarde == "9,25" and "tweede dienst" in regel.details
+    assert gegevens["fouten"] == []
+
+
+def test_zelf_ingevulde_uren_bij_bestaande_tweede_dienst_blijven(als_beheerder, rooster):
+    """Alleen bij het erbij komen van dienst 2: daarna mag dienst 1 gewoon eigen uren krijgen."""
+    a = rooster["a"]
+    cel(als_beheerder, a, MAANDAG, "code", "17/3")
+    cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "uren", "waarde": "6"}])
+    cellen(als_beheerder, [{"mw": a.id, "datum": MAANDAG.isoformat(), "veld": "eind", "volgnummer": 2,
+                            "waarde": "22:00"}])
+    assert diensten(a, MAANDAG)[1].uren_handmatig == 6.0
+
+
+def _code_id(nummer):
+    from app.models import Dienstcode
+
+    return Dienstcode.query.filter_by(nummer=nummer).one().id
+
+
 def test_dienst2_heeft_geen_opmerking(als_beheerder, rooster):
     a = rooster["a"]
     cel(als_beheerder, a, MAANDAG, "code", "17/3")
