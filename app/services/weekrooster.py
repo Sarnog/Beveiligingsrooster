@@ -232,8 +232,7 @@ def pas_dagopmerking_toe(datum: date, tekst: str) -> None:
         return  # niets veranderd
 
     if tekst == automatisch or (tekst == "" and bestaand is not None):
-        if bestaand:
-            db.session.delete(bestaand)
+        db.session.delete(bestaand)  # hier is er altijd een handmatige versie (zie hierboven)
     elif bestaand:
         bestaand.tekst = tekst
     else:

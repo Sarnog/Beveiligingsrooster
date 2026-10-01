@@ -10,7 +10,8 @@ from app.models import Dienstcode, Gebruiker, Medewerker
 from app.services import instellingen
 from app.services.voorbeeldpakket import laad_voorbeeldpakket
 
-from .conftest import WACHTWOORD, TestConfig, login
+from . import conftest
+from .conftest import WACHTWOORD, login
 
 # ---------------------------------------------------------------------------
 # Opstart: geheime sleutel en reverse proxy
@@ -18,7 +19,7 @@ from .conftest import WACHTWOORD, TestConfig, login
 
 
 def test_geheime_sleutel_wordt_gemaakt_en_hergebruikt(tmp_path):
-    config = TestConfig(str(tmp_path))
+    config = conftest.TestConfig(str(tmp_path))
     config.SECRET_KEY = ""
     eerste = create_app(config).config["SECRET_KEY"]
     pad = tmp_path / "secret_key"
@@ -32,7 +33,7 @@ def test_geheime_sleutel_wordt_gemaakt_en_hergebruikt(tmp_path):
 def test_proxy_vertrouwen_zet_proxyfix(tmp_path):
     from werkzeug.middleware.proxy_fix import ProxyFix
 
-    config = TestConfig(str(tmp_path))
+    config = conftest.TestConfig(str(tmp_path))
     config.PROXY_VERTROUWEN = True
     assert isinstance(create_app(config).wsgi_app, ProxyFix)
 
@@ -77,7 +78,7 @@ def test_health_meldt_databasefout(app, client, monkeypatch):
 
 
 def test_teamnaam_als_database_nog_leeg_is(tmp_path):
-    app = create_app(TestConfig(str(tmp_path)))  # geen tabellen: eerste start
+    app = create_app(conftest.TestConfig(str(tmp_path)))  # geen tabellen: eerste start
     with app.test_request_context("/"):
         variabelen = {}
         for functie in app.template_context_processors[None]:
