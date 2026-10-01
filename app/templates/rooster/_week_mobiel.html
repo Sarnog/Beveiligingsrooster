@@ -5,20 +5,7 @@
 {% for dag in dagen %}{% if dag == vandaag %}{% set ns.start = loop.index0 %}{% endif %}{% endfor %}
 {% for dag in dagen %}{% if dag.isoformat() == markeer_dag %}{% set ns.start = loop.index0 %}{% endif %}{% endfor %}
 
-{% macro kaart(mw, dag, d, titel) -%}
-{% if bewerken %}<button type="button" class="dag-kaart" data-bewerk-dag{% else %}<div class="dag-kaart"{% endif %}
-  data-mkaart data-mw="{{ mw.id }}" data-datum="{{ dag.isoformat() }}"{% if bewerken %} aria-label="{{ titel }} wijzigen"{% endif %}>
-  <span class="dk-titel">{{ titel }}</span>
-  <span class="dk-dienst" data-m="dienstnaam" style="{{ d.dienst_stijl }}">{{ d.dienstnaam }}</span>
-  <span class="dk-tijden" data-m="tijden">{% if d.begin %}{{ d.begin }} – {{ d.eind }}{% endif %}</span>
-  <span class="dk-uren" data-m="uren">{{ d.uren }}</span>
-  {% if d.tweede %}{% set t = d.tweede %}
-  <span class="dk-tweede" data-m="tweede"><span class="dk-dienst" data-m="dienstnaam2" style="{{ t.dienst_stijl }}">{{ t.dienstnaam }}</span>
-    <span class="dk-tijden" data-m="tijden2">{% if t.begin %}{{ t.begin }} – {{ t.eind }}{% endif %}</span>
-    <span class="dk-uren" data-m="uren2">{{ t.uren }}</span></span>{% endif %}
-  <span class="dk-opm" data-m="opmerking" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}{% if d.opm_begin %} ({{ d.opm_begin }}–{{ d.opm_eind }}){% endif %}</span>
-{% if bewerken %}</button>{% else %}</div>{% endif %}
-{%- endmacro %}
+{# De kaarten zelf maakt dagkaart() in app/services/weekweergave.py (snelheid). #}
 
 <section class="week-mobiel geen-print" data-week-mobiel data-start-dag="{{ ns.start }}"
          data-gebruiker="{{ current_user.id if current_user.is_authenticated else 'deel' }}"
@@ -43,7 +30,7 @@
       <h2>{{ dagnamen[di] }} {{ dag|datum_nl }}{% if dag == vandaag %} <small>vandaag</small>{% endif %}</h2>
       <p class="dagopm-mobiel{% if opm.tekst %} gevuld{% endif %}" data-datum="{{ dag.isoformat() }}" data-mdagopm>{{ opm.tekst }}</p>
       <ul class="dagkaarten">
-        {% for rij in rijen %}<li>{{ kaart(rij.medewerker, dag, rij.dagen[di], rij.medewerker.naam) }}</li>
+        {% for rij in rijen %}<li>{{ dagkaart(rij.medewerker.id, dag_iso[di], rij.dagen[di], rij.medewerker.naam, bewerken) }}</li>
         {% else %}<li class="hulp">Nog geen medewerkers.</li>{% endfor %}
       </ul>
     </section>
@@ -63,7 +50,7 @@
       <h2>{{ mw.naam }}{% if mw.functie_opmerking %} <small>{{ mw.functie_opmerking }}</small>{% endif %}</h2>
       <p class="hulp">Weektotaal <strong data-mtotaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</strong>{% if rij.contracturen %} · contracturen {{ jaar }}: {{ rij.contracturen|uren }}{% endif %}</p>
       <ul class="dagkaarten">
-        {% for dag in dagen %}<li>{{ kaart(mw, dag, rij.dagen[loop.index0], dagnamen[loop.index0] ~ ' ' ~ dag|datum_nl) }}</li>{% endfor %}
+        {% for dag in dagen %}<li>{{ dagkaart(mw.id, dag_iso[loop.index0], rij.dagen[loop.index0], dagnamen[loop.index0] ~ ' ' ~ dag|datum_nl, bewerken) }}</li>{% endfor %}
       </ul>
     </section>
     {% endfor %}
