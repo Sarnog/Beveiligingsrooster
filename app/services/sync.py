@@ -24,6 +24,8 @@ import json
 import logging
 from datetime import date, timedelta
 
+from sqlalchemy.orm.attributes import set_committed_value
+
 from ..extensions import db
 from ..models import Dienst, Medewerker, SyncTaak
 from . import google_agenda, instellingen, klok, logboek
@@ -68,11 +70,11 @@ def _zet_afspraak(klant, agenda_id: str, dienst: Dienst, gewenst, bestaande_id: 
     if gewenst is None:
         if bestaande_id:
             klant.verwijder_afspraak(agenda_id, bestaande_id)
-        dienst.google_event_id = ""
+        _bewaar_event_id(dienst, "")
         return
     if bestaande_id:
         try:
-            dienst.google_event_id = klant.wijzig_afspraak(agenda_id, bestaande_id, gewenst.body)
+            _bewaar_event_id(dienst, klant.wijzig_afspraak(agenda_id, bestaande_id, gewenst.body))
             return
         except AgendaFout as fout:
             if fout.status not in (404, 410):
@@ -80,19 +82,41 @@ def _zet_afspraak(klant, agenda_id: str, dienst: Dienst, gewenst, bestaande_id: 
             # Afspraak is handmatig weggehaald: opnieuw aanmaken
     event_id = event_id_voor(dienst)
     try:
-        dienst.google_event_id = klant.maak_afspraak(agenda_id, dict(gewenst.body, id=event_id))
+        _bewaar_event_id(dienst, klant.maak_afspraak(agenda_id, dict(gewenst.body, id=event_id)))
     except AgendaFout as fout:
         if fout.status != 409:
             raise
         # Bestaat al: aangemaakt bij een eerdere (half mislukte) poging, of ooit verwijderd
         # (Google bewaart het ID dan als geannuleerd). Bijwerken zet hem weer goed.
-        dienst.google_event_id = klant.wijzig_afspraak(agenda_id, event_id, gewenst.body)
+        _bewaar_event_id(dienst, klant.wijzig_afspraak(agenda_id, event_id, gewenst.body))
+
+
+def _bewaar_event_id(dienst: Dienst, event_id: str) -> None:
+    """Schrijf het event-ID alleen weg als de dienst sinds het lezen niet gewijzigd is.
+
+    Een voorwaardelijke UPDATE ... WHERE versie = <gelezen versie>: heeft de planner de
+    dienst intussen aangepast, dan staat er al een nieuwe taak klaar en overschrijft de
+    worker niets. (Het vaste event-ID zorgt dat die taak de afspraak terugvindt.)
+    """
+    tabel = Dienst.__table__
+    db.session.execute(tabel.update().where(tabel.c.id == dienst.id, tabel.c.versie == dienst.versie)
+                       .values(google_event_id=event_id))
+    set_committed_value(dienst, "google_event_id", event_id)
 
 
 def _ruim_lege_dienst_op(dienst: Dienst) -> None:
-    """Een lege regel die alleen nog bestond voor de agenda-afspraak mag nu weg."""
-    if dienst.is_leeg and not dienst.google_event_id:
-        db.session.delete(dienst)
+    """Een lege regel die alleen nog bestond voor de agenda-afspraak mag nu weg.
+
+    Voorwaardelijk (zelfde versie als bij het lezen, nog steeds zonder afspraak): heeft de
+    planner de dag intussen opnieuw ingevuld, dan is de versie hoger en blijft de dienst staan.
+    """
+    if not dienst.is_leeg or dienst.google_event_id:
+        return
+    tabel = Dienst.__table__
+    resultaat = db.session.execute(tabel.delete().where(
+        tabel.c.id == dienst.id, tabel.c.versie == dienst.versie, tabel.c.google_event_id == ""))
+    if resultaat.rowcount:
+        db.session.expunge(dienst)
 
 
 def sync_dag(klant, medewerker: Medewerker, datum: date) -> None:

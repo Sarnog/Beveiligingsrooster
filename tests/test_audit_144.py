@@ -183,3 +183,71 @@ def test_h2_afspraak_opnieuw_na_verwijderen_werkt(app, gekoppeld, nep):
     _wachtrij_nu()
     assert SyncTaak.query.count() == 0
     assert [a["summary"] for a in nep.agendas["agenda-a"].values()] == ["VW Dag"]
+
+
+# ---------------------------------------------------------------------------
+# M1 · De worker verwijdert een dienst die de planner net opnieuw invulde
+# ---------------------------------------------------------------------------
+
+def _in_ander_proces(medewerker_id, datum, wijzig):
+    """Wijzig een dienst via een eigen verbinding, zoals een webverzoek in een ander proces."""
+    from sqlalchemy.orm import Session
+
+    with Session(db.engine) as sessie:
+        dienst = sessie.query(Dienst).filter_by(medewerker_id=medewerker_id, datum=datum).one()
+        wijzig(dienst, sessie)
+        dienst.versie += 1
+        sessie.commit()
+
+
+def test_m1_worker_verwijdert_opnieuw_ingevulde_dienst_niet(app, gekoppeld, nep, monkeypatch):
+    from app.models import Dienstcode
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    _wachtrij_nu()
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "")])  # leeg, afspraak moet weg
+    code5 = Dienstcode.query.filter_by(nummer=5).one().id
+    echt = nep.verwijder_afspraak
+
+    def tussendoor(agenda_id, event_id):
+        echt(agenda_id, event_id)
+
+        def vul_in(dienst, sessie):  # de planner typt intussen code 5
+            dienst.dienstcode_id, dienst.begin, dienst.eind = code5, "07:00", "15:30"
+
+        _in_ander_proces(gekoppeld.id, MAANDAG, vul_in)
+
+    monkeypatch.setattr(nep, "verwijder_afspraak", tussendoor)
+    _wachtrij_nu()
+    db.session.expire_all()
+    dienst = Dienst.query.one()  # niet weggegooid
+    assert dienst.dienstcode_id == code5
+    monkeypatch.setattr(nep, "verwijder_afspraak", echt)
+    from app.services import sync_planning
+
+    sync_planning.plan_dag(dienst.medewerker, MAANDAG)
+    _wachtrij_nu()
+    assert [a["summary"] for a in nep.agendas["agenda-a"].values()] == ["VW Dag"]
+
+
+def test_m1_worker_overschrijft_nieuwer_event_id_niet(app, gekoppeld, nep, monkeypatch):
+    from app.services.weekrooster import Wijziging, wijzig_cellen
+
+    wijzig_cellen([Wijziging(gekoppeld.id, MAANDAG, "code", "4")])
+    echt = nep.maak_afspraak
+
+    def tussendoor(agenda_id, body):
+        event_id = echt(agenda_id, body)
+
+        def ontkoppel(dienst, sessie):  # bijv. de planner past de dienst aan
+            dienst.eind = "18:00"
+
+        _in_ander_proces(gekoppeld.id, MAANDAG, ontkoppel)
+        return event_id
+
+    monkeypatch.setattr(nep, "maak_afspraak", tussendoor)
+    _wachtrij_nu()
+    db.session.expire_all()
+    dienst = Dienst.query.one()
+    assert dienst.eind == "18:00" and dienst.versie == 2
