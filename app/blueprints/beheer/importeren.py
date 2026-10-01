@@ -11,7 +11,7 @@ import secrets
 from flask import flash, redirect, render_template, request, session, url_for
 
 from ...services import backup
-from ...services.excel_import import ImportFout, import_map, importeer, lees_bestand
+from ...services.excel_import import ImportFout, effect, import_map, importeer, lees_bestand
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
@@ -85,7 +85,7 @@ def excel_import_voorbeeld():
                   + ". Er is vooraf een back-up gemaakt.", "succes")
             return redirect(url_for("kalender.jaar", jaar=plan.jaar))
 
-    return render_template("beheer/importeren.html", plan=plan,
+    return render_template("beheer/importeren.html", plan=plan, effect=effect(plan),
                            handmatige_uren=plan.handmatige_uren(),
                            week_verschillen=plan.weektotaal_verschillen())
 

@@ -45,6 +45,15 @@
   </details>
   {% endif %}
 
+  <h3>Wat er met het rooster gebeurt</h3>
+  <p class="hulp">Alleen de weken die in het bestand staan worden geraakt; andere weken blijven zoals ze zijn.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact" data-effect>
+    <thead><tr><th>Medewerker</th><th class="getal">Nieuw</th><th class="getal">Vervangen</th><th class="getal">Verwijderd (bestaand)</th><th class="getal">Ongewijzigd</th></tr></thead>
+    <tbody>{% for naam, t in effect.per_medewerker.items() %}<tr><td>{{ naam }}</td><td class="getal">{{ t.nieuw }}</td><td class="getal">{{ t.vervangen }}</td><td class="getal">{% if t.verwijderd %}<strong>{{ t.verwijderd }}</strong>{% else %}0{% endif %}</td><td class="getal">{{ t.gelijk }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+
   <div class="tabel-schuif">
   <table class="tabel compact">
     <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th><th>Koppeling</th></tr></thead>
