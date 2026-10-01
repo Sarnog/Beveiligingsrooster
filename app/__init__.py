@@ -19,10 +19,11 @@ VERSIE = "1.3.0"
 verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
-SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen"}
+SETUP_VRIJ = {"static", "algemeen.health", "auth.login", "auth.uitloggen",
+              "pwa.manifest", "pwa.service_worker", "pwa.offline"}
 
 # Deze endpoints zijn openbaar (geen login nodig); ze controleren zelf een geheim token
-OPENBAAR = {"static", "algemeen.health"}
+OPENBAAR = {"static", "algemeen.health", "pwa.manifest", "pwa.service_worker", "pwa.offline"}
 
 # Schrijvende endpoints die een gewone gebruiker WEL mag gebruiken
 GEBRUIKER_MAG_SCHRIJVEN = {
@@ -109,12 +110,14 @@ def _registreer_blueprints(app: Flask) -> None:
         ics,
         kalender,
         overzicht,
+        pwa,
         rooster,
         setup,
         zoeken,
     )
 
-    for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics):
+    for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics,
+                   pwa):
         app.register_blueprint(module.bp)
 
 
@@ -213,7 +216,9 @@ def _registreer_controles(app: Flask) -> None:
         # Cache: pagina's en API-antwoorden nooit bewaren (ook niet door een proxy).
         # Scripts/CSS met versienummer (?v=...) mogen lang bewaard worden: bij een nieuwe
         # versie verandert het adres, dus dan haalt de browser (of proxy) het nieuwe bestand.
-        if request.endpoint == "static":
+        if request.endpoint in ("pwa.service_worker", "pwa.manifest"):
+            pass  # eigen Cache-Control (no-cache)
+        elif request.endpoint == "static":
             if request.args.get("v") == VERSIE:
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             else:

@@ -7,6 +7,14 @@
   <title>{% block titel %}{{ teamnaam }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=versie) }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=versie) }}" type="image/svg+xml">
+  {# Installeren als app (Android/desktop via het manifest, iOS via de apple-metatags) #}
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#16325c">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png', v=versie) }}">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rooster">
   <script src="{{ url_for('static', filename='js/htmx.min.js', v=versie) }}" defer></script>
   <script src="{{ url_for('static', filename='js/app.js', v=versie) }}" defer></script>
   {% block kop %}{% endblock %}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#16325c">
+  <title>Offline – {{ teamnaam }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=versie) }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=versie) }}" type="image/svg+xml">
+</head>
+<body>
+  <header class="balk"><span class="merk">{{ teamnaam }}</span></header>
+  <main class="inhoud">
+    <section class="kaart smal">
+      <h1>Je bent offline</h1>
+      <p>Er is nu geen verbinding met de roosterserver. Het rooster wordt niet op je telefoon
+         bewaard, zodat je altijd de nieuwste versie ziet.</p>
+      <p>Controleer je internet- of wifiverbinding en probeer het opnieuw.</p>
+      <p><a class="knop primair" href="/">Opnieuw proberen</a></p>
+    </section>
+  </main>
+</body>
+</html>

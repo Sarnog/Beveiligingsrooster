@@ -147,6 +147,14 @@
     }, { passive: true });
   }
 
+  // Service worker (installeerbaar als app; werkt alleen via HTTPS of op localhost).
+  // Cachet alleen statische bestanden met versienummer, nooit pagina's of de API.
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () { /* geen app-functies */ });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     // Menu open/dicht op smalle schermen (hamburger). Werkt ook met het toetsenbord:
     // openen zet de focus op het eerste menu-item, Escape sluit en zet de focus terug.
