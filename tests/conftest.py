@@ -9,6 +9,8 @@ from app.models import ROL_BEHEERDER, ROL_GEBRUIKER, Gebruiker
 from app.services import instellingen
 from app.services.wachtwoorden import hash_wachtwoord
 
+from .browser_hulp import browser, server, sessies  # noqa: F401  (fixtures voor de browsertests)
+
 WACHTWOORD = "testwachtwoord123"
 
 

@@ -1,0 +1,98 @@
+{# Weekrooster op de telefoon: per dag (alle medewerkers) of per medewerker (zeven dagen).
+   Wordt getoond op smalle schermen of met de knop 'Telefoonweergave' (zie app.js).
+   De beheerder tikt op een dag om die te wijzigen (bottom sheet, zie raster.js). #}
+{% set ns = namespace(start=0) %}
+{% for dag in dagen %}{% if dag == vandaag %}{% set ns.start = loop.index0 %}{% endif %}{% endfor %}
+{% for dag in dagen %}{% if dag.isoformat() == markeer_dag %}{% set ns.start = loop.index0 %}{% endif %}{% endfor %}
+
+{% macro kaart(mw, dag, d, titel) -%}
+{% if bewerken %}<button type="button" class="dag-kaart" data-bewerk-dag{% else %}<div class="dag-kaart"{% endif %}
+  data-mkaart data-mw="{{ mw.id }}" data-datum="{{ dag.isoformat() }}"{% if bewerken %} aria-label="{{ titel }} wijzigen"{% endif %}>
+  <span class="dk-titel">{{ titel }}</span>
+  <span class="dk-dienst" data-m="dienstnaam" style="{{ d.dienst_stijl }}">{{ d.dienstnaam }}</span>
+  <span class="dk-tijden" data-m="tijden">{% if d.begin %}{{ d.begin }} – {{ d.eind }}{% endif %}</span>
+  <span class="dk-uren" data-m="uren">{{ d.uren }}</span>
+  <span class="dk-opm" data-m="opmerking" style="{{ d.opmerking_stijl }}">{{ d.opmerking }}{% if d.opm_begin %} ({{ d.opm_begin }}–{{ d.opm_eind }}){% endif %}</span>
+{% if bewerken %}</button>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+<section class="week-mobiel geen-print" data-week-mobiel data-start-dag="{{ ns.start }}"
+         data-gebruiker="{{ current_user.id if current_user.is_authenticated else 'deel' }}"
+         data-vorige-week="{{ u.week_url(vorige[0], vorige[1]) }}" data-volgende-week="{{ u.week_url(volgende[0], volgende[1]) }}"
+         aria-label="Weekrooster voor de telefoon">
+  <div class="segment" role="group" aria-label="Weergave">
+    <button type="button" class="knop" data-mobiel-modus="dag" aria-pressed="true">Per dag</button>
+    <button type="button" class="knop" data-mobiel-modus="medewerker" aria-pressed="false">Per medewerker</button>
+  </div>
+  {% if bewerken %}<div class="raster-status" data-status aria-live="polite">Tik op een dag om die te wijzigen</div>{% endif %}
+
+  <div data-mobiel-paneel="dag">
+    <nav class="mobiel-nav" aria-label="Dag kiezen">
+      <button type="button" class="knop" data-mobiel-vorige aria-label="Vorige dag">◀</button>
+      <select data-mobiel-kies aria-label="Kies dag">
+        {% for dag in dagen %}<option value="{{ loop.index0 }}"{% if loop.index0 == ns.start %} selected{% endif %}>{{ dagnamen[loop.index0] }} {{ dag|datum_nl }}</option>{% endfor %}
+      </select>
+      <button type="button" class="knop" data-mobiel-volgende aria-label="Volgende dag">▶</button>
+    </nav>
+    {% for dag in dagen %}{% set di = loop.index0 %}{% set opm = dagopmerkingen[dag] %}
+    <section class="mobiel-pagina{% if dag.weekday() >= 5 %} weekend{% endif %}" data-dagpagina="{{ di }}" aria-label="{{ dagnamen[di] }} {{ dag|datum_nl }}">
+      <h2>{{ dagnamen[di] }} {{ dag|datum_nl }}{% if dag == vandaag %} <small>vandaag</small>{% endif %}</h2>
+      <p class="dagopm-mobiel{% if opm.tekst %} gevuld{% endif %}" data-datum="{{ dag.isoformat() }}" data-mdagopm>{{ opm.tekst }}</p>
+      <ul class="dagkaarten">
+        {% for rij in rijen %}<li>{{ kaart(rij.medewerker, dag, rij.dagen[di], rij.medewerker.naam) }}</li>
+        {% else %}<li class="hulp">Nog geen medewerkers.</li>{% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+
+  <div data-mobiel-paneel="medewerker">
+    <nav class="mobiel-nav" aria-label="Medewerker kiezen">
+      <button type="button" class="knop" data-mobiel-vorige aria-label="Vorige medewerker">◀</button>
+      <select data-mobiel-kies aria-label="Kies medewerker">
+        {% for rij in rijen %}<option value="{{ loop.index0 }}"{% if current_user.is_authenticated and current_user.medewerker_id == rij.medewerker.id %} selected data-eigen{% endif %}>{{ rij.medewerker.naam }}</option>{% endfor %}
+      </select>
+      <button type="button" class="knop" data-mobiel-volgende aria-label="Volgende medewerker">▶</button>
+    </nav>
+    {% for rij in rijen %}{% set mw = rij.medewerker %}
+    <section class="mobiel-pagina" data-mwpagina="{{ mw.id }}" aria-label="{{ mw.naam }}">
+      <h2>{{ mw.naam }}{% if mw.functie_opmerking %} <small>{{ mw.functie_opmerking }}</small>{% endif %}</h2>
+      <p class="hulp">Weektotaal <strong data-mtotaal="{{ mw.id }}">{{ rij.weektotaal|uren if rij.heeft_diensten }}</strong>{% if rij.contracturen %} · contracturen {{ jaar }}: {{ rij.contracturen|uren }}{% endif %}</p>
+      <ul class="dagkaarten">
+        {% for dag in dagen %}<li>{{ kaart(mw, dag, rij.dagen[loop.index0], dagnamen[loop.index0] ~ ' ' ~ dag|datum_nl) }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+</section>
+
+{% if bewerken %}
+<dialog id="dienst-paneel" class="paneel" aria-labelledby="paneel-titel">
+  <form method="dialog" data-paneel-formulier>
+    <h2 id="paneel-titel" data-paneel-titel>Dienst wijzigen</h2>
+    <label class="veld"><span>Dienst</span>
+      <select name="code">
+        <option value="">— geen dienst —</option>
+        {% for c in codes %}<option value="{{ c.nummer }}">{{ c.nummer }} – {{ c.omschrijving }}{% if c.std_begin %} ({{ c.std_begin }}–{{ c.std_eind }}){% endif %}</option>
+        {% endfor %}
+      </select></label>
+    <div class="paneel-twee">
+      <label class="veld"><span>Begintijd</span><input type="time" name="begin"></label>
+      <label class="veld"><span>Eindtijd</span><input type="time" name="eind"></label>
+    </div>
+    <label class="veld"><span>Opmerking</span><input type="text" name="opmerking" maxlength="120" autocomplete="off"></label>
+    <div class="paneel-twee">
+      <label class="veld"><span>Opmerking van</span><input type="time" name="opm_begin"></label>
+      <label class="veld"><span>Opmerking tot</span><input type="time" name="opm_eind"></label>
+    </div>
+    <label class="veld"><span>Eigen uren</span><input type="text" name="uren" inputmode="decimal" autocomplete="off" placeholder="leeg = automatisch">
+      <small>Alleen invullen als de uren afwijken (bijv. een cursus zonder tijden).</small></label>
+    <p class="paneel-uren">Uren: <strong data-paneel-uren>–</strong></p>
+    <div class="raster-status" data-status aria-live="polite"></div>
+    <div class="knoppen paneel-knoppen">
+      <button type="button" class="knop primair" data-paneel-opslaan>Opslaan</button>
+      <button type="button" class="knop" data-paneel-annuleren>Annuleren</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}

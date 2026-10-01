@@ -39,6 +39,7 @@
 
 <h2 id="kleurregels">Opmerking-kleurregels</h2>
 <p class="hulp">Een opmerking (regel a van het rooster) die precies deze tekst heeft, krijgt deze kleur. Handig voor locaties.</p>
+<div class="tabel-schuif">
 <table class="tabel compact">
   <thead><tr><th>Tekst</th><th>Voorbeeld</th><th></th></tr></thead>
   <tbody>
@@ -49,6 +50,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 <form method="post" action="{{ url_for('beheer.kleurregel_nieuw') }}" class="rij-formulier">
   {{ csrf() }}
   <label class="veld"><span>Tekst</span><input name="tekst" required></label>

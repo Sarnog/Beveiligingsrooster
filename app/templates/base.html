@@ -15,8 +15,8 @@
   <header class="balk geen-print">
     <a class="merk" href="{{ url_for('algemeen.index') }}">{{ teamnaam }}</a>
     {% if current_user.is_authenticated and not current_user.moet_wachtwoord_wijzigen %}
-    <button class="menu-knop" type="button" data-wissel="hoofdmenu" aria-label="Menu">&#9776;</button>
-    <nav id="hoofdmenu" class="menu">
+    <button class="menu-knop" type="button" data-menu="hoofdmenu" aria-controls="hoofdmenu" aria-expanded="false" aria-label="Menu">&#9776;</button>
+    <nav id="hoofdmenu" class="menu" aria-label="Hoofdmenu">
       {% if heeft_route('kalender.jaar') %}
       <a href="{{ url_for('kalender.jaar') }}">Kalender</a>
       <a href="{{ url_for('rooster.week') }}">Weekrooster</a>

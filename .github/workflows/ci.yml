@@ -40,13 +40,40 @@ jobs:
           flask --app wsgi:app db upgrade
           flask --app wsgi:app db check
       - name: Tests (pytest, met branch-coverage)
-        run: pytest -q --cov=app --cov-branch --cov-report=term-missing:skip-covered
+        run: pytest -q -m "not browser" --cov=app --cov-branch --cov-report=term-missing:skip-covered
       - name: Lock-bestand hoort bij requirements.txt
         run: |
           # Elk pakket uit requirements.txt moet in requirements.lock staan
           for pakket in $(grep -vE '^\s*(#|-r|$)' requirements.txt | sed -E 's/[<>=!~ ;#].*//' | tr 'A-Z_' 'a-z-'); do
             grep -qiE "^${pakket}==" requirements.lock || { echo "::error::$pakket ontbreekt in requirements.lock (pip-compile opnieuw draaien)"; exit 1; }
           done
+
+  browsertests:
+    # Playwright + Chromium: elke pagina op telefoon, tablet en desktop, het menu,
+    # de mobiele bewerkflow (opslaan, conflict/409), printen en de service worker.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Afhankelijkheden en Chromium installeren
+        run: |
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+      - name: Browsertests (falen als Chromium ontbreekt)
+        env:
+          BROWSERTESTS: verplicht
+          SCHERMAFBEELDINGEN: ${{ runner.temp }}/schermafbeeldingen
+        run: pytest -q -m browser
+      - name: Schermafbeeldingen bewaren
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: schermafbeeldingen
+          path: ${{ runner.temp }}/schermafbeeldingen
+          if-no-files-found: ignore
 
   docker-rooktest:
     # Op elke push en elk pull request: de image bouwen (zonder te publiceren) en proefdraaien
@@ -99,7 +126,7 @@ jobs:
           fi
 
   image:
-    needs: [test, docker-rooktest, versie]
+    needs: [test, browsertests, docker-rooktest, versie]
     # Alleen op main, en alleen als de tests en de versiecontrole geslaagd zijn
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -141,7 +168,7 @@ jobs:
 
   release:
     # Tag v<VERSIE> en GitHub-release aanmaken, met de tekst uit CHANGELOG.md
-    needs: [test, docker-rooktest, versie, image]
+    needs: [test, browsertests, docker-rooktest, versie, image]
     if: >-
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.versie.outputs.nieuw == 'true'

@@ -78,11 +78,21 @@ pre { background: var(--achtergrond); padding: .6rem; border-radius: var(--radiu
 .menu-rechts { margin-left: auto; display: flex; gap: .6rem; align-items: center; }
 .menu-knop { display: none; background: none; border: 0; color: var(--balk-tekst); font-size: 1.5rem; cursor: pointer; }
 
-@media (max-width: 760px) {
-  .menu-knop { display: block; margin-left: auto; }
-  .menu { display: none; flex-basis: 100%; flex-direction: column; align-items: flex-start; }
+/* Hamburgermenu: smalle schermen, en telefoons/tablets (aanraakscherm) tot 1024 px breed */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) {
+  .menu-knop {
+    display: flex; align-items: center; justify-content: center; margin-left: auto;
+    min-width: 44px; min-height: 44px; border-radius: var(--radius);
+  }
+  .menu-knop:focus-visible { outline: 2px solid var(--balk-tekst); }
+  .menu { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; }
   .menu.open { display: flex; }
-  .menu-rechts { margin-left: 0; }
+  .menu a { display: flex; align-items: center; min-height: 44px; padding: 0 .5rem; border-radius: var(--radius); }
+  .menu a:focus-visible { outline: 2px solid var(--balk-tekst); }
+  .menu-rechts { margin-left: 0; flex-direction: column; align-items: stretch; gap: 0;
+                 border-top: 1px solid rgba(255, 255, 255, .25); margin-top: .3rem; padding-top: .3rem; }
+  .menu-rechts form, .menu-rechts .knop { display: block; width: 100%; }
+  .menu-rechts .knop, .menu-rechts .knop.klein { min-height: 44px; font-size: 1rem; margin-top: .3rem; }
 }
 
 /* ---------- Opbouw ---------- */
@@ -183,7 +193,7 @@ tr.gearchiveerd td { opacity: .55; }
 .rooster-houder { flex: 1 1 auto; min-width: 0; }
 .code-paneel { flex: 0 0 auto; position: sticky; top: .5rem; max-height: calc(100vh - 1rem); overflow-y: auto; }
 @media (max-width: 1100px) {
-  .week-opmaak { flex-direction: column; }
+  .week-opmaak { flex-direction: column; align-items: stretch; }
   .code-paneel { position: static; max-height: none; }
 }
 
@@ -251,7 +261,24 @@ tr.gearchiveerd td { opacity: .55; }
 .mijn-dag { display: grid; grid-template-columns: 11rem 1fr 4rem; gap: .5rem; align-items: center; padding: .45rem .6rem; background: var(--kaart); border: 1px solid var(--rand); border-radius: var(--radius); margin-top: .3rem; }
 .mijn-dag.vandaag { border-color: var(--kleur-vandaag); border-width: 2px; }
 .mijn-uren { text-align: right; font-variant-numeric: tabular-nums; }
-@media (max-width: 560px) { .mijn-dag { grid-template-columns: 1fr auto; } .mijn-datum { grid-column: 1 / -1; font-weight: 600; } }
+.mijn-samenvatting { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; max-width: 720px; }
+.mijn-blok { margin-bottom: 0; }
+.mijn-blok h2 { margin: 0 0 .4rem; font-size: 1.05rem; }
+.mijn-blok h2 small { color: var(--tekst-zacht); font-weight: normal; }
+.mijn-blok p { margin: .2rem 0; }
+.mijn-dienst { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; }
+.mijn-tijden { font-variant-numeric: tabular-nums; }
+.mijn-agenda { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+.knop.groot { padding: .7rem 1.2rem; font-size: 1.05rem; font-weight: 600; }
+@media (max-width: 560px) {
+  .mijn-samenvatting { grid-template-columns: minmax(0, 1fr); }
+  .mijn-agenda .knop.groot { width: 100%; min-height: 52px; }
+  /* Per dag een kaart: datum bovenaan, daaronder dienst, tijden en opmerking */
+  .mijn-dag { grid-template-columns: minmax(0, 1fr) auto; padding: .7rem .8rem; }
+  .mijn-datum { grid-column: 1 / -1; font-weight: 600; }
+  .mijn-week { margin-top: 1.2rem; }
+  .mijn-week a { display: inline-flex; align-items: center; min-height: 44px; }
+}
 
 /* ==========================================================
    Jaarkalender
@@ -260,7 +287,7 @@ tr.gearchiveerd td { opacity: .55; }
 .kalender-kop .veld { margin-bottom: 0; }
 .jaarveld { width: 6rem; }
 .kalender-opmaak { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 1rem; align-items: start; }
-@media (max-width: 1100px) { .kalender-opmaak { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .kalender-opmaak { grid-template-columns: minmax(0, 1fr); } }
 .jaarkalender h1 { margin-top: 0; }
 .maanden { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
 @media (max-width: 900px) { .maanden { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -308,7 +335,7 @@ td.positief { color: #1565c0; font-weight: 600; }
    Zoeken en logboek
    ========================================================== */
 .zoek-opmaak { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 1rem; align-items: start; }
-@media (max-width: 900px) { .zoek-opmaak { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .zoek-opmaak { grid-template-columns: minmax(0, 1fr); } }
 .afwijkend { font-size: .75rem; color: #fff; background: var(--gevaar); padding: 0 .3rem; border-radius: 3px; }
 .logboek td { font-size: .85rem; vertical-align: top; }
 .paginering { justify-content: center; margin: 1rem 0; }
@@ -322,11 +349,14 @@ td.positief { color: #1565c0; font-weight: 600; }
   .inhoud, .inhoud-breed { max-width: none; padding: 0; margin: 0; }
   .week-opmaak { display: block; }
   .tabel-schuif { overflow: visible; max-height: none; }
-  .rooster { min-width: 0; width: 100%; font-size: 7.5pt; margin: 0 auto; }
+  .rooster { min-width: 0; width: 100%; font-size: 6.8pt; line-height: 1.02; margin: 0 auto; }
   .rooster th, .rooster td { height: auto; padding: 0 2px; }
   .rooster thead th, .rooster .naamkol { position: static; }
   .rooster .naamkol { width: 26mm; }
-  .rooster .urenkol { width: 12mm; }
+  .rooster .naamkol small { font-size: 6pt; }
+  .rooster .urenkol { width: 14mm; }
+  .rooster .urenkol.totaal { font-size: 7.5pt; }
+  .alleen-print { margin-bottom: 2mm; }
   .rooster tbody.blok { break-inside: avoid; }
   .cel.actief, .cel.geselecteerd { outline: none; box-shadow: none; }
   .kalender-kop, .zijpanelen .hulp { display: none; }
@@ -368,3 +398,109 @@ details > summary { cursor: pointer; }
 @media print { .opslaan-knop, .dialoog { display: none !important; } }
 .koppel-formulier { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; margin-bottom: .3rem; }
 .koppel-formulier input[type="email"] { min-width: 200px; }
+
+
+/* ==========================================================
+   Telefoon en tablet
+   Alles hieronder geldt alleen voor smalle schermen of een aanraakscherm;
+   op een desktop (muis, breder dan 1100 px) verandert er niets.
+   ========================================================== */
+
+/* Hint boven een tabel die breder is dan het scherm (wordt door app.js geplaatst) */
+.schuif-hint { display: none; }
+@media (max-width: 1100px), (pointer: coarse) {
+  .schuif-hint { display: block; margin: .3rem 0; font-size: .85rem; color: var(--tekst-zacht); }
+  .schuif-hint[hidden] { display: none; }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  /* Minimaal 16 px in invoervelden: anders zoomt iOS in bij het typen */
+  input, select, textarea, input.klein { font-size: 16px; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 1.4rem; height: 1.4rem; }
+  .knop { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+}
+
+@media (max-width: 760px) {
+  .inhoud { padding: .75rem; }
+  .kaart { padding: .9rem; }
+  h1 { font-size: 1.3rem; }
+  /* Formulieren: één kolom, velden over de volle breedte */
+  .rij, .rij-formulier { flex-direction: column; align-items: stretch; }
+  .rij > .veld, .rij-formulier .veld { flex: 1 1 auto; min-width: 0; }
+  .veld input, .veld select, .veld textarea, .rij-formulier input, .rij-formulier select { width: 100%; max-width: 100%; min-width: 0; }
+  .rij-formulier.compact { flex-direction: row; flex-wrap: wrap; }
+  input, select, textarea { max-width: 100%; }
+  .kop-rij { align-items: flex-start; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+  /* Tabellen in een scrollcontainer: eerste kolom blijft staan */
+  .tabel-schuif { -webkit-overflow-scrolling: touch; }
+  .tabel-schuif .tabel th:first-child, .tabel-schuif .tabel td:first-child {
+    position: sticky; left: 0; z-index: 1; background: var(--kaart);
+  }
+  .tegels { grid-template-columns: 1fr; }
+}
+
+/* ---------- Weekrooster op de telefoon ---------- */
+/* Standaard verborgen; zichtbaar op smalle schermen of na de knop 'Telefoonweergave' */
+.week-mobiel { display: none; }
+.weergave-wissel { display: none; }
+@media (max-width: 1100px) {
+  .weergave-wissel { display: inline-flex; }
+}
+@media (max-width: 760px) {
+  html:not(.weergave-raster) .week-mobiel { display: block; }
+  html:not(.weergave-raster) .week-opmaak { display: none; }
+}
+html.weergave-mobiel .week-mobiel { display: block; }
+html.weergave-mobiel .week-opmaak { display: none; }
+
+.segment { display: flex; gap: 0; margin-bottom: .6rem; }
+.segment .knop { flex: 1 1 0; border-radius: 0; min-height: 44px; }
+.segment .knop:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.segment .knop:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
+.segment .knop[aria-pressed="true"] { background: var(--primair); color: var(--primair-tekst); border-color: var(--primair); }
+.mobiel-nav { display: flex; gap: .4rem; align-items: center; margin-bottom: .6rem; }
+.mobiel-nav select { flex: 1 1 auto; min-width: 0; font-size: 16px; min-height: 44px; }
+.mobiel-nav .knop { min-width: 44px; min-height: 44px; }
+.mobiel-pagina h2 { margin: .4rem 0; font-size: 1.1rem; }
+.mobiel-pagina h2 small { color: var(--tekst-zacht); font-weight: normal; }
+.mobiel-pagina.weekend h2 { border-left: 4px solid var(--kleur-weekend); padding-left: .4rem; }
+.dagopm-mobiel { display: none; margin: 0 0 .5rem; padding: .3rem .6rem; border-radius: var(--radius); }
+.dagopm-mobiel.gevuld { display: block; background: var(--kleur-dagopmerking); color: #fff; font-weight: 700; font-style: italic; }
+.dagkaarten { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.dag-kaart {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .6rem; width: 100%;
+  text-align: left; font: inherit; color: var(--tekst); background: var(--kaart);
+  border: 1px solid var(--rand); border-radius: var(--radius); padding: .6rem .7rem; min-height: 44px;
+}
+button.dag-kaart { cursor: pointer; }
+button.dag-kaart:hover, button.dag-kaart:focus-visible { border-color: var(--primair); outline: 2px solid var(--primair); outline-offset: 0; }
+.dk-titel { font-weight: 600; grid-column: 1 / -1; overflow-wrap: anywhere; }
+.dk-dienst { justify-self: start; padding: .1rem .5rem; border-radius: 3px; max-width: 100%; overflow-wrap: anywhere; }
+.dk-dienst:empty::after { content: "Vrij"; color: var(--tekst-zacht); font-weight: normal; }
+.dk-uren { grid-row: 2; grid-column: 2; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dk-tijden { grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
+.dk-tijden:empty, .dk-opm:empty { display: none; }
+.dk-opm { grid-column: 1 / -1; justify-self: start; font-size: .9rem; font-style: italic; padding: 0 .3rem; border-radius: 3px; }
+
+/* Bewerkpaneel (bottom sheet) */
+.paneel {
+  width: 100%; max-width: 560px; max-height: 92vh; margin: auto auto 0; padding: 1rem 1rem 1.2rem;
+  border: 1px solid var(--rand); border-radius: 14px 14px 0 0; overflow-y: auto;
+  background: var(--kaart); color: var(--tekst); box-shadow: 0 -6px 30px rgba(0, 0, 0, .3);
+}
+.paneel::backdrop { background: rgba(0, 0, 0, .45); }
+.paneel h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
+.paneel .veld input, .paneel .veld select { width: 100%; font-size: 16px; min-height: 44px; }
+.paneel-twee { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.paneel-uren { font-size: 1.05rem; margin: .4rem 0; }
+.paneel-knoppen .knop { flex: 1 1 0; min-height: 48px; }
+@media (min-width: 761px) { .paneel { margin: auto; border-radius: var(--radius); } }
+
+/* Printen: altijd het gewone rooster (A4 liggend), ook vanaf een telefoon */
+@media print {
+  .week-mobiel, .paneel, .weergave-wissel, .schuif-hint { display: none !important; }
+  html .week-opmaak { display: block !important; }
+}
+.paneel .raster-status:empty { display: none; }

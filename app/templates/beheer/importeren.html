@@ -45,10 +45,12 @@
   </details>
   {% endif %}
 
+  <div class="tabel-schuif">
   <table class="tabel compact">
     <thead><tr><th>Medewerker</th><th>Initialen</th><th class="getal">Contracturen</th><th>Koppeling</th></tr></thead>
     <tbody>{% for m in plan.medewerkers %}<tr><td>{{ m.naam }}</td><td>{{ m.initialen }}</td><td class="getal">{{ m.contracturen|uren }}</td><td>{% if m.koppeling == 'initialen' %}⚠️ {% endif %}{{ m.toelichting }}</td></tr>{% endfor %}</tbody>
   </table>
+  </div>
 
   <form method="post" class="knoppen">
     {{ csrf() }}

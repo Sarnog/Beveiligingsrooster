@@ -31,16 +31,17 @@
   // Hoort dit script bij deze pagina? Zo niet (een oude versie uit een cache), dan
   // niets laten bewerken en melden dat de pagina opnieuw geladen moet worden.
   if (houder.getAttribute("data-versie") !== SCRIPT_VERSIE) {
-    var melding = document.querySelector("[data-status]");
-    if (melding) {
+    document.querySelectorAll("[data-status]").forEach(function (melding) {
       melding.textContent = "Verouderde versie geladen. Ververs de pagina (Ctrl+F5) voordat je iets wijzigt.";
       melding.className = "raster-status fout";
-    }
-    document.querySelectorAll("[data-opslaan]").forEach(function (k) { k.disabled = true; });
+    });
+    document.querySelectorAll("[data-opslaan], [data-paneel-opslaan]").forEach(function (k) { k.disabled = true; });
     return;
   }
   var API_CELLEN = houder.getAttribute("data-api-cellen");
-  var statusVak = document.querySelector("[data-status]");
+  // Statusregels: bij het raster, in de telefoonweergave en in het bewerkpaneel
+  var statusVakken = document.querySelectorAll("[data-status]");
+  var statusVak = statusVakken[0];
 
   // ---------- Raster: posities van cellen ----------
 
@@ -151,13 +152,16 @@
   // ---------- Status ----------
 
   var statusTimer = null;
+  function zetStatusKlasse(klasse) {
+    statusVakken.forEach(function (vak) { vak.className = klasse; });
+  }
   function status(tekst, soort) {
     if (!statusVak) return;
-    statusVak.textContent = tekst;
-    statusVak.className = "raster-status " + (soort || "");
+    statusVakken.forEach(function (vak) { vak.textContent = tekst; });
+    zetStatusKlasse("raster-status " + (soort || ""));
     clearTimeout(statusTimer);
     if (soort === "ok") {
-      statusTimer = setTimeout(function () { statusVak.className = "raster-status"; }, 2500);
+      statusTimer = setTimeout(function () { zetStatusKlasse("raster-status"); }, 2500);
     }
   }
 
@@ -271,7 +275,7 @@
       i.cel.textContent = i.waarde;  // direct tonen wat er getypt is
       i.cel.classList.remove("fout");
     });
-    if (statusVak) statusVak.className = "raster-status";  // oude foutmelding weghalen
+    zetStatusKlasse("raster-status");  // oude foutmelding weghalen
     voorbeeld();
   }
 
@@ -392,6 +396,10 @@
       cel.textContent = g.tekst;
       cel.classList.toggle("gevuld", !!g.tekst);
       cel.title = g.handmatig ? "Handmatig aangepast" : "";
+      document.querySelectorAll('[data-mdagopm][data-datum="' + datum + '"]').forEach(function (p) {
+        p.textContent = g.tekst;
+        p.classList.toggle("gevuld", !!g.tekst);
+      });
     });
     // Ongeldige invoer: rood tonen en niet meenemen bij het opslaan
     antwoord.fouten.forEach(function (f) {
@@ -469,6 +477,23 @@
     });
     var totaal = document.querySelector('[data-totaal="' + mw + '"]');
     if (totaal) totaal.textContent = g.weektotaal;
+    werkKaartenBij(mw, datum, g);
+  }
+
+  // Kaarten in de telefoonweergave bijwerken (zelfde gegevens als het raster)
+  function werkKaartenBij(mw, datum, g) {
+    document.querySelectorAll('[data-mkaart][data-mw="' + mw + '"][data-datum="' + datum + '"]').forEach(function (kaart) {
+      var naam = kaart.querySelector('[data-m="dienstnaam"]');
+      naam.textContent = g.dienstnaam;
+      naam.setAttribute("style", g.dienst_stijl);
+      kaart.querySelector('[data-m="tijden"]').textContent = g.begin ? g.begin + " – " + g.eind : "";
+      kaart.querySelector('[data-m="uren"]').textContent = g.uren;
+      var opm = kaart.querySelector('[data-m="opmerking"]');
+      opm.textContent = g.opmerking + (g.opm_begin ? " (" + g.opm_begin + "–" + g.opm_eind + ")" : "");
+      opm.setAttribute("style", g.opmerking_stijl);
+    });
+    var totaal = document.querySelector('[data-mtotaal="' + mw + '"]');
+    if (totaal) totaal.textContent = g.weektotaal;
   }
 
   // ---------- Opslaan-knoppen en waarschuwing bij verlaten ----------
@@ -542,6 +567,139 @@
       e.returnValue = "";
     }
   });
+
+  // ---------- Bewerkpaneel voor de telefoon (bottom sheet) ----------
+  // Tik op een dag in de telefoonweergave: alle velden van die dag in één paneel.
+  // Opslaan gaat via dezelfde weg als het raster: de wijzigingen komen in 'wachtend'
+  // (op de cellen van het verborgen raster) en daarna volgt opslaan(), met versies,
+  // 409-afhandeling en de waarschuwing bij niet-opgeslagen wijzigingen.
+  var paneel = document.getElementById("dienst-paneel");
+  var PANEEL_VELDEN = ["code", "begin", "eind", "opmerking", "opm_begin", "opm_eind", "uren"];
+
+  function rasterCel(mw, datum, veld) {
+    return document.querySelector('.cel[data-mw="' + mw + '"][data-datum="' + datum + '"][data-veld="' + veld + '"]');
+  }
+
+  if (paneel) {
+    var formulier = paneel.querySelector("form");
+    var urenVak = paneel.querySelector("[data-paneel-uren]");
+    var titel = paneel.querySelector("[data-paneel-titel]");
+    var huidig = null;   // {mw, datum, basis: {veld: waarde}}
+    var voorbeeldTimer = null;
+
+    var veldVan = function (naam) { return formulier.elements[naam]; };
+
+    // Wat staat er nu (inclusief niet-opgeslagen wijzigingen) in het raster?
+    var leesDag = function (mw, datum) {
+      var waarden = {};
+      PANEEL_VELDEN.forEach(function (veld) {
+        var cel = rasterCel(mw, datum, veld);
+        var tekst = cel ? cel.textContent.trim() : "";
+        // Uren alleen invullen als ze zelf ingevuld zijn; anders rekent de app ze uit
+        if (veld === "uren" && cel && !cel.classList.contains("handmatig")) tekst = "";
+        waarden[veld] = tekst;
+      });
+      waarden.uren_getoond = (rasterCel(mw, datum, "uren") || { textContent: "" }).textContent.trim();
+      return waarden;
+    };
+
+    var gewijzigdeVelden = function () {
+      return PANEEL_VELDEN.filter(function (veld) {
+        return veldVan(veld).value.trim() !== huidig.basis[veld];
+      });
+    };
+
+    var toonUren = function (tekst) { urenVak.textContent = tekst || "–"; };
+
+    // Voorbeeld van de uren (en standaardtijden bij een andere dienstcode); niets wordt bewaard
+    var paneelVoorbeeld = function () {
+      clearTimeout(voorbeeldTimer);
+      voorbeeldTimer = setTimeout(function () {
+        if (!huidig) return;
+        var mw = huidig.mw, datum = huidig.datum;
+        var codeGewijzigd = veldVan("code").value !== huidig.basis.code;
+        var wijzigingen = gewijzigdeVelden().map(function (veld, i) {
+          return { mw: mw, datum: datum, veld: veld, waarde: veldVan(veld).value.trim(),
+                   versie: i === 0 ? versieVan(mw, datum) : null };
+        });
+        if (!wijzigingen.length) { toonUren(huidig.basis.uren_getoond); return; }
+        var verzoekVoorbeeld = { opslaan: false, wijzigingen: wijzigingen, dagopmerkingen: [],
+                                 ook_tonen: [], ook_dagen: [] };
+        post(verzoekVoorbeeld).then(leesAntwoord).then(function (antwoord) {
+          if (!huidig || huidig.mw !== mw || huidig.datum !== datum) return;
+          var fout = antwoord.fouten[0];
+          if (fout) { status(fout.melding, "fout"); toonUren(""); return; }
+          var g = antwoord.bijgewerkt[mw + "|" + datum];
+          if (!g) return;
+          toonUren(g.uren);
+          // Andere dienstcode: standaardtijden overnemen (niet als 'eigen tijden' tellen)
+          if (codeGewijzigd && !huidig.tijdenAangeraakt) {
+            veldVan("begin").value = g.begin;
+            veldVan("eind").value = g.eind;
+            huidig.basis.begin = g.begin;
+            huidig.basis.eind = g.eind;
+            huidig.basis.code = veldVan("code").value;
+            huidig.vanCode = true;
+          }
+        }).catch(function () { toonUren(""); });
+      }, 250);
+    };
+
+    var openPaneel = function (kaart) {
+      var mw = kaart.getAttribute("data-mw");
+      var datum = kaart.getAttribute("data-datum");
+      var waarden = leesDag(mw, datum);
+      huidig = { mw: mw, datum: datum, basis: waarden, tijdenAangeraakt: false, kaart: kaart,
+                 origineleCode: waarden.code };
+      PANEEL_VELDEN.forEach(function (veld) { veldVan(veld).value = waarden[veld]; });
+      titel.textContent = kaart.querySelector(".dk-titel").textContent +
+        (kaart.closest("[data-dagpagina]") ? " – " + kaart.closest("[data-dagpagina]").getAttribute("aria-label") : "");
+      toonUren(waarden.uren_getoond);
+      zetStatusKlasse("raster-status");
+      statusVakken.forEach(function (vak) { if (paneel.contains(vak)) vak.textContent = ""; });
+      paneel.showModal();
+      veldVan("code").focus();
+    };
+
+    var sluitPaneel = function () {
+      clearTimeout(voorbeeldTimer);
+      if (paneel.open) paneel.close();
+      if (huidig && huidig.kaart) huidig.kaart.focus();
+      huidig = null;
+    };
+
+    document.addEventListener("click", function (e) {
+      var kaart = e.target.closest ? e.target.closest("[data-bewerk-dag]") : null;
+      if (kaart) openPaneel(kaart);
+    });
+    formulier.addEventListener("input", function (e) {
+      if (!huidig) return;
+      if (e.target.name === "begin" || e.target.name === "eind") huidig.tijdenAangeraakt = true;
+      paneelVoorbeeld();
+    });
+    formulier.addEventListener("change", paneelVoorbeeld);
+    paneel.querySelector("[data-paneel-annuleren]").addEventListener("click", sluitPaneel);
+    paneel.addEventListener("cancel", function () { huidig = null; });  // Esc
+
+    paneel.querySelector("[data-paneel-opslaan]").addEventListener("click", function () {
+      if (!huidig) return;
+      clearTimeout(voorbeeldTimer);
+      var mw = huidig.mw, datum = huidig.datum;
+      // Dienstcode gewijzigd? Die gaat eerst (zet de standaardtijden); daarna de rest.
+      var velden = gewijzigdeVelden();
+      if (huidig.vanCode && velden.indexOf("code") === -1 && huidig.origineleCode !== veldVan("code").value) {
+        velden.unshift("code");
+      }
+      var items = [];
+      velden.forEach(function (veld) {
+        var cel = rasterCel(mw, datum, veld);
+        if (cel) items.push({ cel: cel, waarde: veldVan(veld).value.trim() });
+      });
+      if (!items.length && !heeftWijzigingen()) { sluitPaneel(); return; }
+      bewaar(items);
+      opslaan(function () { sluitPaneel(); });
+    });
+  }
 
   // ---------- Muis ----------
 

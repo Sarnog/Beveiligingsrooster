@@ -18,6 +18,7 @@
     <a class="knop" href="{{ u.week_url(huidig[0], huidig[1]) }}">Vandaag</a>
     <a class="knop" href="{{ u.kalender_url(jaar) }}">Kalender</a>
     <button class="knop" type="button" data-print>Printen</button>
+    <button class="knop weergave-wissel" type="button" data-weergave-wissel aria-pressed="false">Telefoonweergave</button>
     {% if bewerken %}<button class="knop primair opslaan-knop" type="button" data-opslaan disabled title="Wijzigingen opslaan (Ctrl+S)">Opslaan</button>{% endif %}
   </nav>
   {% if bewerken %}
@@ -142,6 +143,8 @@
   </aside>
   {% endif %}
 </div>
+
+{% include "rooster/_week_mobiel.html" %}
 
 {% if bewerken %}
 <dialog id="niet-opgeslagen" class="dialoog" aria-labelledby="dialoog-titel">

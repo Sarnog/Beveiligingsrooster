@@ -1,5 +1,6 @@
 """Weekrooster: bekijken (iedereen) en invullen (beheerder), plus 'Mijn rooster'."""
 
+import re
 from datetime import date, timedelta
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -76,6 +77,7 @@ def navigatie(jaar: int, week: int) -> dict:
         "volgende": volgende,
         "huidig": week_van(klok.vandaag()),
         "aantal": aantal_weken(jaar),
+        "vandaag": klok.vandaag(),
     }
 
 
@@ -88,8 +90,19 @@ def mijn():
         flash("Je account is niet gekoppeld aan een medewerker. Vraag dit aan de beheerder.", "info")
         return redirect(url_for("kalender.jaar"))
     diensten = komende_diensten(medewerker, weken=8)
+    vandaag = klok.vandaag()
+    # Bovenaan: de dienst van vandaag en de eerstvolgende dienst daarna
+    dienst_vandaag = next((d for d in diensten if d.datum == vandaag), None)
+    volgende = next((d for d in diensten if d.datum > vandaag), None)
+    # 'Toevoegen aan mijn agenda': de ICS-link als webcal:// (opent de agenda-app),
+    # zonder ICS-link naar de uitlegpagina
+    if medewerker.ics_token:
+        agenda_url = re.sub(r"^https?://", "webcal://", externe_url("ics.feed", token=medewerker.ics_token))
+    else:
+        agenda_url = url_for("rooster.agenda_info")
     return render_template("rooster/mijn.html", medewerker=medewerker, diensten=diensten,
-                           vandaag=klok.vandaag())
+                           vandaag=vandaag, dienst_vandaag=dienst_vandaag, volgende=volgende,
+                           agenda_url=agenda_url)
 
 
 @bp.route("/mijn/agenda")
