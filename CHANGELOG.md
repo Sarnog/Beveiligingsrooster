@@ -2,6 +2,18 @@
 
 ## [Onuitgebracht]
 
+## [1.4.3] – 2026-10-01
+
+### Gewijzigd
+- **Print van het weekrooster:**
+  - geen lege regel *Reserve 1* meer onderaan;
+  - tot en met 10 medewerkers past de week altijd op één A4, ook als iedereen elke dag twee
+    diensten heeft;
+  - past het niet op één pagina, dan wordt het meerdere pagina's in normale lettergrootte (niet
+    piepklein); elke pagina begint met het weeknummer en de datums, en een medewerker staat
+    altijd helemaal op één pagina;
+  - de grijze urenkolom per dag is iets breder, zodat ook `16,00` (zondag) er helemaal in past.
+
 ## [1.4.2] – 2026-10-01
 
 ### Gewijzigd
