@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.4.3)
+# Handleiding voor de planner (beheerder, versie 1.4.4)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en exporteren.
 
@@ -101,13 +101,14 @@ Plakken van één waarde terwijl een blok geselecteerd is, vult het hele blok (h
 Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op de begin- of eindtijd (onderste regel van het blok) en typ de nieuwe tijd. Tijden mag je invoeren als `715`, `7:15`, `07.15` of `0715`; ze worden altijd `07:15`.
 
 - De uren worden opnieuw berekend.
-- Een handmatige tijd is **rood gestippeld onderstreept** met een klein rood hoekje. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
+- Een handmatige tijd herken je aan de tip *Handmatig aangepast* als je er met de muis op staat. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
 
 ### Vrije dienst en eigen uren
 
 Niet elke dienst heeft een code. Bijvoorbeeld een cursus of een extra ronde.
 
 - Typ in het rooster op de **dienstnaamregel** (regel c) een eigen naam. Een eventuele code vervalt dan.
+- Wil je alleen iets **achter de dienstnaam** zetten (bijvoorbeeld *VW Vroeg – tot 12:00*)? Laat de dienstnaam dan vooraan staan en typ je aanvulling erachter (na een spatie of leesteken). De code, de kleur en de tijden blijven dan gewoon staan. Haal je de aanvulling weg, dan staat er weer alleen de dienstnaam. Een nieuwe code kiezen haalt de aanvulling ook weg.
 - Typ in de **urencel** (rechts van de eindtijd) zelf het aantal uren, bijvoorbeeld `8` of `7,5`. Zelf ingevulde uren:
   - gaan voor de berekening;
   - krijgen geen weekendtoeslag;
@@ -165,7 +166,7 @@ De print ziet eruit als het vertrouwde papieren rooster:
 - rechts de contracturen en, grijs, het weektotaal;
 - zaterdag en zondag staan er altijd op, ook als ze leeg zijn.
 
-**Hoeveel past er op één A4?** Tot en met **10 medewerkers** past de week altijd op één pagina, ook als iedereen elke dag twee diensten heeft. Bij meer medewerkers worden eerst de regels lager en daarna de letters iets kleiner, zodat het zo lang mogelijk op één pagina blijft (bijvoorbeeld 13 medewerkers met overal twee diensten, of 18 met één dienst). Past het dan nog niet, dan wordt het gewoon **meer pagina's** in normale lettergrootte:
+**Hoeveel past er op één A4?** De app meet de print echt op (ook lange namen, functies en dagopmerkingen tellen mee), dus er komt nooit één losse medewerker op een extra pagina terecht. Tot en met **10 medewerkers** past de week altijd op één pagina, ook als iedereen elke dag twee diensten heeft. Bij meer medewerkers worden eerst de regels lager en daarna de letters iets kleiner, zodat het zo lang mogelijk op één pagina blijft (bijvoorbeeld 13 medewerkers met overal twee diensten). Past het dan nog niet, dan wordt het **meer pagina's** met **hooguit 10 medewerkers per pagina** (14 = 10 + 4, 25 = 10 + 10 + 5):
 
 - elke pagina begint weer met *Weeknummer* en de datums van de week;
 - een medewerker staat altijd helemaal op één pagina (nooit dienst 1 op de ene en dienst 2 op de volgende pagina).
@@ -219,7 +220,7 @@ Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag o
 
 ## 9. Back-ups
 
-*Beheer → Back-ups*: nu een back-up maken, downloaden of terugzetten. Bij het terugzetten wordt de huidige stand eerst bewaard als veiligheidsback-up. Elke nacht maakt de app zelf ook een back-up. Na het terugzetten moet iedereen opnieuw inloggen, en werken bestaande API-tokens niet meer.
+*Beheer → Back-ups*: nu een back-up maken, downloaden, terugzetten of **verwijderen** (met bevestiging; komt in het logboek). Bij het terugzetten wordt de huidige stand eerst bewaard als veiligheidsback-up. Elke nacht maakt de app zelf ook een back-up. Na het terugzetten moet iedereen opnieuw inloggen, en werken bestaande API-tokens niet meer.
 
 Werkt de website niet meer, maar draait de container nog? Dan kan het ook op de server: `docker compose exec -u rooster web flask terugzetten <naam-van-de-back-up>`.
 

@@ -1,4 +1,4 @@
-"""Beheer: back-ups maken, downloaden en terugzetten."""
+"""Beheer: back-ups maken, downloaden, terugzetten en verwijderen."""
 
 import logging
 import os
@@ -44,6 +44,27 @@ def backup_download(naam: str):
     db.session.commit()
     return send_file(pad, as_attachment=True, download_name=naam,
                      mimetype="application/vnd.sqlite3")
+
+
+@bp.route("/backups/verwijderen", methods=["POST"])
+@beheerder_vereist
+def backup_verwijderen():
+    """Eén back-up verwijderen (alleen namen die de app zelf maakt, zie backup.pad_van)."""
+    naam = request.form.get("naam", "")
+    pad = backup.pad_van(naam)
+    if pad is None:
+        flash("Onbekende back-up.", "fout")
+        return redirect(url_for("beheer.backups"))
+    try:
+        os.remove(pad)
+    except OSError as fout:
+        log.exception("Back-up %s verwijderen mislukt", naam)
+        flash(f"Verwijderen is mislukt: {fout}", "fout")
+        return redirect(url_for("beheer.backups"))
+    logboek.log("Back-up verwijderd", naam)
+    db.session.commit()
+    flash(f"Back-up {naam} is verwijderd.", "succes")
+    return redirect(url_for("beheer.backups"))
 
 
 @bp.route("/backups/terugzetten", methods=["POST"])

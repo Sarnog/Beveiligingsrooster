@@ -9,19 +9,27 @@
    Per dag een witte kolom (opmerking, dienstnaam als gekleurde balk, begin
    en eind) en een smalle grijze kolom met de uren. Op een dag met twee
    diensten staat dienst 1 bovenaan (met de opmerking achter de naam) en
-   dienst 2 eronder, net als op het scherm. De rijhoogte vult de pagina; pas als dat niet past wordt
-   het lettertype kleiner (tot MIN_RIJ_MM). Past het dan nog niet, dan wordt
-   het gewoon meerdere pagina's in normale grootte: elke pagina begint met de
-   kopregel (weeknummer en datums) en een medewerker wordt nooit over twee
-   pagina's verdeeld (zie style.css). Tot en met 10 medewerkers past de week
-   altijd op één A4, ook als iedereen elke dag twee diensten heeft (40 regels).
+   dienst 2 eronder, net als op het scherm.
+
+   De tabel wordt onzichtbaar op A4-breedte opgemeten (lange namen, dagopmerkingen
+   en randen tellen dus mee), niet geschat:
+   1. Past alles op één A4, eventueel met kleinere rijen en letters (tot MIN_RIJ_MM),
+      dan één pagina. Tot en met 10 medewerkers met overal twee diensten past altijd,
+      13 meestal ook (iets kleinere letters).
+   2. Anders meerdere pagina's met hooguit 10 medewerkers per pagina (14 = 10 + 4,
+      25 = 10 + 10 + 5). Elke pagina is een eigen tabel met de kopregel (weeknummer
+      en datums); een medewerker wordt nooit over twee pagina's verdeeld.
    Zonder JavaScript print de browser het gewone schermrooster.
    ========================================================== */
 (function () {
   "use strict";
 
-  var BESCHIKBAAR_MM = 184;  // A4 liggend (210 mm) min marges en kopregel
+  // A4 liggend: 210 mm hoog min 2 x 6 mm marge (@page), min 4 mm speling voor verschillen
+  // tussen browsers en printers. Alles wordt echt opgemeten, niet geschat.
+  var BESCHIKBAAR_MM = 194;
   var MIN_RIJ_MM = 3.4, MAX_RIJ_MM = 7.5, NORMAAL_RIJ_MM = 4.6;
+  var PER_PAGINA = 10;  // meerdere pagina's: 10 medewerkers (met twee diensten) per pagina
+  var PX_PER_MM = 96 / 25.4;
 
   function el(tag, klasse, tekst) {
     var e = document.createElement(tag);
@@ -102,36 +110,15 @@
     return plek;
   }
 
-  function bouw() {
-    var rooster = document.querySelector('.rooster[data-raster="visueel"]');
-    var doel = document.querySelector("[data-print-rooster]");
-    if (!rooster || !doel) return;
-
-    var koppen = rooster.querySelectorAll("thead th.dagkop");
-    var datums = Array.prototype.map.call(rooster.querySelectorAll("thead .dagopm"), function (c) {
-      return c.getAttribute("data-datum");
-    });
-    var dagopm = rooster.querySelectorAll("thead .dagopm");
-    var blokken = rooster.querySelectorAll("tbody.blok");
-
-    // Per blok de plekken per dag; een blok met een dag met twee diensten krijgt 4 regels
-    var gegevens = Array.prototype.map.call(blokken, function (blok) {
-      var dagen = datums.map(function (datum) { return plekken(blok, datum); });
-      return { blok: blok, dagen: dagen, twee: dagen.some(function (p) { return p.twee; }) };
-    });
-
-    // Maat: aantal regels (3 per medewerker, 4 met een dag met twee diensten)
-    var regels = 0;
-    gegevens.forEach(function (g) { regels += g.twee ? 4 : 3; });
-    var opEenPagina = regels * MIN_RIJ_MM <= BESCHIKBAAR_MM;
-    var rij = opEenPagina ? Math.min(MAX_RIJ_MM, BESCHIKBAAR_MM / Math.max(regels, 1)) : NORMAAL_RIJ_MM;
+  // Eén printtabel (één pagina) met de kopregel en de blokken van deze medewerkers
+  function maakTabel(kopInfo, gegevens, rij, volgende) {
     var schaal = Math.min(1, rij / NORMAAL_RIJ_MM);
-    var tabel = el("table", "print-tabel");
+    var tabel = el("table", "print-tabel" + (volgende ? " p-volgende" : ""));
     tabel.style.setProperty("--p-rij", rij.toFixed(2) + "mm");
     tabel.style.setProperty("--p-f", schaal.toFixed(3));
     var kolommen = el("colgroup");
     kolommen.appendChild(el("col", "p-naamkol"));
-    datums.forEach(function () {
+    kopInfo.datums.forEach(function () {
       kolommen.appendChild(el("col", "p-tijdkol"));
       kolommen.appendChild(el("col", "p-tijdkol"));
       kolommen.appendChild(el("col", "p-grijskol"));
@@ -142,15 +129,15 @@
     // Kopregel: weeknummer, per dag de datum (met dagopmerking als label), Uren
     var kop = el("thead"), kopRij = el("tr");
     var weeknr = el("th", "p-weeknr");
-    weeknr.appendChild(el("small", "", doel.getAttribute("data-team")));
+    weeknr.appendChild(el("small", "", kopInfo.team));
     weeknr.appendChild(document.createTextNode("Weeknummer "));
-    weeknr.appendChild(el("strong", "", doel.getAttribute("data-week")));
+    weeknr.appendChild(el("strong", "", kopInfo.week));
     kopRij.appendChild(weeknr);
-    koppen.forEach(function (th, i) {
+    kopInfo.koppen.forEach(function (th, i) {
       var cel = el("th", "p-dag" + (th.classList.contains("weekend") ? " weekend" : ""), tekstVan(th));
       cel.colSpan = 2;
-      var label = el("span", "p-dagopm", tekstVan(dagopm[i]));
-      label.setAttribute("data-pdagopm", datums[i]);
+      var label = el("span", "p-dagopm", tekstVan(kopInfo.dagopm[i]));
+      label.setAttribute("data-pdagopm", kopInfo.datums[i]);
       cel.appendChild(label);
       kopRij.appendChild(cel);
       kopRij.appendChild(el("th", "p-grijs"));
@@ -194,8 +181,80 @@
       body.appendChild(tijdRegel("p-d", g.dagen.map(function (p) { return [p.d1, p.d2, p.d3]; })));
       tabel.appendChild(body);
     });
+    return tabel;
+  }
 
-    doel.replaceChildren(tabel);
+  // Hoogte in mm zoals de printer hem ziet (de tabel staat onzichtbaar op paginabreedte)
+  function mm(e) {
+    return e.getBoundingClientRect().height / PX_PER_MM;
+  }
+
+  function bouw() {
+    var rooster = document.querySelector('.rooster[data-raster="visueel"]');
+    var doel = document.querySelector("[data-print-rooster]");
+    if (!rooster || !doel) return;
+
+    var kopInfo = {
+      team: doel.getAttribute("data-team"), week: doel.getAttribute("data-week"),
+      koppen: Array.prototype.slice.call(rooster.querySelectorAll("thead th.dagkop")),
+      dagopm: rooster.querySelectorAll("thead .dagopm"),
+    };
+    kopInfo.datums = Array.prototype.map.call(kopInfo.dagopm, function (c) { return c.getAttribute("data-datum"); });
+
+    // Per blok de plekken per dag; een blok met een dag met twee diensten krijgt 4 regels
+    var gegevens = Array.prototype.map.call(rooster.querySelectorAll("tbody.blok"), function (blok) {
+      var dagen = kopInfo.datums.map(function (datum) { return plekken(blok, datum); });
+      return { blok: blok, dagen: dagen, twee: dagen.some(function (p) { return p.twee; }) };
+    });
+    var regels = 0;
+    gegevens.forEach(function (g) { regels += g.twee ? 4 : 3; });
+
+    // Opmeten gebeurt onzichtbaar op de breedte van een A4 liggend (zie .p-meten)
+    doel.classList.add("p-meten");
+    var tabellen = [];
+    try {
+      // 1. Alles op één pagina: de rijhoogte vult de pagina. Gemeten te hoog (lange namen,
+      //    dagopmerkingen, randen)? Dan de rijen kleiner, tot MIN_RIJ_MM.
+      var rij = Math.min(MAX_RIJ_MM, BESCHIKBAAR_MM / Math.max(regels, 1) * 0.92);
+      for (var poging = 0; poging < 6 && rij >= MIN_RIJ_MM - 0.001; poging++) {
+        var tabel = maakTabel(kopInfo, gegevens, rij, false);
+        doel.replaceChildren(tabel);
+        var hoogte = mm(tabel);
+        if (hoogte <= BESCHIKBAAR_MM) { tabellen = [tabel]; break; }
+        var kopHoogte = mm(tabel.tHead);
+        var nieuw = rij * (BESCHIKBAAR_MM - kopHoogte) / (hoogte - kopHoogte) - 0.02;
+        rij = rij > MIN_RIJ_MM && nieuw < MIN_RIJ_MM ? MIN_RIJ_MM : nieuw;
+      }
+
+      // 2. Past het niet: meerdere pagina's met hooguit PER_PAGINA medewerkers per pagina.
+      //    De rijhoogte is zo dat 10 blokken met twee diensten (40 regels) op een pagina
+      //    passen (hooguit normaal); elke pagina wordt opgemeten gevuld met hele blokken.
+      if (!tabellen.length) {
+        var proef = maakTabel(kopInfo, gegevens, NORMAAL_RIJ_MM, false);
+        doel.replaceChildren(proef);
+        var perRegel = (mm(proef) - mm(proef.tHead)) / Math.max(regels, 1);
+        var paginaRij = NORMAAL_RIJ_MM * (BESCHIKBAAR_MM - mm(proef.tHead)) / (perRegel * 4 * PER_PAGINA);
+        paginaRij = Math.max(MIN_RIJ_MM, Math.min(NORMAAL_RIJ_MM, paginaRij - 0.02));
+        proef = maakTabel(kopInfo, gegevens, paginaRij, false);
+        doel.replaceChildren(proef);
+        var kop = mm(proef.tHead), verdeling = [], pagina = [], gevuld = kop;
+        Array.prototype.forEach.call(proef.tBodies, function (b, i) {
+          var h = mm(b);
+          if (pagina.length && (pagina.length >= PER_PAGINA || gevuld + h > BESCHIKBAAR_MM)) {
+            verdeling.push(pagina);
+            pagina = [];
+            gevuld = kop;
+          }
+          pagina.push(gegevens[i]);
+          gevuld += h;
+        });
+        verdeling.push(pagina);
+        tabellen = verdeling.map(function (deel, i) { return maakTabel(kopInfo, deel, paginaRij, i > 0); });
+      }
+    } finally {
+      doel.classList.remove("p-meten");
+    }
+    doel.replaceChildren.apply(doel, tabellen);
     document.documentElement.classList.add("print-klaar");
   }
 

@@ -204,9 +204,13 @@ class Dienst(db.Model):
 
     @property
     def dienstnaam(self) -> str:
-        """De naam die in regel c van het rooster staat."""
+        """De naam die in regel c van het rooster staat.
+
+        Met een code is dat de omschrijving van de code, of de dienstnaam met een
+        aanvulling erachter als die is ingevuld (de kleur blijft die van de code).
+        """
         if self.dienstcode is not None:
-            return self.dienstcode.omschrijving
+            return self.dienstnaam_override or self.dienstcode.omschrijving
         return self.dienstnaam_override or ""
 
     @property

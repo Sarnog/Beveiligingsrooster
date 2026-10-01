@@ -290,7 +290,7 @@ Wijzigingen die ná de update zijn gedaan, zitten niet in die back-up.
 - **Automatisch:** de worker maakt elke nacht na 02:00 een back-up in `data/backups/`. Het aantal dat bewaard blijft stel je in bij Instellingen (standaard 30). Een back-up wordt eerst gecontroleerd en pas daarna bewaard. Mislukt hij (bijvoorbeeld een volle schijf), dan staat er "Back-up mislukt" in het logboek en probeert de worker het na 30 minuten opnieuw.
 - **Back-ups met een label** (`handmatig`, `voor-update`, `voor-import`, `voor-terugzetten`, `upload`) tellen daar niet bij. Ze blijven 90 dagen staan; de nieuwste 10 blijven altijd bewaard.
 - **Handmatig:** `docker compose exec -u rooster web flask backup`.
-- **Downloaden en terugzetten in de webinterface:** *Beheer → Back-ups*. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`). Een beschadigde back-up, of een back-up van een nieuwere versie van de app, wordt geweigerd. Lukt het bijwerken van een oude back-up niet, dan zet de app automatisch de vorige stand terug.
+- **Downloaden, terugzetten en verwijderen in de webinterface:** *Beheer → Back-ups*. Verwijderen vraagt eerst om bevestiging en komt in het logboek. Voor het terugzetten maakt de app eerst zelf een veiligheidsback-up (`…-voor-terugzetten.db`). Een beschadigde back-up, of een back-up van een nieuwere versie van de app, wordt geweigerd. Lukt het bijwerken van een oude back-up niet, dan zet de app automatisch de vorige stand terug.
 - **Terugzetten via de command line** (als de webinterface niet werkt, maar de container nog wel draait):
   ```sh
   ls data/backups/
@@ -336,13 +336,16 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 
 Bij een probleem dat je wilt uitzoeken (bijvoorbeeld de agenda-koppeling of een import):
 
-1. Zet in `.env`: `DEBUG_LOG=1` en start opnieuw met `docker compose up -d`.
+1. Zet in *Beheer → Debuglog* het **debuglog-bestand** op *Aan* (en eventueel het **logniveau** op
+   `DEBUG`) en klik op *Opslaan*. Geen herstart nodig: binnen een halve minuut geldt het voor de
+   website én de worker. (Kan ook nog via `.env`: `DEBUG_LOG=1` / `LOG_NIVEAU=DEBUG` en
+   `docker compose up -d`; een keuze in Beheer gaat daar voor, *Volgens .env* zet het terug.)
 2. Doe wat het probleem geeft.
 3. Bekijk de log in *Beheer → Debuglog* (laatste 500 regels en een downloadknop), of op de server:
    ```sh
    tail -f data/logs/debug.log
    ```
-4. Zet hem daarna weer uit (`DEBUG_LOG=0`, `docker compose up -d`).
+4. Zet hem daarna weer uit (*Uit* of *Volgens .env*).
 
 Wat erin staat: elk verzoek (methode, pad, status, duur, gebruiker), inlogpogingen met de reden van
 mislukken, opslaan van het rooster (aantal wijzigingen, celfouten, conflicten), elke agenda-taak en
@@ -353,7 +356,8 @@ Wat er **niet** in staat: wachtwoorden, wachtwoord-hashes, SQL, en de geheime to
 en de deellink (die worden `***`). Bij 5 MB wordt het bestand vervangen; `debug.log.1` t/m `.3` blijven
 bewaard (maximaal ongeveer 20 MB).
 
-Met `LOG_NIVEAU=DEBUG` komen dezelfde details ook in `docker compose logs`.
+Met logniveau `DEBUG` komen dezelfde details ook in `docker compose logs`. (Het niveau van de
+toegangsregels van Gunicorn zelf volgt alleen `LOG_NIVEAU` uit `.env`.)
 
 ## Veelgestelde problemen
 

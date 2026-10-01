@@ -15,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
-VERSIE = "1.4.3"
+VERSIE = "1.4.4"
 verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn
@@ -64,6 +64,12 @@ def create_app(config: Config | None = None) -> Flask:
     from . import debuglog
 
     debuglog.stel_in(app)
+    with app.app_context():
+        debuglog.ververs(app, direct=True)  # logniveau uit Beheer (als dat is ingesteld)
+
+    @app.before_request
+    def logstand_verversen():
+        debuglog.ververs(app)  # gewijzigd in Beheer (ander proces)? Hooguit elke 15 s gekeken
 
     _registreer_blueprints(app)
     _registreer_controles(app)

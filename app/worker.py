@@ -17,7 +17,7 @@ import logging
 import time
 from datetime import date, datetime, timedelta
 
-from . import create_app
+from . import create_app, debuglog
 from .extensions import db
 from .services import instellingen, klok, logboek
 
@@ -85,6 +85,7 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
 
         from . import debuglog
 
+        debuglog.ververs(current_app._get_current_object())  # logniveau gewijzigd in Beheer?
         if debuglog.roteer(current_app.config["DATA_MAP"]):
             log.info("Debuglog geroteerd")
     except Exception:  # loggen mag de worker nooit stilleggen
@@ -118,8 +119,8 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
 def main() -> None:
     app = create_app()
     planning = Planning()
-    log.info("Worker gestart (log: %s%s)", app.config["LOG_NIVEAU"],
-             ", debuglog aan" if app.config["DEBUG_LOG"] else "")
+    stand = debuglog.stand(app)
+    log.info("Worker gestart (log: %s%s)", stand["niveau"], ", debuglog aan" if stand["aan"] else "")
     with app.app_context():
         while True:
             try:

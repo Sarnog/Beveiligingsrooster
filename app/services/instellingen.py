@@ -30,6 +30,8 @@ STANDAARD: dict[str, str] = {
     "agenda_sync_dagen_terug": "7",
     "agenda_sync_maanden_vooruit": "12",
     "backup_bewaren": "30",
+    "log_niveau": "",  # leeg = LOG_NIVEAU uit .env; anders DEBUG, INFO, WARNING of ERROR
+    "debug_log": "",  # leeg = DEBUG_LOG uit .env; "1" = aan, "0" = uit
     "laatst_bijgewerkt": "",
     "sessie_generatie": "",  # verandert na het terugzetten van een back-up: iedereen uitloggen
 }

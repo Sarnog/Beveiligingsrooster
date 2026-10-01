@@ -233,6 +233,29 @@ def test_backup_terugzetten(gemigreerd, client):
     assert any("voor-terugzetten" in b["naam"] for b in backup.lijst_backups())
 
 
+def test_backup_verwijderen(gemigreerd, client):
+    from app.models import Logboek
+
+    from .conftest import login, maak_gebruiker
+
+    instellingen.schrijf("setup_voltooid", "1")
+    db.session.commit()
+    maak_gebruiker("beheerder", "beheerder")
+    login(client, "beheerder")
+    client.post("/beheer/backups/maken")
+    naam = backup.lijst_backups()[0]["naam"]
+    assert "Verwijderen" in client.get("/beheer/backups").data.decode()
+    antwoord = client.post("/beheer/backups/verwijderen", data={"naam": naam}, follow_redirects=True)
+    assert f"Back-up {naam} is verwijderd" in antwoord.data.decode()
+    assert backup.lijst_backups() == []
+    assert Logboek.query.filter_by(actie="Back-up verwijderd").count() == 1
+    # Alleen eigen back-upnamen: nooit de database zelf of iets buiten de back-upmap
+    for onzin in ("../rooster.db", "rooster.db", naam):
+        antwoord = client.post("/beheer/backups/verwijderen", data={"naam": onzin}, follow_redirects=True)
+        assert "Onbekende back-up" in antwoord.data.decode()
+    assert os.path.exists(backup.database_pad())
+
+
 def test_ongeldige_backup_upload(gemigreerd, client):
     from .conftest import login, maak_gebruiker
 
