@@ -2,6 +2,65 @@
 
 ## [Onuitgebracht]
 
+## [1.5.0] – 2026-10-01
+
+### Toegevoegd
+- **Rooster exporteren naar MS Excel (.xlsx)**: knop *Exporteren (Excel)* op de weekpagina, de
+  jaarkalender en het urenoverzicht, en *Meer exportkeuzes…* (een jaar of een periode, eventueel
+  één medewerker). Per ISO-week een blad zoals het weekrooster, in de kleuren van de dienstcodes
+  en kleurregels, met de tweede dienst rechts (vanaf kolom AK); plus de bladen *Lijsten*,
+  *Urenoverzicht*, *Vakanties* en *Kalender*. Het bestand kan weer geïmporteerd worden.
+  Tekst die met `= + - @` begint blijft tekst (geen formule). Niet via de deellink.
+- **Importeren: jaar kiezen.** Na het uploaden kies je *Rooster voor jaar* (verplicht; voorstel
+  uit Kalender!E2 of de bestandsnaam, nooit stil het huidige jaar). Alleen dat jaar wordt gevuld;
+  afwijkingen van E2 of van de datums in de weekbladen worden gemeld, bladen van een ander jaar
+  overgeslagen. Zo kan het rooster van volgend jaar naast het huidige worden ingelezen.
+- **Importeren: kiezen wat overschreven wordt.** *Alles* (alleen de weken uit het bestand),
+  *gedeeltelijk* (medewerkers en/of een periode) of *alleen lege dagen aanvullen*. Per onderdeel
+  (contracturen, toeslagen, vakanties, nieuwe dienstcodes) *overnemen* of *niet overnemen*;
+  toeslagen standaard alleen voor het huidige jaar, bestaande dienstcodes nooit gewijzigd. De
+  droogloop toont per medewerker nieuw/vervangen/verwijderd/ongewijzigd en de dagopmerkingen die
+  veranderen; bevestigen kan alleen met de keuzes van het getoonde voorbeeld.
+
+### Opgelost (audit 1.4.4)
+- **Import wiste diensten in weken die niet in het bestand stonden** (H1). Nu alleen de weken
+  met een blad; de droogloop toont hoeveel bestaande diensten per medewerker verdwijnen.
+  Diensten met een Google-afspraak worden leeggemaakt tot de worker de afspraak heeft verwijderd.
+  Na de import alleen een agenda-sync voor de geraakte medewerkers.
+- **Dubbele Google-afspraken na een half mislukte sync** (H2): elke dienst krijgt een vaste
+  event-ID; bestaat die al bij Google, dan wordt de afspraak bijgewerkt.
+- **De worker kon een net opnieuw ingevulde dienst verwijderen** (M1): opruimen en het event-ID
+  wegschrijven gebeuren alleen als de dienst sinds het lezen niet gewijzigd is.
+- **Vrije dienstnaam van dienst 2 verdween via het coderaster** (`4/` → `5/`) (M2).
+- **Worker stopt netjes bij `docker stop`** (SIGTERM/SIGINT na de lopende ronde); `init: true`
+  in `docker-compose.yml` (M3).
+- **Na het terugzetten van een back-up** worden alle gekoppelde agenda's opnieuw
+  gesynchroniseerd (M4).
+- **Inlogvloed:** harde grens per IP-adres (40 fouten in 15 minuten) vóór de wachtwoordcontrole,
+  zonder nieuwe databaserijen; tijdens een IP-blokkade geen regel per poging in het logboek (M5).
+- **Deellink toont geen contracturen en weektotalen meer** (M6).
+- Kleinere punten (L1–L15, S1–S3): dezelfde controle van gebruikersnamen, initialen, codenummers
+  en lengtes in setup, `flask maak-beheerder`, Beheer en import; te grote getallen in een adres
+  of formulier geven geen serverfout meer (en `/api/…` antwoordt bij een fout altijd in JSON);
+  nooit meer een tweede dienst zonder eerste; ongeldige archiefdatum geeft een melding;
+  `sync_dag` buiten de sync-periode ruimt alleen op; begin = eind wordt geweigerd (overal duur 0);
+  opmerkingtijden op de telefoonkaart ook met alleen een eindtijd; zoeken meldt het afkappen op
+  5000; begrensde lijsten in `/api/cellen`; de laatste-beheerdercontrole binnen de
+  schrijftransactie; de nachtelijke back-up wordt herkend aan het bestand (ook na een herstart);
+  aanvullingen gaan mee bij het hernoemen van een dienstcode; herbereken-tip bij eigen
+  roostervrije dagen; de tijdzone uit Beheer is binnen 5 s in elk proces actief; de xlsx-import
+  is beschermd tegen zip-/XML-bommen; ICS escapet een losse `\r`; back-ups met eigen triggers of
+  views worden geweigerd.
+
+### Gewijzigd
+- **Logboek per wijziging** (oud → nieuw) ook bij week kopiëren, standaardtijden toepassen, de
+  import en het verwijderen van een medewerker.
+- `htmx` verwijderd (werd nergens gebruikt).
+- `feestdagen_in_periode()` schrijft niet meer in de database (geen verborgen commit).
+- Urenoverzicht zonder een query per medewerker; extra tests die eerder ongemerkte fouten vangen.
+- Bij `/3` (alleen een tweede dienst) bestaat dienst 1 voortaan als lege plaatshouder. In de API
+  blijft `dagen` op die plaats `null`.
+
 ## [1.4.4] – 2026-10-01
 
 ### Toegevoegd

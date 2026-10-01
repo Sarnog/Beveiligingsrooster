@@ -4,7 +4,7 @@ Vanaf versie 1.3.0 heeft het Beveiligingsrooster een kleine, stabiele **API om t
 
 - Adres: `https://<jouw-server>/api/v1/…`
 - Alleen **lezen** (`GET`). Wijzigen via de API kan in deze versie niet (`405`).
-- Antwoorden zijn altijd **JSON**, ook bij een fout: `{"fout": "uitleg"}`.
+- Antwoorden zijn altijd **JSON**, ook bij een fout: `{"fout": "uitleg"}` (sinds 1.5.0 ook bij een onverwachte serverfout, `500`).
 - Het versienummer staat in het pad. Een wijziging die bestaande apps breekt, komt in `/api/v2`; `/api/v1` blijft dan werken. Nieuwe velden kunnen wél worden toegevoegd, dus negeer velden die je niet kent.
 - Je ziet precies wat je in de website ziet (dezelfde rechten).
 - Antwoorden worden nooit bewaard door een browser of proxy (`Cache-Control: no-store`).
@@ -121,7 +121,7 @@ Het weekrooster (ISO-week), voor iedereen die ingelogd is, net als de pagina *We
 }
 ```
 
-`dagen` van een medewerker heeft altijd 7 plaatsen (maandag t/m zondag); `null` = geen dienst. `tweede_diensten` (sinds 1.4.0) heeft ook 7 plaatsen: de tweede dienst van die dag, of `null`. `weektotaal` telt beide diensten. Een week die niet bestaat (bijv. week 53 in een jaar met 52 weken) geeft `404`.
+`dagen` van een medewerker heeft altijd 7 plaatsen (maandag t/m zondag); `null` = geen dienst. `tweede_diensten` (sinds 1.4.0) heeft ook 7 plaatsen: de tweede dienst van die dag, of `null`. Heeft een dag alleen een tweede dienst, dan is `dagen` op die plaats `null` (sinds 1.5.0 staat er intern een lege eerste dienst; die telt niet als dienst). `weektotaal` telt beide diensten. Een week die niet bestaat (bijv. week 53 in een jaar met 52 weken) geeft `404`.
 
 ### `GET /api/v1/dienstcodes`
 
