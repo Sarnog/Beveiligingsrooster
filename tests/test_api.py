@@ -190,12 +190,14 @@ def test_rate_limit_op_foute_tokens(app, rooster):
     client = app.test_client()
     for _ in range(20):
         assert client.get("/api/v1/ik", headers=bearer("br_fout" + "x" * 30)).status_code == 401
-    # Nu geblokkeerd, ook met een goed token (vanaf dit IP)
-    antwoord = client.get("/api/v1/ik", headers=bearer(token))
+    # Nu worden onbekende tokens vanaf dit IP geweigerd (429); een geldig token werkt nog
+    fout = bearer("br_fout" + "y" * 30)
+    antwoord = client.get("/api/v1/ik", headers=fout)
     assert antwoord.status_code == 429 and antwoord.is_json
     assert Logboek.query.filter_by(actie="API geblokkeerd").count() == 1
-    client.get("/api/v1/ik", headers=bearer(token))
+    client.get("/api/v1/ik", headers=fout)
     assert Logboek.query.filter_by(actie="API geblokkeerd").count() == 1  # één keer loggen
+    assert client.get("/api/v1/ik", headers=bearer(token)).status_code == 200
 
 
 def test_schrijven_met_token_zonder_csrf_en_met_sessie_wel_csrf(app, rooster):

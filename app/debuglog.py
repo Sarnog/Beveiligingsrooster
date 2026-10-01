@@ -37,7 +37,10 @@ class MaskeerTokens(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         from .toegangslog import maskeer_tokens
 
-        bericht = record.getMessage()
+        try:
+            bericht = record.getMessage()
+        except Exception:  # verkeerde %-argumenten: laat logging zelf de fout melden
+            return True
         gemaskeerd = maskeer_tokens(bericht)
         if gemaskeerd != bericht:
             record.msg, record.args = gemaskeerd, None

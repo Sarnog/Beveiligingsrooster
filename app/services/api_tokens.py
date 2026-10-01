@@ -56,6 +56,12 @@ def is_geldig(record: ApiToken) -> bool:
             and hmac.compare_digest(record.sessie_sleutel, gebruiker.get_id()))
 
 
+def is_bekend(token: str) -> bool:
+    """Bestaat dit token (geldig of niet)? Zonder het als poging te tellen."""
+    return token.startswith(VOORVOEGSEL) and len(token) <= 100 and \
+        ApiToken.query.filter_by(token_hash=hash_token(token)).first() is not None
+
+
 def ip_geblokkeerd(ip: str) -> bool:
     grens = klok.utc_nu() - timedelta(minutes=BLOKKADE_MINUTEN)
     return LoginPoging.query.filter(
@@ -65,14 +71,22 @@ def ip_geblokkeerd(ip: str) -> bool:
 
 
 def gebruiker_bij_token(token: str, ip: str) -> Gebruiker | None:
-    """De gebruiker bij een geldig token, of None (fout token wordt geteld)."""
+    """De gebruiker bij een geldig token, of None.
+
+    Alleen een onbekend token telt als foute poging (raden). Een bekend maar verlopen of
+    ongeldig geworden token (bijv. na een wachtwoordwijziging) niet: een app die dat
+    blijft proberen, mag collega's op hetzelfde adres niet laten blokkeren.
+    """
     record = None
     if token.startswith(VOORVOEGSEL) and len(token) <= 100:
         record = ApiToken.query.filter_by(token_hash=hash_token(token)).first()
-    if record is None or not is_geldig(record):
-        log.debug("Ongeldig of verlopen API-token vanaf %s", ip)
+    if record is None:
+        log.debug("Onbekend API-token vanaf %s", ip)
         db.session.add(LoginPoging(gebruikersnaam=POGING_NAAM, ip=ip, gelukt=False))
         db.session.commit()
+        return None
+    if not is_geldig(record):
+        log.debug("Verlopen of ongeldig API-token (%s…) vanaf %s", record.prefix, ip)
         return None
     # 'Laatst gebruikt' hooguit eens per 5 minuten bijwerken (minder schrijven)
     nu = klok.utc_nu()

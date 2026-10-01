@@ -163,11 +163,14 @@ def _registreer_controles(app: Flask) -> None:
         g.token_bezig = True
         try:
             ip = _client_ip()
-            if api_tokens.ip_geblokkeerd(ip):
+            token = kop[len("Bearer "):].strip()
+            # Een geldig token werkt altijd (256 bits: niet te raden); alleen onbekende
+            # tokens worden na te veel pogingen vanaf dit adres geweigerd
+            if api_tokens.ip_geblokkeerd(ip) and not api_tokens.is_bekend(token):
                 g.api_geblokkeerd = True
                 _log_api_blokkade(ip)
                 return None
-            return api_tokens.gebruiker_bij_token(kop[len("Bearer "):].strip(), ip)
+            return api_tokens.gebruiker_bij_token(token, ip)
         finally:
             g.token_bezig = False
 

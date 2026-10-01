@@ -4,7 +4,7 @@ Alle drie openbaar: de browser haalt ze op zonder in te loggen (het manifest zel
 zonder cookies). Er staat geen roosterdata in.
 """
 
-from flask import Blueprint, current_app, jsonify, make_response, render_template, url_for
+from flask import Blueprint, jsonify, make_response, render_template, url_for
 
 from ..services import instellingen
 
@@ -63,8 +63,5 @@ def service_worker():
 @bp.route("/offline")
 def offline():
     """Getoond door de service worker als er geen verbinding is. Zonder persoonlijke gegevens."""
-    try:
-        teamnaam = instellingen.lees("teamnaam")
-    except Exception:
-        teamnaam = current_app.name
-    return render_template("pwa/offline.html", teamnaam=teamnaam)
+    # teamnaam komt uit de contextprocessor (met 'Beveiligingsrooster' als terugval)
+    return render_template("pwa/offline.html")

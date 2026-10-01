@@ -29,7 +29,7 @@ Een token werkt **niet meer** als:
 
 Het aanmaken en intrekken staat in het logboek. Een token werkt **alleen** voor `/api/v1/…`, niet voor de gewone pagina's.
 
-**Te veel foute tokens:** na 20 ongeldige tokens binnen 15 minuten vanaf hetzelfde IP-adres krijgt dat adres 15 minuten lang `429` (ook met een goed token). Dat staat één keer in het logboek ("API geblokkeerd").
+**Te veel foute tokens:** na 20 onbekende tokens binnen 15 minuten vanaf hetzelfde IP-adres krijgt dat adres 15 minuten lang `429` voor elk onbekend token. Dat staat één keer in het logboek ("API geblokkeerd"). Een geldig token blijft gewoon werken, en een verlopen token of een token dat ongeldig werd door een wachtwoordwijziging telt niet als poging (een app die het blijft proberen, blokkeert zo geen collega's). Foute tokens tellen ook niet mee voor de inlogblokkade van de website.
 
 **CSRF:** met een token is geen CSRF-token nodig (een browser stuurt een `Authorization`-header nooit vanzelf mee). Wie de API vanuit de website gebruikt (met de sessiecookie), moet voor elke niet-`GET`-aanvraag wél de header `X-CSRFToken` meesturen.
 

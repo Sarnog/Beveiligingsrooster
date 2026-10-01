@@ -36,6 +36,8 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   (*naam rechtsboven → API-token*). Een token verloopt, staat alleen als hash in de database
   en werkt niet meer na een wachtwoordwijziging. Zie `docs/api.md` en `docs/app.md`.
 - `flask terugzetten <back-up>`: een back-up terugzetten op de server, als de website niet werkt.
+  `flask backup --label` accepteert alleen kleine letters, cijfers en `-`, zodat zo'n back-up
+  later ook automatisch opgeruimd wordt.
 
 ### Opgelost
 - **Back-ups:** een mislukte nachtelijke back-up (bijvoorbeeld een volle schijf) liet een leeg
@@ -83,6 +85,8 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
 - **Weekrooster:** twee beheerders die exact tegelijk dezelfde dienst opslaan, kunnen elkaars
   wijziging niet meer ongemerkt overschrijven; de tweede krijgt een melding (409).
 - **Excel-import:** na de import worden de gekoppelde Google-agenda's automatisch bijgewerkt.
+  Lukt het plannen daarvan niet, dan blijft de import gewoon staan (met een regel in de log);
+  er komt geen onterechte melding "er is niets geïmporteerd".
 - De app-log zweeg na het terugzetten van een back-up (de databasemigratie zette de loggers uit).
 - Kleine reparaties:
   - een agenda-taak die tijdens een fout verdwijnt, of een onverwachte fout bij Google, legt de
@@ -160,8 +164,8 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   lange gebruikersnamen. De gebruikersnaam wordt nu op 64 tekens afgekapt, een blokkade komt
   maar één keer in het logboek, alle logboekvelden zijn begrensd en loginpogingen ouder dan een
   dag worden dagelijks opgeruimd.
-- Inloggen met een onbekende gebruikersnaam duurt even lang als met een bestaande (je kunt aan
-  de responstijd niet meer zien welke namen bestaan).
+- Inloggen met een onbekende gebruikersnaam of een gedeactiveerd account duurt even lang als met
+  een bestaande (je kunt aan de responstijd niet meer zien welke namen bestaan).
 - Via HTTPS (Secure-cookies aan) stuurt de app nu `Strict-Transport-Security` mee; zonder HTTPS
   niet, zodat je jezelf op een LAN-adres niet buitensluit. De Content-Security-Policy blokkeert
   nu ook plug-ins (`object-src 'none'`).

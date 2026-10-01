@@ -115,8 +115,7 @@ def week(jaar: int, week: int):
         return fout("Deze week bestaat niet.", 404)
     gegevens = week_gegevens(jaar, week)
     dagen = gegevens["dagen"]
-    diensten = {(d.medewerker_id, d.datum): d for d in Dienst.query.filter(
-        Dienst.datum >= dagen[0], Dienst.datum <= dagen[-1]).all()}
+    diensten = gegevens["diensten"]
     return jsonify({
         "jaar": jaar,
         "week": week,

@@ -446,9 +446,15 @@ def importeer(plan: ImportPlan) -> dict:
     except Exception:
         db.session.rollback()
         raise
-    # Gekoppelde agenda's gelijk maken aan het nieuwe rooster
+    # Gekoppelde agenda's gelijk maken aan het nieuwe rooster. De import zelf is al
+    # opgeslagen: een fout hier mag niet als 'import mislukt' gemeld worden.
     for medewerker in medewerkers:
-        sync_planning.plan_volledig(medewerker)
+        try:
+            sync_planning.plan_volledig(medewerker)
+        except Exception:
+            db.session.rollback()
+            log.exception("Agenda-synchronisatie na de import niet gepland voor %s; "
+                          "gebruik Beheer → Google Agenda → Volledig synchroniseren", medewerker.naam)
     log.info("Excel-import klaar: %s", resultaat)
     return resultaat
 

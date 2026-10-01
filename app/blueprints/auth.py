@@ -49,7 +49,8 @@ def _mislukte_pogingen(gebruikersnaam: str, ip: str) -> tuple[int, int]:
     per_gebruiker = basis.filter(
         LoginPoging.gebruikersnaam == gebruikersnaam, LoginPoging.ip == ip
     ).count()
-    per_ip = basis.filter(LoginPoging.ip == ip).count()
+    # Foute API-tokens tellen hier niet mee: die hebben een eigen blokkade (api_tokens.py)
+    per_ip = basis.filter(LoginPoging.ip == ip, LoginPoging.gebruikersnaam != "(api-token)").count()
     return per_gebruiker, per_ip
 
 
@@ -112,7 +113,8 @@ def login():
         if gebruiker is None:
             klopt = controleer_dummy(wachtwoord)  # zelfde rekentijd: niets verraden
         else:
-            klopt = gebruiker.actief and controleer_wachtwoord(gebruiker.wachtwoord_hash, wachtwoord)
+            # Eerst altijd het wachtwoord (zelfde rekentijd), dan pas 'actief'
+            klopt = controleer_wachtwoord(gebruiker.wachtwoord_hash, wachtwoord) and gebruiker.actief
         db.session.add(LoginPoging(gebruikersnaam=gebruikersnaam, ip=ip, gelukt=klopt))
 
         if not klopt:

@@ -97,10 +97,15 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
     diensten = Dienst.query.filter(Dienst.medewerker_id == medewerker.id,
                                    Dienst.datum >= van, Dienst.datum <= tot).all()
     eigen_diensten = {str(d.id) for d in diensten}
-    bestaande = {e["id"]: e for e in klant.eigen_afspraken(
-        medewerker.agenda_id, van, tot, medewerker_id=medewerker.id)}
+    # Eén keer alle afspraken van de app ophalen en hier splitsen (scheelt Google-quota)
+    bestaande = {}
     for e in klant.eigen_afspraken(medewerker.agenda_id, van, tot):
-        if not _privé(e).get("medewerker_id") and _privé(e).get("dienst_id") in eigen_diensten:
+        eigenaar = _privé(e).get("medewerker_id")
+        if eigenaar:
+            van_hem = eigenaar == str(medewerker.id)
+        else:  # oude afspraak zonder markering: herkennen aan de dienst
+            van_hem = _privé(e).get("dienst_id") in eigen_diensten
+        if van_hem:
             bestaande[e["id"]] = e
     per_dienst = {_privé(e).get("dienst_id"): e["id"] for e in bestaande.values()}
     gebruikt: set[str] = set()

@@ -11,6 +11,7 @@ Aanroepen in Docker, vanuit de map met docker-compose.yml. Gebruik altijd
 """
 
 import getpass
+import re
 import secrets
 
 import click
@@ -104,6 +105,9 @@ def registreer_commando_s(app: Flask) -> None:
         """Maak nu een back-up van de database (in <datamap>/backups)."""
         from .services import backup
 
+        if label and not re.fullmatch(r"[a-z0-9-]{1,40}", label):
+            raise click.ClickException("Het label mag alleen kleine letters, cijfers en '-' bevatten "
+                                       "(bijv. 'voor-update').")
         click.echo(f"Back-up gemaakt: {backup.maak_backup(label)}")
 
     @app.cli.command("terugzetten")

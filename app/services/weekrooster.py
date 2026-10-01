@@ -212,6 +212,7 @@ def week_gegevens(jaar: int, week: int) -> dict:
         "dagopmerkingen": dagopmerkingen(dagen),
         "feestdagen": feestdagen_in_periode(dagen[0], dagen[-1]),
         "rijen": rijen,
+        "diensten": per_sleutel,  # (medewerker_id, datum) -> Dienst, o.a. voor de API
     }
 
 
