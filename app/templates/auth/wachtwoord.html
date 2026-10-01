@@ -19,4 +19,7 @@
     <button class="knop primair" type="submit">Opslaan</button>
   </form>
 </section>
+{% if not current_user.moet_wachtwoord_wijzigen and heeft_route('account.tokens') %}
+<p class="kaart smal hulp">Een app koppelen? Maak een <a href="{{ url_for('account.tokens') }}">API-token</a> aan.</p>
+{% endif %}
 {% endblock %}

@@ -1,4 +1,4 @@
-# Handleiding voor collega's
+# Handleiding voor collega's (versie 1.3.0)
 
 Met het Beveiligingsrooster bekijk je je diensten, het weekrooster van het team en je uren. Je kunt niets wijzigen; dat doet de planner.
 
@@ -14,7 +14,7 @@ Wachtwoord vergeten? Vraag de planner om een reset. Na 5 verkeerde pogingen moet
 
 | Menu | Wat |
 |---|---|
-| **Mijn rooster** | je eigen diensten voor de komende 8 weken (alleen als je account aan jou als medewerker is gekoppeld) |
+| **Mijn rooster** | bovenaan je dienst van **vandaag** en je **volgende dienst**, daaronder per dag een kaart met je diensten voor de komende 8 weken (alleen als je account aan jou als medewerker is gekoppeld) |
 | **Kalender** | het hele jaar. Klik op een week of dag om het weekrooster te openen. Kleuren: oranje = vandaag, geel = feestdag, blauw = vakantie, groen = weekend |
 | **Weekrooster** | de hele week van het team, met dienst, tijden en uren per dag |
 | **Urenoverzicht** | de weektotalen van iedereen, per week |
@@ -29,11 +29,31 @@ Een tijd met een **rood gestippelde onderstreping** wijkt af van de standaardtij
 
 ## Op je telefoon
 
-De site werkt ook op je telefoon. Via het menu (☰) kies je *Mijn rooster*. Het weekrooster kun je opzij schuiven.
+De app is gemaakt voor de telefoon: je hoeft niet in te zoomen of opzij te schuiven.
+
+- **Menu:** tik op ☰ rechtsboven.
+- **Mijn rooster:** bovenaan *Vandaag* en *Volgende dienst*. Met de grote knop **📅 Toevoegen aan mijn agenda** zet je je diensten in de agenda van je telefoon (zie hieronder).
+- **Weekrooster:** kies bovenaan **Per dag** (één dag, het hele team) of **Per medewerker** (één collega, zeven dagen). Blader met ◀ ▶, kies uit de lijst, of veeg naar links en rechts. Bij *Per medewerker* begin je bij jezelf. Je keuze wordt onthouden.
+- Liever het gewone rooster (het "Excel-raster")? Tik op **Rasterweergave**; op een tablet ga je met **Telefoonweergave** weer terug.
+- Brede tabellen (zoals het urenoverzicht) kun je binnen de tabel opzij vegen; de eerste kolom blijft staan.
+- **Printen** vanaf je telefoon geeft gewoon het hele weekrooster, liggend op één A4.
+
+### Als app op je beginscherm
+
+Werkt de site via **https://**, dan kun je hem als app installeren. Hij opent dan zonder adresbalk, met een eigen icoon.
+
+- **Android (Chrome):** menu ⋮ → **App installeren** (of *Toevoegen aan startscherm*).
+- **iPhone (Safari):** deelknop (vierkantje met pijl) → **Zet op beginscherm**.
+
+Het rooster wordt niet op je telefoon bewaard: je ziet altijd de nieuwste versie. Zonder internet zie je de melding *Je bent offline*.
 
 ## Je diensten in je eigen agenda
 
-Dit wordt ingesteld door de planner. Kijk bij **Mijn rooster → In mijn agenda** wat er voor jou is ingesteld.
+Dit wordt ingesteld door de planner. Tik in **Mijn rooster** op **Toevoegen aan mijn agenda**: heeft de planner een abonnementslink voor je gemaakt, dan opent je agenda-app direct. Onder *Hoe werkt dat?* zie je wat er voor jou is ingesteld.
 
 - **Google Agenda**: je krijgt een uitnodiging voor een agenda "Rooster – jouw naam". Accepteer die, dan staan je diensten automatisch in je agenda. Wijzigingen verschijnen binnen ongeveer een minuut.
 - **Andere agenda's** (Outlook, Apple): de planner kan je een geheime abonnementslink (ICS) geven. Let op: Google ververst zo'n link maar een paar keer per dag.
+
+## Een app koppelen (API-token)
+
+Wil je je rooster in een andere app of een eigen script gebruiken (bijvoorbeeld Home Assistant)? Klik op je naam rechtsboven → **API-token**. Je krijgt een token dat je **één keer** ziet; kopieer het meteen. Het werkt niet meer na de verloopdatum, na *Intrekken*, of als je je wachtwoord wijzigt. Uitleg voor ontwikkelaars: [api.md](api.md).

@@ -4,8 +4,13 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 
 > **Privacy:** deze repository bevat geen namen, roosters of wachtwoorden. Alle roosterdata staat alleen op je eigen server, in de map `data/`.
 
-<!-- Screenshot: kalender (placeholder) -->
-<!-- Screenshot: weekrooster met code-raster (placeholder) -->
+<p>
+  <img src="docs/schermafbeeldingen/week-planner-1280x800.png" alt="Weekrooster met code-raster op de computer" width="560">
+  <img src="docs/schermafbeeldingen/week-per-dag-390x844.png" alt="Weekrooster per dag op de telefoon" width="150">
+  <img src="docs/schermafbeeldingen/mijn-rooster-390x844.png" alt="Mijn rooster op de telefoon" width="150">
+</p>
+
+Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs/schermafbeeldingen](docs/schermafbeeldingen).
 
 ---
 
@@ -20,9 +25,10 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 7. [Bijwerken](#bijwerken)
 8. [Back-ups en terugzetten](#back-ups-en-terugzetten)
 9. [Bereikbaarheid en HTTPS](#bereikbaarheid-en-https)
-10. [Debuglog](#debuglog)
-11. [Veelgestelde problemen](#veelgestelde-problemen)
-12. [Ontwikkelen](#ontwikkelen)
+10. [Telefoon, app en API](#telefoon-app-en-api)
+11. [Debuglog](#debuglog)
+12. [Veelgestelde problemen](#veelgestelde-problemen)
+13. [Ontwikkelen](#ontwikkelen)
 
 ---
 
@@ -38,6 +44,8 @@ Een eigen webapplicatie voor het jaarrooster en de urenregistratie van een bevei
 | **Kalender, urenoverzicht, zoeken, logboek, printen** | De overzichten uit het Excel-bestand | ✅ |
 | **Google Agenda en ICS-feed** | Diensten verschijnen automatisch in de agenda van de collega | ✅ |
 | **Excel-import en back-ups in de webinterface** | Het oude `.xlsm` inlezen (met droogloop en controle van de weektotalen); back-ups downloaden en terugzetten | ✅ |
+| **Telefoon en app** | Elke pagina werkt op de telefoon; *Mijn rooster* en het weekrooster zijn voor de telefoon gemaakt; de planner wijzigt een dienst met één tik. Te installeren als app (PWA) | ✅ |
+| **API voor een app** | `/api/v1` (alleen lezen) met persoonlijke API-tokens, zie [docs/api.md](docs/api.md) | ✅ |
 
 ## Hoe werkt het?
 
@@ -173,7 +181,7 @@ services:
 | `SECRET_KEY` | leeg | Leeg laten; wordt dan bewaard in `data/secret_key` |
 | `LOG_NIVEAU` | `INFO` | Wat er in `docker compose logs` komt: `DEBUG`, `INFO`, `WARNING` of `ERROR` |
 | `DEBUG_LOG` | `0` | `1` = debuglog aan, zie [Debuglog](#debuglog) |
-| `COOKIE_SECURE` | volgt `BASE_URL` | `1` = sessiecookie alleen via HTTPS, `0` = ook via HTTP. Standaard aan als `BASE_URL` met `https://` begint |
+| `COOKIE_SECURE` | volgt `BASE_URL` | `1` = sessiecookie alleen via HTTPS, `0` = ook via HTTP. Standaard aan als `BASE_URL` met `https://` begint. Als dit aan staat, stuurt de app ook `Strict-Transport-Security` mee (de browser gebruikt dan een jaar lang alleen HTTPS voor dit adres) |
 | `TZ` | `Europe/Amsterdam` | Standaardtijdzone. De instelling *Tijdzone* in Beheer → Instellingen gaat voor; die geldt voor de klok, de ICS-feed en Google Agenda |
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `2` / `4` | Aantal webserverprocessen en threads per proces. Ruim genoeg voor 10–15 collega's |
 | `DATABASE_URL` | SQLite in `./data` | Alleen voor ontwikkelaars. Back-ups, terugzetten en de feestdagenlogica werken alleen met SQLite; gebruik dit dus niet in productie |
@@ -318,6 +326,12 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 - **Zet `PROXY_VERTROUWEN=1` alleen als er écht een proxy voor staat.** Anders kan een bezoeker zelf een `X-Forwarded-For`-header meesturen en zo de blokkade omzeilen.
 - De geheime tokens van de ICS-feed en de deellink worden in de toegangslog vervangen door `***`.
 
+## Telefoon, app en API
+
+- **Telefoon:** elke pagina past op een telefoonscherm (getest op 360 t/m 412 px breed, liggend en tablet). *Mijn rooster* toont bovenaan *Vandaag* en *Volgende dienst* en een knop *Toevoegen aan mijn agenda*. Het weekrooster heeft op de telefoon een weergave **per dag** en **per medewerker**; de planner tikt op een dag om een dienst te wijzigen. Op de computer blijft alles zoals het was.
+- **Als app installeren (PWA):** alleen via **HTTPS** (zie hierboven). Android: *menu → App installeren*; iPhone: *deelknop → Zet op beginscherm*. De app bewaart alleen scripts, opmaak en iconen van de huidige versie, nooit roosterdata; na een update laadt hij vanzelf de nieuwe versie. Zonder verbinding verschijnt *Je bent offline*.
+- **API:** `/api/v1` geeft je eigen rooster, het weekrooster en de dienstcodes als JSON. Inloggen met een persoonlijk API-token (*naam rechtsboven → API-token*). Zie [docs/api.md](docs/api.md); voor een echte app in de App Store of Play Store: [docs/app.md](docs/app.md).
+
 ## Debuglog
 
 Bij een probleem dat je wilt uitzoeken (bijvoorbeeld de agenda-koppeling of een import):
@@ -354,7 +368,9 @@ Met `LOG_NIVEAU=DEBUG` komen dezelfde details ook in `docker compose logs`.
 | "Te veel mislukte pogingen" | Wacht 15 minuten, of reset het wachtwoord met het commando hierboven. Overkomt het het hele team tegelijk? Zie [Inlogblokkade en reverse proxy](#inlogblokkade-en-reverse-proxy). |
 | Tijden kloppen niet | Controleer *Beheer → Instellingen → Tijdzone* (bijv. `Europe/Amsterdam`). Leeg = `TZ` uit docker-compose. |
 | "Geen toegang tot /data/…" bij de start | Er is een commando zonder `-u rooster` uitgevoerd. Herstel met `docker compose run --rm -u root web chown -R 1000:1000 /data`. |
-| Na de update naar 1.3.0 moet iedereen opnieuw inloggen | Klopt: sessies zijn veiliger gemaakt. Eén keer opnieuw inloggen is genoeg. |
+| Na de update naar 1.3.0 moet iedereen opnieuw inloggen | Klopt: sessies zijn veiliger gemaakt. Eén keer opnieuw inloggen is genoeg. Gebruik je Google Agenda, klik dan in *Beheer → Google Agenda* per medewerker één keer op *Volledig synchroniseren*. |
+| "App installeren" verschijnt niet op de telefoon | De app moet via `https://` bereikbaar zijn (zie *Bereikbaarheid en HTTPS*). Via `http://<ip>:8000` werkt de website wel, maar is hij niet als app te installeren. |
+| Ik zie na een update nog de oude versie | Ververs de pagina één keer. Zie je de melding "Verouderde versie geladen" in het weekrooster, dan ook. De service worker bewaart nooit pagina's, alleen bestanden met het versienummer. |
 
 ## Ontwikkelen
 
@@ -371,18 +387,39 @@ ruff check .                            # lint
 flask --app wsgi:app db check           # klopt het datamodel met de migraties?
 ```
 
+**Browsertests (Playwright).** `tests/test_mobiel*.py` openen elke pagina in een echte Chromium op telefoon-, tablet- en computerformaat (geen horizontaal scrollen, niets buiten beeld, invoervelden 16 px, tikdoelen 44 px, menu), testen de mobiele bewerkflow, printen en de service worker. Zonder Chromium worden ze overgeslagen. Eén keer installeren en draaien:
+
+```sh
+python -m playwright install chromium   # eenmalig (of PLAYWRIGHT_CHROMIUM=/pad/naar/chrome)
+pytest -q -m browser                    # alleen de browsertests
+BROWSERTESTS=verplicht pytest -q -m browser   # falen in plaats van overslaan zonder Chromium
+SCHERMAFBEELDINGEN=docs/schermafbeeldingen pytest -q tests/test_schermafbeeldingen.py
+```
+
+In CI draaien ze in de job `browsertests`; de schermafbeeldingen staan daar als artefact.
+
+**Rooktest van de Docker-image.** Bouwt de image en start web en worker op een lege datamap (health, setup-code, entrypoint, back-up, terugzetten). Draait in CI in de job `docker-rooktest`; lokaal:
+
+```sh
+docker build -t beveiligingsrooster:rooktest .
+sh scripts/docker-rooktest.sh beveiligingsrooster:rooktest
+```
+
+**App-iconen** maak je opnieuw uit `app/static/favicon.svg` met `python scripts/maak-iconen.py`.
+
 Structuur:
 
 ```
 app/                 Flask-app
-  blueprints/        routes: auth, setup, beheer, rooster, kalender, overzicht, zoeken, deel
+  blueprints/        routes: auth, account, setup, beheer, rooster, kalender, overzicht, zoeken, deel,
+                     pwa (manifest, service worker), api_v1
   services/          logica: urenberekening, kalender (ISO-weken/Pasen/feestdagen), ...
   templates/ static/ HTML, CSS, JavaScript (HTMX lokaal meegeleverd, geen CDN)
   models.py          datamodel (SQLAlchemy)
 migrations/          databasemigraties (Alembic via Flask-Migrate)
 docker/              entrypoint en Gunicorn-configuratie
 tests/               pytest (alle testdata is fictief)
-scripts/             proxmox-maak-lxc.sh
+scripts/             proxmox-maak-lxc.sh, docker-rooktest.sh, maak-iconen.py
 docs/                handleidingen (planner, collega, Proxmox)
 ```
 
@@ -403,6 +440,8 @@ pip-compile --strip-extras --output-file requirements.lock requirements.txt
 - [Handleiding voor collega's](docs/handleiding-collega.md): inloggen, rooster bekijken, printen, agenda.
 - [Google Agenda koppelen](docs/google-agenda.md): service-account, modus A/B, ICS-feed.
 - [Installatie op Proxmox](docs/proxmox-lxc.md): LXC aanmaken, Docker, HTTPS.
+- [API](docs/api.md): `/api/v1` met API-tokens, met voorbeelden (curl) en [openapi.yaml](docs/openapi.yaml).
+- [Een echte app bouwen](docs/app.md): wat er klaarstaat (PWA, API) en hoe verder (Capacitor, Trusted Web Activity).
 
 ## Licentie
 

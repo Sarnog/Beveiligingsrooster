@@ -1,0 +1,160 @@
+# Beschrijving van de API (met de hand bijgehouden, zie docs/api.md voor uitleg en voorbeelden).
+openapi: 3.1.0
+info:
+  title: Beveiligingsrooster API
+  version: "1"
+  description: Alleen-lezen API voor een app. Inloggen met een persoonlijk API-token.
+servers:
+  - url: /api/v1
+security:
+  - token: []
+components:
+  securitySchemes:
+    token:
+      type: http
+      scheme: bearer
+      description: Persoonlijk API-token (br_...), aan te maken onder Account → API-tokens.
+  schemas:
+    Fout:
+      type: object
+      required: [fout]
+      properties:
+        fout: {type: string}
+    Medewerker:
+      type: [object, "null"]
+      properties:
+        id: {type: integer}
+        naam: {type: string}
+        initialen: {type: string}
+    Dienst:
+      type: [object, "null"]
+      properties:
+        datum: {type: string, format: date}
+        code: {type: [integer, "null"]}
+        dienstnaam: {type: string}
+        begin: {type: [string, "null"], example: "07:15"}
+        eind: {type: [string, "null"], example: "15:45"}
+        uren: {type: [number, "null"]}
+        opmerking: {type: string}
+        opmerking_begin: {type: [string, "null"]}
+        opmerking_eind: {type: [string, "null"]}
+        kleur_achtergrond: {type: [string, "null"]}
+        kleur_tekst: {type: [string, "null"]}
+  responses:
+    Fout:
+      description: Fout (JSON met uitleg)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Fout"}
+paths:
+  /ik:
+    get:
+      summary: Ingelogde gebruiker, gekoppelde medewerker en rol
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_versie: {type: integer, const: 1}
+                  app_versie: {type: string}
+                  gebruiker:
+                    type: object
+                    properties:
+                      id: {type: integer}
+                      gebruikersnaam: {type: string}
+                      weergavenaam: {type: string}
+                      rol: {type: string, enum: [beheerder, gebruiker]}
+                  medewerker: {$ref: "#/components/schemas/Medewerker"}
+        "401": {$ref: "#/components/responses/Fout"}
+        "429": {$ref: "#/components/responses/Fout"}
+  /mijn-rooster:
+    get:
+      summary: Eigen diensten (standaard vandaag t/m 8 weken)
+      parameters:
+        - {name: van, in: query, schema: {type: string, format: date}}
+        - {name: tot, in: query, schema: {type: string, format: date}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  medewerker: {$ref: "#/components/schemas/Medewerker"}
+                  van: {type: string, format: date}
+                  tot: {type: string, format: date}
+                  diensten:
+                    type: array
+                    items: {$ref: "#/components/schemas/Dienst"}
+        "400": {$ref: "#/components/responses/Fout"}
+        "401": {$ref: "#/components/responses/Fout"}
+        "404": {$ref: "#/components/responses/Fout"}
+  /week/{jaar}/{week}:
+    get:
+      summary: Weekrooster (ISO-week), zelfde rechten als de webpagina
+      parameters:
+        - {name: jaar, in: path, required: true, schema: {type: integer}}
+        - {name: week, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 53}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jaar: {type: integer}
+                  week: {type: integer}
+                  dagen:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        datum: {type: string, format: date}
+                        dagopmerking: {type: string}
+                        feestdag: {type: [string, "null"]}
+                  medewerkers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: integer}
+                        naam: {type: string}
+                        initialen: {type: string}
+                        contracturen: {type: [number, "null"]}
+                        weektotaal: {type: number}
+                        dagen:
+                          type: array
+                          minItems: 7
+                          maxItems: 7
+                          items: {$ref: "#/components/schemas/Dienst"}
+        "401": {$ref: "#/components/responses/Fout"}
+        "404": {$ref: "#/components/responses/Fout"}
+  /dienstcodes:
+    get:
+      summary: Actieve dienstcodes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dienstcodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nummer: {type: integer}
+                        omschrijving: {type: string}
+                        std_begin: {type: [string, "null"]}
+                        std_eind: {type: [string, "null"]}
+                        std_uren: {type: [number, "null"]}
+                        kleur_achtergrond: {type: string}
+                        kleur_tekst: {type: string}
+        "401": {$ref: "#/components/responses/Fout"}

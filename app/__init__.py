@@ -30,7 +30,13 @@ GEBRUIKER_MAG_SCHRIJVEN = {
     "auth.login",
     "auth.uitloggen",
     "auth.wachtwoord_wijzigen",
+    "account.tokens",
+    "account.token_intrekken",
 }
+
+# API voor een app (alleen hier werken API-tokens; zie app/blueprints/api_v1.py)
+API_PAD = "/api/v1/"
+VEILIGE_METHODEN = ("GET", "HEAD", "OPTIONS")
 
 
 def create_app(config: Config | None = None) -> Flask:
@@ -103,7 +109,9 @@ def rechten_melding(pad: str) -> str:
 
 def _registreer_blueprints(app: Flask) -> None:
     from .blueprints import (
+        account,
         algemeen,
+        api_v1,
         auth,
         beheer,
         deel,
@@ -117,8 +125,10 @@ def _registreer_blueprints(app: Flask) -> None:
     )
 
     for module in (algemeen, auth, setup, beheer, kalender, rooster, overzicht, zoeken, deel, ics,
-                   pwa):
+                   pwa, account, api_v1):
         app.register_blueprint(module.bp)
+    # De API controleert CSRF zelf: wel bij een sessie, niet bij een API-token (zie controleer_toegang)
+    csrf.exempt(api_v1.bp)
 
 
 def _registreer_controles(app: Flask) -> None:
@@ -140,9 +150,38 @@ def _registreer_controles(app: Flask) -> None:
             return None
         return gebruiker
 
+    @login_manager.request_loader
+    def laad_via_token(verzoek):
+        """Inloggen met 'Authorization: Bearer <token>', alleen voor de API (nooit op pagina's)."""
+        from .blueprints.auth import _client_ip
+        from .services import api_tokens
+
+        kop = verzoek.headers.get("Authorization", "")
+        if not verzoek.path.startswith(API_PAD) or not kop.startswith("Bearer ") \
+                or g.get("token_bezig"):  # het logboek vraagt zelf de gebruiker op: niet opnieuw
+            return None
+        g.token_bezig = True
+        try:
+            ip = _client_ip()
+            if api_tokens.ip_geblokkeerd(ip):
+                g.api_geblokkeerd = True
+                _log_api_blokkade(ip)
+                return None
+            return api_tokens.gebruiker_bij_token(kop[len("Bearer "):].strip(), ip)
+        finally:
+            g.token_bezig = False
+
     @app.before_request
     def controleer_toegang():
         endpoint = request.endpoint or ""
+
+        # 0. API: eigen controles (JSON, tokens). CSRF alleen bij een sessie: een
+        #    Authorization-header stuurt een browser nooit vanzelf mee naar een andere site.
+        if request.path.startswith(API_PAD) and instellingen.setup_voltooid():
+            if request.method not in VEILIGE_METHODEN and app.config.get("WTF_CSRF_ENABLED", True) \
+                    and not request.headers.get("Authorization", "").startswith("Bearer "):
+                csrf.protect()
+            return None
 
         # 1. Setup nog niet afgerond: alles naar de setup-wizard
         if not instellingen.setup_voltooid():
@@ -191,7 +230,7 @@ def _registreer_controles(app: Flask) -> None:
 
     @login_manager.unauthorized_handler
     def niet_ingelogd():
-        if request.method != "GET" or request.headers.get("HX-Request"):
+        if request.method != "GET" or request.headers.get("HX-Request") or request.path.startswith(API_PAD):
             abort(401)
         return redirect(url_for("auth.login", volgende=request.full_path))
 
@@ -227,17 +266,47 @@ def _registreer_controles(app: Flask) -> None:
             response.headers["Cache-Control"] = "no-store"
         return response
 
+    def api_fout(code: int, melding: str):
+        from flask import jsonify
+
+        return jsonify(fout=melding), code
+
+    @app.errorhandler(400)
+    def ongeldig(fout):
+        if request.path.startswith(API_PAD):
+            return api_fout(400, fout.description or "Ongeldig verzoek.")
+        return fout
+
+    @app.errorhandler(401)
+    def niet_ingelogd_fout(fout):
+        if request.path.startswith(API_PAD):
+            antwoord = api_fout(401, "Niet ingelogd: stuur een geldig API-token mee "
+                                     "(Authorization: Bearer ...).")
+            antwoord[0].headers["WWW-Authenticate"] = 'Bearer realm="api"'
+            return antwoord
+        return fout
+
     @app.errorhandler(403)
     def verboden(_fout):
         from flask import render_template
 
+        if request.path.startswith(API_PAD):
+            return api_fout(403, "Je hebt hier geen rechten voor.")
         return render_template("fout.html", code=403, melding="Je hebt hier geen rechten voor."), 403
 
     @app.errorhandler(404)
     def niet_gevonden(_fout):
         from flask import render_template
 
+        if request.path.startswith(API_PAD):
+            return api_fout(404, "Niet gevonden.")
         return render_template("fout.html", code=404, melding="Pagina niet gevonden."), 404
+
+    @app.errorhandler(405)
+    def niet_toegestaan(fout):
+        if request.path.startswith(API_PAD):
+            return api_fout(405, "Deze API is alleen-lezen (GET).")
+        return fout
 
 
 def _registreer_template_helpers(app: Flask) -> None:
@@ -268,3 +337,17 @@ def _registreer_template_helpers(app: Flask) -> None:
             # Bestaat deze route? (zo verschijnen menu-items pas als de functie er is)
             "heeft_route": lambda endpoint: endpoint in app.view_functions,
         }
+
+
+def _log_api_blokkade(ip: str) -> None:
+    """Eén logboekregel per blokkade van foute API-tokens (niet bij elk verzoek)."""
+    from datetime import timedelta
+
+    from .models import Logboek
+    from .services import api_tokens, klok, logboek
+
+    grens = klok.nu() - timedelta(minutes=api_tokens.BLOKKADE_MINUTEN)
+    if Logboek.query.filter(Logboek.actie == "API geblokkeerd", Logboek.details == f"IP {ip}",
+                            Logboek.tijdstempel >= grens).first() is None:
+        logboek.log("API geblokkeerd", f"IP {ip}", gebruiker="", rol="")
+        db.session.commit()

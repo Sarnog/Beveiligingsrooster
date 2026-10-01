@@ -15,6 +15,28 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
 3. Gebruik je Google Agenda? Klik daarna in *Beheer → Google Agenda* per medewerker één keer
    op *Volledig synchroniseren*.
 
+### Nieuw
+- **Op de telefoon:** elke pagina past nu op een telefoonscherm, zonder inzoomen of opzij
+  schuiven. Het menu klapt in (☰), knoppen zijn groot genoeg om op te tikken en brede tabellen
+  schuiven binnen de tabel (met een hint), met een vaste eerste kolom. Op de computer blijft
+  alles hetzelfde.
+- **Mijn rooster** is vernieuwd: bovenaan *Vandaag* en *Volgende dienst*, per dag een
+  duidelijke kaart, en een grote knop *Toevoegen aan mijn agenda*.
+- **Weekrooster op de telefoon:** per dag (het hele team) of per medewerker (zeven dagen),
+  bladeren met knoppen of door te vegen. Een knop wisselt tussen deze weergave en het gewone
+  raster; de keuze wordt onthouden.
+- **De planner kan op de telefoon een dienst wijzigen:** tik op een dag, kies de dienst, pas
+  eventueel tijden, opmerking of uren aan en tik op *Opslaan*. Je ziet vooraf hoeveel uren het
+  worden. Een gelijktijdige wijziging door een andere planner wordt nooit overschreven.
+- **Installeren als app** op het beginscherm van Android en iPhone (via HTTPS). De app bewaart
+  geen roosterdata en laadt na een update altijd de nieuwe versie; zonder verbinding zie je
+  *Je bent offline*.
+- **API voor een app:** `/api/v1` (alleen lezen) met je eigen rooster, het weekrooster en de
+  dienstcodes. Inloggen met een persoonlijk **API-token** dat je zelf maakt en intrekt
+  (*naam rechtsboven → API-token*). Een token verloopt, staat alleen als hash in de database
+  en werkt niet meer na een wachtwoordwijziging. Zie `docs/api.md` en `docs/app.md`.
+- `flask terugzetten <back-up>`: een back-up terugzetten op de server, als de website niet werkt.
+
 ### Opgelost
 - **Back-ups:** een mislukte nachtelijke back-up (bijvoorbeeld een volle schijf) liet een leeg
   bestand achter en werd elke 5 seconden opnieuw geprobeerd. Bij de eerstvolgende geslaagde
@@ -82,6 +104,10 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   - `BASE_URL` wordt nu echt gebruikt voor de ICS-links en de deellink.
 - Een handmatige back-up die mislukt (bijv. volle schijf) geeft een melding in plaats van een
   foutpagina.
+- **Printen:** met 15 medewerkers kwam de week op twee pagina's; nu altijd op één A4 liggend.
+  De weektotalen worden niet meer afgekapt.
+- Het weekrooster laadt sneller: contracturen en dienstcodes worden in één keer opgehaald in
+  plaats van per medewerker (gemeten: ongeveer 25 ms met 15 medewerkers en een vol jaar).
 
 ### Gewijzigd
 - **Uitbrengen:** alleen een push naar `main` maakt nog een versie-tag, een GitHub-release en
@@ -109,8 +135,12 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
 - README aangevuld: inlogblokkade en reverse proxy, `COOKIE_SECURE`, `TZ`, `GUNICORN_*`,
   `DATABASE_URL`, bewaartermijn van back-ups en terug naar de vorige versie na een mislukte
   update.
-- Databaseversie 0004 (gaat automatisch bij de start): sessieversie per gebruiker, unieke
-  standaard feestdagen per jaar, wachttijden in UTC.
+- Databaseversies 0004 en 0005 (gaan automatisch bij de start): sessieversie per gebruiker,
+  unieke standaard feestdagen per jaar, wachttijden in UTC, en een tabel voor API-tokens.
+- Elke versie wordt nu vóór het uitbrengen automatisch getest: de Docker-image wordt gebouwd en
+  gestart op een lege datamap (inclusief back-up en terugzetten), het bijwerken vanaf 1.1.2 wordt
+  getest met voorbeelddata, en alle pagina's worden in een echte browser op telefoon-, tablet-
+  en computerformaat gecontroleerd.
 
 ### Beveiliging
 - **Sessies:** na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of
@@ -132,6 +162,9 @@ belangrijke reparaties. Na deze update moet iedereen één keer opnieuw inloggen
   dag worden dagelijks opgeruimd.
 - Inloggen met een onbekende gebruikersnaam duurt even lang als met een bestaande (je kunt aan
   de responstijd niet meer zien welke namen bestaan).
+- Via HTTPS (Secure-cookies aan) stuurt de app nu `Strict-Transport-Security` mee; zonder HTTPS
+  niet, zodat je jezelf op een LAN-adres niet buitensluit. De Content-Security-Policy blokkeert
+  nu ook plug-ins (`object-src 'none'`).
 
 ## [1.1.2] – 2026-10-01
 

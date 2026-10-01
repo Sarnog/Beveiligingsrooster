@@ -330,3 +330,30 @@ class SyncTaak(db.Model):
     aangemaakt_op = db.Column(db.DateTime, nullable=False, default=nu)
     # Extra gegevens, bijvoorbeeld een event-id dat verwijderd moet worden
     extra = db.Column(db.Text, nullable=False, default="")
+
+
+class ApiToken(db.Model):
+    """Persoonlijk API-token voor een app (Account → API-tokens).
+
+    Alleen de SHA-256-hash wordt bewaard; het token zelf ziet de gebruiker één keer.
+    sessie_sleutel is Gebruiker.get_id() op het moment van aanmaken: na wachtwoord
+    wijzigen of resetten, deactiveren, een rolwijziging of het terugzetten van een
+    back-up klopt die niet meer en is het token ongeldig (net als een sessie).
+    Tijden in UTC.
+    """
+
+    __tablename__ = "api_token"
+
+    id = db.Column(db.Integer, primary_key=True)
+    gebruiker_id = db.Column(
+        db.Integer, db.ForeignKey("gebruiker.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    naam = db.Column(db.String(60), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    prefix = db.Column(db.String(12), nullable=False)  # begin van het token, om het te herkennen
+    sessie_sleutel = db.Column(db.String(120), nullable=False)
+    aangemaakt_op = db.Column(db.DateTime, nullable=False, default=klok.utc_nu)
+    verloopt_op = db.Column(db.DateTime, nullable=False)
+    laatst_gebruikt = db.Column(db.DateTime, nullable=True)
+
+    gebruiker = db.relationship("Gebruiker")
