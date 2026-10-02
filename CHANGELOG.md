@@ -2,6 +2,21 @@
 
 ## [Onuitgebracht]
 
+## [1.8.2] – 2026-10-02
+
+### Opgelost
+- **Tweede dienst telde dubbel met de opmerkingtijden.** Stond bij dienst 1 een opmerking met
+  tijden (bijv. *Soc. Veiligh. OB 13:00–17:00*, zoals uit de import) en werd dat een echte tweede
+  dienst (bijv. `13/20` in het code-raster), dan telde dat tijdvak twee keer als *Opmerkingtijden
+  meetellen* aan stond: bij dienst 1 én als dienst 2. Opmerkingtijden die samenvallen met dienst 2
+  tellen nu niet meer mee; dat tijdvak telt alleen bij dienst 2. Geldt overal: rooster,
+  herberekenen, import, roosterpatronen, week kopiëren en de formules van de Excel-export. Wijzigt
+  of verdwijnt dienst 2, dan rekent dienst 1 direct opnieuw.
+- **Bestaande dagen eenmalig nagekeken.** Na de update kijkt de worker één keer alle dagen met een
+  tweede dienst na: dubbel getelde opmerkingtijden vervallen, en zelf ingevulde uren bij dienst 1
+  die precies het dagtotaal zijn (dienst 1 + dienst 2, of dienst 1 + de opmerkingtijden van dienst 2)
+  ook. Andere eigen uren blijven staan. Elke correctie staat in het logboek (*Uren gecorrigeerd*).
+
 ## [1.8.1] – 2026-10-02
 
 ### Opgelost

@@ -224,6 +224,25 @@ def test_tijd_of_code_wijzigen_in_excel_rekent_opnieuw(app, als_beheerder, roost
     assert w["W10!AN6"] == "VW Avond"  # eigen eindtijd 22:30: naam en tijden blijven waarden
 
 
+def test_opmerkingtijden_die_samenvallen_met_dienst2_tellen_niet_dubbel(app, als_beheerder, rooster):
+    """1.8.2: zoals in de app tellen opmerkingtijden van dienst 1 niet mee als ze samenvallen met
+    dienst 2 (bijv. 'Soc. Veiligh. OB 13:00-17:00' die een echte tweede dienst is geworden)."""
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    a = rooster["a"]
+    dinsdag = MAANDAG + timedelta(days=1)  # 17/3: BHV 08:30-12:30 (4) en VW Avond 14:30-22:30
+    _, fouten = wijzig_cellen([Wijziging(a, dinsdag, "opm_begin", "15:00"),
+                               Wijziging(a, dinsdag, "opm_eind", "17:00")])
+    assert fouten == []
+    db.session.commit()
+    assert {d.volgnummer: d.uren_berekend for d in Dienst.query.filter_by(medewerker_id=a, datum=dinsdag)} \
+        == {1: 4.0, 2: 7.5}
+    _, w = _week10(als_beheerder)
+    assert (w["W10!I7"], w["W10!AP7"]) == (4.0, 7.5)  # Excel rekent hetzelfde als de app
+    # Opmerkingtijden buiten dienst 2 tellen wel mee (06:00-08:00 = 2 uur)
+    _, w = _week10(als_beheerder, G5=time(6, 0), H5=time(8, 0))
+    assert w["W10!I7"] == 6.0
+
+
 def test_urenoverzicht_en_vakanties(app, als_beheerder, rooster):
     antwoord, boek = _download(als_beheerder, soort="jaar", jaar=2026)
     overzicht = boek["Urenoverzicht"]

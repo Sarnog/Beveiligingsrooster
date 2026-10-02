@@ -3,6 +3,7 @@
 Gekozen voor een eigen lus in plaats van APScheduler: geen extra afhankelijkheid
 en makkelijk te volgen. Elke ronde (elke paar seconden):
 - de Google Agenda-wachtrij verwerken;
+- eenmalig (na de update naar 1.8.2): dagen met een tweede dienst nakijken op dubbel getelde uren;
 - één keer per dag: logboek, oude loginpogingen en achtergebleven importbestanden opruimen;
 - één keer per nacht (na 02:00): een back-up maken en oude back-ups opruimen.
 
@@ -44,6 +45,19 @@ def _stap_sync() -> None:
     from .services import sync
 
     sync.verwerk_wachtrij()
+
+
+def _stap_herstel_tweede_dienst() -> None:
+    from .services.rooster import herstel_tweede_diensten, markeer_bijgewerkt
+
+    aantal = herstel_tweede_diensten()
+    logboek.log("Rooster nagekeken", f"Dagen met een tweede dienst: {aantal} gecorrigeerd "
+                "(dubbel getelde uren)", gebruiker="systeem")
+    if aantal:
+        markeer_bijgewerkt()
+    instellingen.schrijf("herstel_tweede_dienst", "1")
+    db.session.commit()
+    log.info("Tweede diensten nagekeken: %s dagen gecorrigeerd", aantal)
 
 
 def _stap_opschonen(nu: datetime) -> None:
@@ -104,6 +118,14 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
 
     if not instellingen.setup_voltooid():
         return
+
+    # Eenmalig na de update naar 1.8.2: dubbel getelde uren bij een tweede dienst corrigeren
+    if instellingen.lees("herstel_tweede_dienst") != "1":
+        try:
+            _stap_herstel_tweede_dienst()
+        except Exception:  # volgende ronde opnieuw
+            log.exception("Fout bij het nakijken van de tweede diensten")
+            db.session.rollback()
 
     # 2. Dagelijks opschonen (bij een fout: morgen opnieuw)
     if planning.opschonen_gedaan != nu.date():

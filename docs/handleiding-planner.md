@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.8.1)
+# Handleiding voor de planner (beheerder, versie 1.8.2)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 
@@ -104,6 +104,8 @@ Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op 
 - De uren worden opnieuw berekend.
 - Begin- en eindtijd mogen niet gelijk zijn (dat zou een dienst van 0 minuten zijn); je krijgt dan een melding. Een nachtdienst typ je gewoon met een eindtijd vóór de begintijd (22:00–06:30).
 - Stonden er bij dienst 1 **zelf ingevulde uren** (bijvoorbeeld uit het oude Excel: dienst plus een training op de opmerkingregel, samen getypt als dagtotaal) en komt er een tweede dienst bij, dan vervallen die zelf ingevulde uren (sinds 1.6.0). Zo telt elke dienst zijn eigen uren en telt het tweede deel niet dubbel in het weektotaal. In het logboek staat de oude waarde. Dagen die nog uit een eerdere versie zo zijn blijven staan, vind je in *Beheer → Statistieken* onder *Mogelijk dubbel geteld*.
+- Staan bij dienst 1 **opmerkingtijden** (bijvoorbeeld *Soc. Veiligh. OB 13:00–17:00*, zoals uit de import) en is *Opmerkingtijden meetellen* aan, dan tellen die tijden **niet** mee zodra ze samenvallen met de tweede dienst (sinds 1.8.2). Dat tijdvak telt dan alleen bij dienst 2. Opmerkingtijden op een ander moment van de dag tellen gewoon mee. De Excel-export rekent hetzelfde.
+- Na de update naar 1.8.2 kijkt de app **één keer** alle dagen met een tweede dienst na en corrigeert dubbel getelde uren. Elke correctie staat in het logboek als *Uren gecorrigeerd* (met de oude en de nieuwe uren), plus één regel *Rooster nagekeken* met het aantal.
 - Een handmatige tijd herken je aan de tip *Handmatig aangepast* als je er met de muis op staat. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
 
 ### Vrije dienst en eigen uren
