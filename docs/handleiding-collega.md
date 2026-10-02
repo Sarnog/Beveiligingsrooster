@@ -24,6 +24,13 @@ Wijkt een tijd af van de standaardtijd van die dienst, dan zie je dat als je er 
 
 Heb je op een dag **twee diensten**, dan staan ze in het weekrooster **onder elkaar** in je blok: de eerste bovenaan, de tweede onderaan (elk met eigen dienstnaam, tijden en uren). Een opmerking van die dag staat dan achter de naam van de eerste dienst. In *Mijn rooster* staan ze als twee regels; de tweede heeft *(2e dienst)* achter de datum. In je agenda (ICS of Google Agenda) worden het twee afspraken.
 
+### Licht of donker
+
+Rechtsboven, vóór je naam, staat een schakelaar met een ☀️ zon en een 🌙 maan. Klik erop om te
+wisselen tussen het lichte en het donkere thema. Je keuze wordt bij je account bewaard: na opnieuw
+inloggen (ook op een ander apparaat) staat hij nog hetzelfde. Heb je nog niets gekozen, dan volgt de
+app de instelling van je apparaat. Op de telefoon zit de schakelaar in het menu (☰).
+
 ## Printen en exporteren
 
 - **Printen**: klik in het weekrooster op **Printen**. De week komt liggend op één A4, opgemaakt als het papieren rooster (per medewerker een blok, de uren in de grijze kolom naast elke dag, rechts het weektotaal). Staan de kleuren er niet op, zet dan in het printvenster "Achtergrondafbeeldingen afdrukken" aan.

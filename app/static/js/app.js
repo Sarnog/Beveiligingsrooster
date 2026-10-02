@@ -3,6 +3,7 @@
    - CSRF-token meesturen met HTMX- en fetch-verzoeken
    - bevestigingsvragen bij formulieren (data-bevestig)
    - menu openklappen op de telefoon
+   - schakelaar licht/donker thema
    - live voorbeeld van dienstcode-kleuren
    - initialen-voorstel bij medewerkers
    ========================================================== */
@@ -33,6 +34,24 @@
       setTimeout(function () { knop.disabled = true; }, 0);  // na het versturen
       knop.textContent = "Bezig…";
     }
+  });
+
+  // ---------- Schakelaar licht/donker ----------
+  // Het thema wordt bij de gebruiker opgeslagen (server). Zonder eigen keuze volgt de app
+  // het apparaat; daarom hier bepalen wat nu zichtbaar is en het tegenovergestelde opsturen.
+  function huidigThema() {
+    var gekozen = document.documentElement.getAttribute("data-thema");
+    if (gekozen) return gekozen;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "donker" : "licht";
+  }
+  document.addEventListener("submit", function (e) {
+    if (!e.target.hasAttribute("data-thema-wissel")) return;
+    var veld = e.target.querySelector('input[name="thema"]');
+    if (veld) veld.value = huidigThema() === "donker" ? "licht" : "donker";
+  }, true);
+  document.addEventListener("DOMContentLoaded", function () {
+    var knop = document.querySelector("[data-thema-wissel] button");
+    if (knop) knop.setAttribute("aria-pressed", huidigThema() === "donker" ? "true" : "false");
   });
 
   // localStorage kan ontbreken of geblokkeerd zijn (privévenster): dan gewoon niets onthouden

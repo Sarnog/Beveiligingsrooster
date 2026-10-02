@@ -32,6 +32,7 @@ GEBRUIKER_MAG_SCHRIJVEN = {
     "auth.wachtwoord_wijzigen",
     "account.tokens",
     "account.token_intrekken",
+    "account.thema",
 }
 
 # API voor een app (alleen hier werken API-tokens; zie app/blueprints/api_v1.py)

@@ -2,7 +2,6 @@
 {% block titel %}Beheer{% endblock %}
 {% block inhoud %}
 <h1>Beheer</h1>
-<p class="hulp">Beveiligingsrooster versie {{ versie }}</p>
 {% if meldingen %}
 <div class="melding fout" data-beheer-melding>
   {% for m in meldingen %}<p>{{ m }}</p>{% endfor %}

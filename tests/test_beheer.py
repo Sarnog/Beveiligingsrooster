@@ -218,4 +218,6 @@ def test_beheer_titel_en_versie(als_beheerder):
 
     pagina = als_beheerder.get("/beheer/").data.decode()
     assert "<title>Beheer</title>" in pagina
-    assert f"Beveiligingsrooster versie {VERSIE}</p>" in pagina.split("<main", 1)[1]
+    # Versie staat één keer, onderaan (onder de tegels)
+    assert pagina.count(f"Beveiligingsrooster versie {VERSIE}</p>") == 1
+    assert pagina.index("Beveiligingsrooster versie") > pagina.index("Uren herberekenen")
