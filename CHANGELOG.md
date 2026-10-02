@@ -2,6 +2,53 @@
 
 ## [Onuitgebracht]
 
+### Toegevoegd
+- **Roosterpatronen: week kopiëren.** In het patroon kopieer je een week in één keer naar één of
+  meer andere weken van de cyclus (bijvoorbeeld week 1 naar 3, 5 en 7). De doelweken worden precies
+  gelijk aan de bronweek; er wordt pas opgeslagen als je op *Opslaan* klikt.
+- **Beheer → Roosterpatronen → Rooster herhalen.** Plan een vast rooster van bijvoorbeeld 8 weken
+  in het gewone weekrooster en herhaal het voor het hele team (of gekozen collega's) naar latere of
+  eerdere weken. De cyclus loopt door vanaf de bronweken: 8 weken na bronweek 1 komt weer
+  bronweek 1, ook als je midden in de cyclus begint. Zelfde werkwijze als uitrollen: droogloop,
+  overschrijven of aanvullen, feestdagen invullen of overslaan, niets op of na een archiefdatum,
+  vooraf een back-up (*voor-herhalen*), logboek en Google-synchronisatie alleen voor de geraakte
+  collega's. Diensten zonder code tellen als vrij (met een waarschuwing in het voorbeeld). De
+  periode mag de bronweken niet overlappen.
+
+### Gewijzigd
+- `services/patronen.py`: uitrollen en herhalen delen dezelfde berekening en uitvoering.
+
+### Opgelost
+- **Bestaand roosterpatroon opslaan gaf HTTP 500** (IntegrityError op `uq_patroon_week_dag`) zodra
+  er een cel bleef staan. De dagen worden nu per week en dag bijgewerkt, toegevoegd of verwijderd;
+  ook na *Week kopiëren*.
+- **Voorbeeld en resultaat gelijk:** bij *Definitief toepassen* wordt nu ook de inhoud vergeleken
+  (een vingerafdruk van de patrooncellen of van de bronweken per medewerker). Is die intussen
+  gewijzigd, dan verandert er niets en verschijnt *gewijzigd sinds het voorbeeld; controleer het
+  bijgewerkte voorbeeld*.
+- **Rooster herhalen wist geen collega's meer zonder bronrooster:** standaard staan alleen
+  medewerkers aangevinkt met minstens één dienst in de bronweken. Kies je toch iemand zonder, dan
+  waarschuwt het voorbeeld dat in de doelperiode alles gewist wordt.
+- **Dienstcodes in een patroon:** een code die in een roosterpatroon staat, kan niet meer
+  hernummerd of verwijderd worden (de melding noemt de patronen); deactiveren kan wel.
+- **Testgaten uit de mutatietests** gedicht: dienst op de laatste dag van de periode, een patroon
+  van 12 weken, week 8 van 8 als bron, herhalen met feestdagen overslaan, de lengte van de
+  bronperiode, `uren_uit_minuten` met begin = eind (0 uur, zoals de VBA; ongewijzigd), `dagfactor`
+  zonder `is_feestdag` en de volledige foutmeldingen van de keuzes.
+- **Bulkacties met optimistic locking:** de Excel-import, uitrollen en herhalen controleren de
+  versie van elke bestaande dienst (zoals het weekrooster). Wijzigt een planner tegelijk een dienst,
+  dan wordt alles teruggedraaid met een duidelijke melding.
+- **Rooster herhalen: exact kopiëren.** Naast *Alleen codes* is er *Exact kopiëren (zoals Week
+  kopiëren)*: afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en opmerkingen gaan mee.
+  Daarbij telt een vrije dienstnaam met tijden bij import, patronen en herhalen nu als handmatige
+  tijden, net als in het rooster.
+- `SESSIE_UREN` met een ongeldige waarde laat de app niet meer crashen: terug naar 12 uur, met
+  een waarschuwing in het log.
+- XSS-regressietest voor de weekpagina (naam, opmerking en dienstnaam, raster en telefoon),
+  inhoudelijke controles in smoke-tests en een overbodige patch opgeruimd.
+- Onderhoud: formulier-, sessie- en toepassen-logica van uitrollen en herhalen gedeeld in één
+  helper; geen hergebruik meer van de variabele `fout` na `except ... as fout`.
+
 ## [1.6.0] – 2026-10-01
 
 ### Toegevoegd

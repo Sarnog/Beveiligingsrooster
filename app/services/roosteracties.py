@@ -5,6 +5,8 @@ volgnummer) een Actie bepaalt (nieuw / vervangen / verwijderd / gelijk / overges
 voert voer_uit() precies die acties uit: zoals het rooster zelf (standaardtijden van de code,
 uren, versie, ruim_dag_op, een logboekregel per gewijzigde dienst met oud en nieuw) en met
 Google-synchronisatie alleen voor de geraakte medewerkers (plan_agenda).
+Bestaande diensten worden geclaimd zoals in het weekrooster (optimistic locking): heeft een
+planner er intussen één gewijzigd, dan volgt een VersieConflict en draait de aanroeper alles terug.
 Er wordt hier nergens gecommit; dat doet de aanroeper (alles of niets).
 """
 
@@ -17,7 +19,7 @@ from ..extensions import db
 from ..models import Dienst, Dienstcode, Medewerker
 from . import logboek, sync_planning
 from .rooster import UrenContext, dienst_tekst, logveld, uren_voor
-from .weekrooster import LEGE_DIENST, ruim_dag_op
+from .weekrooster import LEGE_DIENST, VersieConflict, _claim, ruim_dag_op, tijden_afwijkend
 
 SOORTEN = ("nieuw", "vervangen", "verwijderd", "gelijk", "overgeslagen")
 log = logging.getLogger(__name__)
@@ -70,10 +72,6 @@ class Actie:
     bestaand: Dienst | None = None
     nieuw: Inhoud | None = None
 
-    @property
-    def naam(self):  # zoals de import de sleutel noemt
-        return self.sleutel
-
 
 @dataclass
 class Telling:
@@ -107,10 +105,20 @@ def vul_dienst(dienst: Dienst, inhoud: Inhoud | None, codes: dict[int, Dienstcod
     dienst.dienstcode_id = code.id if code else None
     dienst.dienstnaam_override = inhoud.dienstnaam
     dienst.begin, dienst.eind = inhoud.begin, inhoud.eind
-    dienst.tijden_handmatig = bool(code and (inhoud.begin, inhoud.eind) != (code.std_begin, code.std_eind))
+    dienst.tijden_handmatig = tijden_afwijkend(code, inhoud.begin, inhoud.eind)  # zoals in het rooster
     dienst.opmerking_tekst = inhoud.opmerking
     dienst.opmerking_begin, dienst.opmerking_eind = inhoud.opm_begin, inhoud.opm_eind
     dienst.uren_handmatig = inhoud.uren_handmatig
+
+
+def _claim_bulk(dienst: Dienst, medewerker: Medewerker, datum: date) -> None:
+    """weekrooster._claim, met een melding die past bij een bulkactie (er verandert niets)."""
+    try:
+        _claim(dienst)
+    except VersieConflict as conflict:
+        raise VersieConflict(f"Iemand anders wijzigde tegelijk de dienst van {medewerker.naam} op "
+                             f"{datum:%d-%m-%Y}; er is niets gewijzigd. Controleer het bijgewerkte "
+                             "voorbeeld en probeer het opnieuw.") from conflict
 
 
 def voer_uit(acties: list[Actie], medewerker_van: Callable[[Actie], Medewerker], logactie: str,
@@ -139,6 +147,8 @@ def voer_uit(acties: list[Actie], medewerker_van: Callable[[Actie], Medewerker],
             dienst = Dienst(medewerker_id=medewerker.id, datum=actie.datum, volgnummer=actie.volgnummer,
                             versie=0, google_event_id="")
             db.session.add(dienst)
+        else:
+            _claim_bulk(dienst, medewerker, actie.datum)
         vul_dienst(dienst, actie.nieuw, codes)
         dienst.uren_berekend = uren_voor(dienst, context)
         dienst.versie = (dienst.versie or 0) + 1

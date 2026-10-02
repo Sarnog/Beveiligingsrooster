@@ -1,5 +1,6 @@
-"""Beheer → Roosterpatronen: patronen maken/wijzigen/verwijderen, een sjabloon uit het rooster,
-en uitrollen met een droogloop (zie services/patronen.py).
+"""Beheer → Roosterpatronen: patronen maken/wijzigen/verwijderen, een week van een patroon naar
+andere weken kopiëren, een sjabloon uit het rooster, uitrollen met een droogloop en een blok weken
+uit het rooster herhalen (zie services/patronen.py).
 
 Uitrollen gaat als de import: eerst 'Voorbeeld bijwerken' (er wordt niets opgeslagen), dan
 'Definitief toepassen', alleen met precies de keuzes van het getoonde voorbeeld. Bij het
@@ -16,8 +17,9 @@ from ...extensions import db
 from ...models import Medewerker, RoosterPatroon
 from ...services import klok, patronen
 from ...services.kalender import aantal_weken
-from ...services.patronen import PatroonFout, UitrolKeuzes
+from ...services.patronen import HerhaalKeuzes, PatroonFout, UitrolKeuzes
 from ...services.tijden import parse_datum
+from ...services.weekrooster import VersieConflict
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
@@ -88,12 +90,24 @@ def patroon_bewerken(pid: int | None = None):
         if patronen.lees_weken(gevraagd) is None:
             flash(f"Een patroon heeft 1 t/m {patronen.MAX_WEKEN} weken.", "fout")
         return _formulier(patroon, naam, weken, cellen)
+    if request.form.get("actie") == "kopieer":  # een week naar andere weken kopiëren, nog niet opslaan
+        bron = request.form.get("kopieer_van", "")
+        naar = [int(w) for w in request.form.getlist("kopieer_naar") if w.isdigit() and len(w) <= 3]
+        try:
+            cellen = patronen.kopieer_week(cellen, int(bron) if bron.isdigit() and len(bron) <= 3 else 0,
+                                           naar, weken)
+        except PatroonFout as uitzondering:
+            flash(str(uitzondering), "fout")
+            return _formulier(patroon, naam, weken, cellen, 400)
+        flash(f"Week {bron} gekopieerd naar week {', '.join(map(str, sorted(set(naar) - {int(bron)})))}. "
+              "Controleer het patroon en sla het op.", "info")
+        return _formulier(patroon, naam, weken, cellen)
     # Cellen van weken die er niet (meer) zijn, tellen niet mee
     opgeslagen, fouten = patronen.sla_op(patroon, naam, gevraagd,
                                          {k: v for k, v in cellen.items() if k[0] <= weken})
     if fouten:
-        for fout in fouten:
-            flash(fout, "fout")
+        for melding in fouten:
+            flash(melding, "fout")
         return _formulier(patroon, naam, weken, cellen, 400)
     flash(f"Patroon '{opgeslagen.naam}' opgeslagen.", "succes")
     return redirect(url_for("beheer.patronen_lijst"))
@@ -125,8 +139,8 @@ def patroon_sjabloon():
     else:
         try:
             cellen, weken, waarschuwingen = patronen.sjabloon(medewerker, van, tot)
-        except PatroonFout as fout_:
-            fout = str(fout_)
+        except PatroonFout as uitzondering:
+            fout = str(uitzondering)
     if fout:
         flash(fout, "fout")
         return redirect(url_for("beheer.patronen_lijst"))
@@ -137,32 +151,117 @@ def patroon_sjabloon():
 
 
 # ---------------------------------------------------------------------------
-# Uitrollen: voorbeeld (droogloop) en toepassen
+# Gedeeld door uitrollen en herhalen: formulier, voorbeeld in de sessie en toepassen
 # ---------------------------------------------------------------------------
 
-def _keuzes_uit_formulier(patroon: RoosterPatroon) -> tuple[UitrolKeuzes | None, list[str]]:
-    formulier = request.form
-    fouten = []
+def _gekozen_ids(fouten: list[str]) -> list[int]:
+    """De aangevinkte medewerkers (veld 'mw'); onzin geeft een foutmelding."""
     gekozen = []
-    for tekst in formulier.getlist("mw"):
+    for tekst in request.form.getlist("mw"):
         if not tekst.isdigit() or len(tekst) > 9:
             fouten.append("Onbekende medewerker.")
             continue
-        start = formulier.get(f"start-{tekst}", "1").strip()
-        gekozen.append((int(tekst), int(start) if start.isdigit() and len(start) <= 3 else 0))
-    van = _maandag(formulier.get("van"))
-    if van is None:
-        fouten.append("Kies een geldige startweek.")
+        gekozen.append(int(tekst))
+    return gekozen
+
+
+def _einddatum(fouten: list[str]) -> date | None:
+    """De einddatum: 'of t/m datum' gaat voor 't/m week' (de zondag van die week)."""
+    formulier = request.form
     tot = parse_datum(formulier.get("tot_datum", "")) if formulier.get("tot_datum", "").strip() else None
     if tot is None:
         eindweek = _maandag(formulier.get("tot_week"))
         tot = eindweek + timedelta(days=6) if eindweek else None
     if tot is None:
         fouten.append("Kies een eindweek of een einddatum.")
+    return tot
+
+
+def _onthoud(sleutel: str, keuzes, afdruk) -> None:
+    """Bewaar de keuzes en de vingerafdruk van de inhoud (patroon of bronweken) van het voorbeeld."""
+    session[sleutel] = keuzes.als_dict()
+    session[f"{sleutel}_afdruk"] = afdruk()
+
+
+def _voorbeeld(sleutel: str, keuzes, fouten: list[str], bereken, afdruk):
+    """Het voorbeeld (droogloop) bij de bewaarde keuzes, of None als die niet (meer) kloppen.
+
+    Getoonde keuzes en inhoud blijven in de sessie: alleen daarmee mag 'Definitief toepassen'.
+    """
+    if keuzes is None or fouten:
+        session.pop(sleutel, None)
+        session.pop(f"{sleutel}_afdruk", None)
+        return None
+    _onthoud(sleutel, keuzes, afdruk)  # dit voorbeeld wordt getoond
+    return bereken()
+
+
+def _toepassen(sleutel: str, terug: str, keuzes, fouten: list[str], afdruk, pas_toe, wat: str,
+               logtekst: str):
+    """'Voorbeeld bijwerken' of 'Definitief toepassen'. Geeft (resultaat, None) of (None, redirect).
+
+    Toepassen alleen met precies de keuzes van het getoonde voorbeeld en met de bevestiging.
+    pas_toe(afdruk) controleert alles opnieuw, ook of de inhoud (patroon of bronweken) nog gelijk
+    is aan die van het voorbeeld. Nooit een kale foutpagina.
+    """
+    if fouten:
+        for melding in fouten:
+            flash(melding, "fout")
+        return None, redirect(terug)
+    getoond = session.get(sleutel)
+    getoonde_afdruk = session.get(f"{sleutel}_afdruk", "")
+    if request.form.get("actie") != "toepassen":
+        _onthoud(sleutel, keuzes, afdruk)
+        return None, redirect(terug)  # alleen het voorbeeld bijwerken
+    session[sleutel] = keuzes.als_dict()
+    if getoond != keuzes.als_dict():
+        flash("Je keuzes zijn gewijzigd sinds het voorbeeld. Controleer het bijgewerkte voorbeeld "
+              "hieronder en bevestig opnieuw.", "fout")
+        return None, redirect(terug)
+    if not vinkje(request.form, "bevestig"):
+        flash("Vink eerst de bevestiging aan.", "fout")
+        return None, redirect(terug)
+    try:
+        resultaat = pas_toe(getoonde_afdruk)
+    except (PatroonFout, VersieConflict) as uitzondering:  # VersieConflict: een planner was tegelijk bezig
+        flash(str(uitzondering), "fout")
+        return None, redirect(terug)
+    except Exception as uitzondering:  # nooit een kale foutpagina
+        log.exception(logtekst)
+        flash(f"Het {wat} is mislukt; er is niets gewijzigd ({type(uitzondering).__name__}).", "fout")
+        return None, redirect(terug)
+    session.pop(sleutel, None)
+    session.pop(f"{sleutel}_afdruk", None)
+    return resultaat, None
+
+
+def _naar_week(dag: date):
+    jaar, week, _ = dag.isocalendar()
+    return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
+
+
+def _aantallen(resultaat: dict[str, int]) -> str:
+    return ", ".join(f"{v} {k}" for k, v in resultaat.items()) + ". Er is vooraf een back-up gemaakt."
+
+
+# ---------------------------------------------------------------------------
+# Uitrollen: voorbeeld (droogloop) en toepassen
+# ---------------------------------------------------------------------------
+
+def _keuzes_uit_formulier(patroon: RoosterPatroon) -> tuple[UitrolKeuzes | None, list[str]]:
+    fouten = []
+    gekozen = []
+    for mid in _gekozen_ids(fouten):
+        start = request.form.get(f"start-{mid}", "1").strip()
+        gekozen.append((mid, int(start) if start.isdigit() and len(start) <= 3 else 0))
+    van = _maandag(request.form.get("van"))
+    if van is None:
+        fouten.append("Kies een geldige startweek.")
+    tot = _einddatum(fouten)
     if fouten:
         return None, fouten
-    keuzes = UitrolKeuzes(patroon.id, tuple(gekozen), van, tot, formulier.get("modus", ""),
-                          formulier.get("feestdagen", ""))
+    keuzes = UitrolKeuzes(patroon.id, tuple(gekozen), van, tot, request.form.get("modus", ""),
+                          request.form.get("feestdagen", ""))
     return keuzes, keuzes.controleer(patroon)
 
 
@@ -181,43 +280,18 @@ def patroon_uitrollen(pid: int):
     patroon = db.get_or_404(RoosterPatroon, pid)
     if request.method == "POST":
         keuzes, fouten = _keuzes_uit_formulier(patroon)
-        if fouten:
-            for fout in fouten:
-                flash(fout, "fout")
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))
-        getoond = session.get("patroon_keuzes")
-        session["patroon_keuzes"] = keuzes.als_dict()
-        if request.form.get("actie") != "toepassen":
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))  # alleen het voorbeeld bijwerken
-        if getoond != keuzes.als_dict():
-            flash("Je keuzes zijn gewijzigd sinds het voorbeeld. Controleer het bijgewerkte voorbeeld "
-                  "hieronder en bevestig opnieuw.", "fout")
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))
-        if not vinkje(request.form, "bevestig"):
-            flash("Vink eerst de bevestiging aan.", "fout")
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))
-        try:
-            resultaat = patronen.pas_toe(patroon, keuzes)  # controleert de keuzes opnieuw
-        except PatroonFout as fout:
-            flash(str(fout), "fout")
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))
-        except Exception as fout:  # nooit een kale foutpagina
-            log.exception("Roosterpatroon toepassen mislukt")
-            flash(f"Het toepassen is mislukt; er is niets gewijzigd ({type(fout).__name__}).", "fout")
-            return redirect(url_for("beheer.patroon_uitrollen", pid=pid))
-        session.pop("patroon_keuzes", None)
-        flash(f"Patroon '{patroon.naam}' toegepast: " + ", ".join(f"{v} {k}" for k, v in resultaat.items())
-              + ". Er is vooraf een back-up gemaakt.", "succes")
-        jaar, week, _ = keuzes.van.isocalendar()
-        return redirect(url_for("rooster.week_tonen", jaar=jaar, week=week))
+        resultaat, antwoord = _toepassen(
+            "patroon_keuzes", url_for("beheer.patroon_uitrollen", pid=pid), keuzes, fouten,
+            lambda: patronen.vingerafdruk(patroon), lambda afdruk: patronen.pas_toe(patroon, keuzes, afdruk),
+            "toepassen", "Roosterpatroon toepassen mislukt")
+        if antwoord is not None:
+            return antwoord
+        flash(f"Patroon '{patroon.naam}' toegepast: " + _aantallen(resultaat), "succes")
+        return _naar_week(keuzes.van)
 
     keuzes = _keuzes_uit_sessie(patroon)
-    effect = None
-    if keuzes is not None and not keuzes.controleer(patroon):
-        effect = patronen.effect(patroon, keuzes)
-        session["patroon_keuzes"] = keuzes.als_dict()  # dit voorbeeld wordt getoond
-    else:
-        session.pop("patroon_keuzes", None)
+    effect = _voorbeeld("patroon_keuzes", keuzes, keuzes.controleer(patroon) if keuzes else [],
+                        lambda: patronen.effect(patroon, keuzes), lambda: patronen.vingerafdruk(patroon))
     huidig = klok.vandaag() - timedelta(days=klok.vandaag().weekday())
     starts = dict(keuzes.medewerkers) if keuzes else {}
     return render_template(
@@ -227,3 +301,72 @@ def patroon_uitrollen(pid: int):
         van=_weektekst(keuzes.van if keuzes else huidig),
         tot_datum=keuzes.tot.isoformat() if keuzes else "",
         tot_week=_weektekst(huidig + timedelta(weeks=patroon.weken - 1)))
+
+
+# ---------------------------------------------------------------------------
+# Rooster herhalen: een blok weken (bijv. een 8-wekelijks rooster) herhalen
+# ---------------------------------------------------------------------------
+
+def _herhaal_uit_formulier() -> tuple[HerhaalKeuzes | None, list[str]]:
+    fouten = []
+    gekozen = _gekozen_ids(fouten)
+    bron, van = _maandag(request.form.get("bron")), _maandag(request.form.get("van"))
+    if bron is None:
+        fouten.append("Kies een geldige eerste bronweek.")
+    if van is None:
+        fouten.append("Kies een geldige startweek.")
+    weken = patronen.lees_weken(request.form.get("weken", ""))
+    if weken is None:
+        fouten.append(f"Herhaal 1 t/m {patronen.MAX_WEKEN} weken.")
+    tot = _einddatum(fouten)
+    if fouten:
+        return None, fouten
+    keuzes = HerhaalKeuzes(tuple(gekozen), bron, weken, van, tot, request.form.get("modus", ""),
+                           request.form.get("feestdagen", ""),
+                           request.form.get("soort", patronen.KOPIE_CODES))
+    return keuzes, keuzes.controleer()
+
+
+def _herhaal_uit_sessie() -> HerhaalKeuzes | None:
+    bewaard = session.get("herhaal_keuzes")
+    return HerhaalKeuzes.uit_dict(bewaard) if bewaard else None
+
+
+@bp.route("/patronen/herhalen", methods=["GET", "POST"])
+@beheerder_vereist
+def rooster_herhalen():
+    """Plan een blok weken in het weekrooster en herhaal het voor het hele team (met droogloop)."""
+    if request.method == "POST":
+        keuzes, fouten = _herhaal_uit_formulier()
+        resultaat, antwoord = _toepassen(
+            "herhaal_keuzes", url_for("beheer.rooster_herhalen"), keuzes, fouten,
+            lambda: patronen.herhaal_vingerafdruk(keuzes),
+            lambda afdruk: patronen.herhaal_pas_toe(keuzes, afdruk), "herhalen", "Rooster herhalen mislukt")
+        if antwoord is not None:
+            return antwoord
+        flash("Rooster herhaald: " + _aantallen(resultaat), "succes")
+        return _naar_week(keuzes.van)
+
+    keuzes = _herhaal_uit_sessie()
+    effect = _voorbeeld("herhaal_keuzes", keuzes, keuzes.controleer() if keuzes else [],
+                        lambda: patronen.herhaal_effect(keuzes),
+                        lambda: patronen.herhaal_vingerafdruk(keuzes))
+    if effect is None:
+        keuzes = None
+    huidig = klok.vandaag() - timedelta(days=klok.vandaag().weekday())
+    weken = keuzes.weken if keuzes else patronen.STANDAARD_WEKEN
+    bron = keuzes.bron if keuzes else huidig
+    van = keuzes.van if keuzes else bron + timedelta(weeks=weken)
+    medewerkers = _medewerkers()
+    if keuzes:
+        gekozen = set(keuzes.medewerkers)
+    else:  # standaard: wie er dan nog is én diensten in de bronweken heeft (anders wordt alles gewist)
+        met_rooster = patronen.met_diensten(bron, bron + timedelta(weeks=weken, days=-1))
+        gekozen = {m.id for m in medewerkers if m.is_zichtbaar_op(van) and m.id in met_rooster}
+    return render_template(
+        "beheer/rooster_herhalen.html", keuzes=keuzes, effect=effect, medewerkers=medewerkers,
+        gekozen=gekozen, modi=patronen.MODI, feestdag_keuzes=patronen.FEESTDAG_KEUZES,
+        kopie_soorten=patronen.KOPIE_SOORTEN, weken=weken,
+        max_weken=patronen.MAX_WEKEN, bron=_weektekst(bron), van=_weektekst(van),
+        tot_datum=keuzes.tot.isoformat() if keuzes else "",
+        tot_week=_weektekst(van + timedelta(weeks=2 * weken - 1)))

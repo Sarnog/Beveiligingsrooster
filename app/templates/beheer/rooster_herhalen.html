@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf %}
+{% block titel %}Rooster herhalen{% endblock %}
+{% block inhoud %}
+<h1>Rooster herhalen</h1>
+<p class="hulp">Kies de bronweken (bijvoorbeeld de 8 weken van je cyclus) en de periode die je wilt vullen. Elke gekozen medewerker krijgt zijn eigen rooster uit de bronweken, herhaald met dezelfde cyclus: zo herhaalt een 8-wekelijks rooster zich om de 8 weken. Je ziet eerst een voorbeeld; pas daarna wordt er iets gewijzigd (met vooraf een back-up).</p>
+
+<form method="post" class="kaart" data-herhaal-keuzes>
+  {{ csrf() }}
+  <h2>Keuzes</h2>
+  <div class="rij-formulier">
+    <label class="veld"><span>Eerste bronweek</span><input type="week" name="bron" value="{{ bron }}" required></label>
+    <label class="veld"><span>Cyclus (weken)</span><input type="number" name="weken" value="{{ weken }}" min="1" max="{{ max_weken }}" inputmode="numeric" class="klein"></label>
+  </div>
+  <div class="rij-formulier">
+    <label class="veld"><span>Vullen vanaf week</span><input type="week" name="van" value="{{ van }}" required></label>
+    <label class="veld"><span>t/m week</span><input type="week" name="tot_week" value="{{ tot_week }}"></label>
+    <label class="veld"><span>of t/m datum</span><input type="date" name="tot_datum" value="{{ tot_datum }}"><small>Gaat voor de eindweek.</small></label>
+  </div>
+  <fieldset>
+    <legend>Medewerkers</legend>
+    <p class="hulp">Gearchiveerde medewerkers krijgen niets op of na hun archiefdatum.</p>
+    <div class="keuze-medewerkers">
+    {% for m in medewerkers %}
+      <label class="vink"><input type="checkbox" name="mw" value="{{ m.id }}"{% if m.id in gekozen %} checked{% endif %}><span>{{ m.naam }}{% if m.gearchiveerd_vanaf %} <small>(gearchiveerd vanaf {{ m.gearchiveerd_vanaf|datum_nl }})</small>{% endif %}</span></label>
+    {% endfor %}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Wat wordt er gekopieerd?</legend>
+    {% for waarde, tekst in kopie_soorten.items() %}<label class="vink"><input type="radio" name="soort" value="{{ waarde }}"{% if (keuzes.soort if keuzes else 'codes') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+    <p class="hulp"><em>Alleen codes</em>: diensten krijgen de standaardtijden van hun code; een dienst zonder code telt als vrij en de opmerking van de dag blijft staan. <em>Exact kopiëren</em>: elke dag wordt precies de brondag, met afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en de opmerking.</p>
+  </fieldset>
+  <fieldset>
+    <legend>Modus</legend>
+    {% for waarde, tekst in modi.items() %}<label class="vink"><input type="radio" name="modus" value="{{ waarde }}"{% if (keuzes.modus if keuzes else 'overschrijven') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+    <p class="hulp">Bij <em>alleen codes</em> blijft de opmerking van een dag (regel a en b) staan. Een dag met alleen een opmerking telt als leeg.</p>
+  </fieldset>
+  <fieldset>
+    <legend>Feestdagen</legend>
+    {% for waarde, tekst in feestdag_keuzes.items() %}<label class="vink"><input type="radio" name="feestdagen" value="{{ waarde }}"{% if (keuzes.feestdagen if keuzes else 'invullen') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+  </fieldset>
+  <button class="knop" type="submit" name="actie" value="voorbeeld">Voorbeeld bijwerken</button>
+
+  {% if effect %}
+  {% set t = effect.totaal %}
+  <h2>Wat er gebeurt met deze keuzes</h2>
+  <p data-herhaal-uitleg>Bronweken {{ keuzes.bron|datum_nl }} t/m {{ keuzes.bron_tot|datum_nl }} ({{ keuzes.weken }} weken) worden herhaald van {{ keuzes.van|datum_nl }} t/m {{ keuzes.tot|datum_nl }}. De week van {{ keuzes.van|datum_nl }} is week {{ keuzes.startpositie }} van de cyclus.</p>
+  {% if effect.waarschuwingen %}<ul class="hulp" data-waarschuwingen>{% for w in effect.waarschuwingen %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  <p data-totaal-effect>Totaal: <strong>{{ t.nieuw }}</strong> nieuw, <strong>{{ t.vervangen }}</strong> vervangen, <strong>{{ t.verwijderd }}</strong> verwijderd, {{ t.gelijk }} ongewijzigd, {{ t.overgeslagen }} overgeslagen.</p>
+  <div class="tabel-schuif">
+  <table class="tabel compact" data-effect>
+    <thead><tr><th>Medewerker</th><th class="getal">Nieuw</th><th class="getal">Vervangen</th><th class="getal">Verwijderd</th><th class="getal">Ongewijzigd</th><th class="getal">Overgeslagen</th></tr></thead>
+    <tbody>{% for mid, n in effect.per_medewerker.items() %}<tr><td>{{ effect.namen[mid] }}</td><td class="getal">{{ n.nieuw }}</td><td class="getal">{{ n.vervangen }}</td><td class="getal">{% if n.verwijderd %}<strong>{{ n.verwijderd }}</strong>{% else %}0{% endif %}</td><td class="getal">{{ n.gelijk }}</td><td class="getal">{{ n.overgeslagen }}</td></tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  <p class="hulp">Overgeslagen: een feestdag (bij overslaan), een dag op of na de archiefdatum, of bij aanvullen een dag die al een dienst heeft.</p>
+  <div class="knoppen">
+    <label class="vink"><input type="checkbox" name="bevestig" value="1"><span>Ik wil het rooster definitief herhalen met deze keuzes (er wordt eerst automatisch een back-up gemaakt)</span></label>
+    <button class="knop primair" type="submit" name="actie" value="toepassen">Definitief toepassen</button>
+  </div>
+  {% else %}
+  <p class="hulp">Kies de weken en medewerkers en klik op <em>Voorbeeld bijwerken</em>; er wordt dan nog niets gewijzigd.</p>
+  {% endif %}
+</form>
+<a class="knop" href="{{ url_for('beheer.patronen_lijst') }}">Terug naar de patronen</a>
+{% endblock %}

@@ -188,8 +188,33 @@ def test_weekpagina_gebruiker_ziet_alleen_het_rooster(als_gebruiker, rooster):
     assert 'class="cel' not in pagina
 
 
+@pytest.mark.parametrize("ingelogd", ["als_beheerder", "als_gebruiker"])
+def test_weekpagina_escaped_html_in_naam_opmerking_en_dienstnaam(request, rooster, ingelogd):
+    """XSS-regressie: tekst uit de database komt nooit als HTML op de weekpagina (raster én telefoon)."""
+    naam, opmerking = "<script>alert('naam')</script>", "<img src=x onerror=alert('opm')>"
+    dienstnaam = "<script>alert('dienst')</script>"
+    a = rooster["a"]
+    a.naam = naam
+    for volgnummer, begin, eind, opm in ((1, "08:00", "12:00", opmerking), (2, "13:00", "17:00", "")):
+        db.session.add(Dienst(medewerker_id=a.id, datum=MAANDAG, volgnummer=volgnummer, versie=1,
+                              dienstnaam_override=dienstnaam, begin=begin, eind=eind, opmerking_tekst=opm,
+                              tijden_handmatig=True))
+    db.session.commit()
+    client = request.getfixturevalue(ingelogd)
+    pagina = client.get("/week/2026/10").data.decode()
+    assert 'data-plek="a"' in pagina and 'class="dagkaart' in pagina  # raster én telefoonkaarten
+    for tekst in (naam, opmerking, dienstnaam):
+        assert tekst not in pagina
+    for veilig in ("&lt;script&gt;alert(&#39;naam&#39;)&lt;/script&gt;",
+                   "&lt;img src=x onerror=alert(&#39;opm&#39;)&gt;",
+                   "&lt;script&gt;alert(&#39;dienst&#39;)&lt;/script&gt;"):
+        assert pagina.count(veilig) >= 2, veilig  # in het raster en op de kaarten
+
+
 def test_week_53_alleen_als_die_bestaat(als_beheerder, rooster):
-    assert als_beheerder.get("/week/2026/53").status_code == 200
+    week53 = als_beheerder.get("/week/2026/53")
+    assert week53.status_code == 200 and "<h1>Week 53 <small>2026</small></h1>" in week53.data.decode()
+    assert "ma 28-12-26" in week53.data.decode() and "zo 03-01-27" in week53.data.decode()
     assert als_beheerder.get("/week/2027/53").status_code == 404
     antwoord = als_beheerder.get("/week?dag=2025-12-30")
     assert "/week/2026/1" in antwoord.headers["Location"]

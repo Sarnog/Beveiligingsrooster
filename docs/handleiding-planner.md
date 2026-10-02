@@ -162,14 +162,29 @@ Klik op **Week kopiëren naar…**, kies de doelweek en of je de hele week of é
 Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer vast in *Beheer → Roosterpatronen* en rol hem uit over meer weken en collega's.
 
 1. **Nieuw patroon**: geef een naam en het aantal weken (1 t/m 12, standaard 8). Vul per week en dag de code in zoals in het code-raster: `4`, twee diensten als `4/7`, leeg = vrij. Klik op *Aantal weken toepassen* als je het aantal weken wijzigt. Een onbekende code geeft een melding; er wordt dan niets opgeslagen.
+   - **Week kopiëren**: onder het raster kies je een bronweek en vink je de weken aan waar hij naartoe moet (bijvoorbeeld week 1 naar 3, 5 en 7) en klik je op *Kopiëren*. Die weken worden precies gelijk aan de bronweek (een lege dag wordt ook leeg). Er is dan nog niets opgeslagen: controleer en klik op *Opslaan*.
 2. Of maak een **sjabloon uit het rooster**: kies een medewerker en de weken (hooguit 12), bijvoorbeeld W10 t/m W17. Je krijgt het patroon eerst te zien en slaat het zelf op. Diensten zonder code (een vrije dienstnaam) tellen als vrij.
 3. **Uitrollen…**: kies de medewerkers en per medewerker de **startpositie** in de cyclus (1 = week 1 van het patroon in de startweek, 2 = week 2, …). Zo draaien acht collega's elk een andere week van hetzelfde patroon. Kies de startweek en een eindweek of -datum, en:
    - **Overschrijven**: elke dag wordt precies het patroon; een vrije dag in het patroon wist de dienst van die dag. **Alleen lege dagen aanvullen**: een dag die al een dienst heeft, wordt overgeslagen.
    - **Feestdagen** invullen of overslaan (dan blijft de feestdag zoals hij is).
    - Een gearchiveerde medewerker krijgt niets op of na de archiefdatum.
    - De **opmerking** van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.
+   - Een patroon onthoudt de **codenummers**. Staat een code in een patroon, dan kun je die code in *Beheer → Dienstcodes* niet hernummeren of verwijderen (de melding noemt de patronen); deactiveren kan wel. Pas dan eerst het patroon aan.
 4. **Voorbeeld bijwerken** toont per medewerker hoeveel diensten nieuw, vervangen, verwijderd, ongewijzigd en overgeslagen zijn. Er is dan nog niets gewijzigd.
-5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
+5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Is het patroon intussen gewijzigd (bijvoorbeeld door een andere beheerder), dan verandert er niets en zie je *gewijzigd sinds het voorbeeld; controleer het bijgewerkte voorbeeld*. Heeft een planner tegelijk een dienst in de periode gewijzigd, dan wordt ook alles teruggedraaid, met een melding wie en welke dag. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
+
+### Rooster herhalen (een 8-wekelijks rooster voor het hele team)
+
+Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyclus in (bijvoorbeeld 8 weken voor alle collega's) en klik in *Beheer → Roosterpatronen* op **Rooster herhalen…**:
+
+1. Kies de **eerste bronweek** en de **cyclus** (aantal weken, standaard 8).
+2. Kies vanaf welke week je wilt vullen en t/m welke week of datum, en de collega's. Standaard staan alleen de collega's aangevinkt die dan nog in het rooster staan **én** minstens één dienst in de bronweken hebben. Vink je toch iemand zonder diensten in de bronweken aan, dan waarschuwt het voorbeeld: bij *Overschrijven* wordt in de doelperiode alles van die collega gewist.
+3. Elke collega krijgt zijn eigen rooster uit de bronweken, steeds herhaald. De cyclus loopt door: 8 weken na bronweek 1 komt weer bronweek 1, ook als je bijvoorbeeld 11 weken later begint (dan begin je in week 4 van de cyclus; dat staat in het voorbeeld). Ook weken vóór de bronweken kunnen zo gevuld worden. De periode mag de bronweken zelf niet overlappen.
+4. Kies **wat er gekopieerd wordt**:
+   - **Alleen codes** (standaard, zoals een patroon): diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld. De opmerking van de dag blijft staan, zoals bij uitrollen.
+   - **Exact kopiëren (zoals Week kopiëren)**: elke dag wordt precies de brondag, met afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en de opmerking. Bij *Overschrijven* maakt een lege brondag de dag leeg (ook de opmerking); bij *Alleen lege dagen aanvullen* krijgt alleen een dag zonder dienst de brondag en wist een lege brondag niets.
+   - Modus, feestdagen en archiefdatum werken in beide gevallen zoals bij uitrollen.
+5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst. Is het rooster in de bronweken intussen gewijzigd, dan verandert er niets en zie je eerst het bijgewerkte voorbeeld.
 
 ## 5. Printen
 
@@ -301,6 +316,8 @@ Werkt de website niet meer, maar draait de container nog? Dan kan het ook op de 
 ## 10. Twee planners tegelijk
 
 Heeft een andere beheerder dezelfde dag van dezelfde medewerker al opgeslagen terwijl jij er nog mee bezig bent? Dan krijg je bij die cel een melding en wordt jouw wijziging daar niet opgeslagen. Ververs de pagina om de nieuwste stand te zien. Er gaat niets stilletjes verloren.
+
+Dat geldt ook voor de Excel-import, het uitrollen van een patroon en Rooster herhalen: wijzigt iemand tijdens het toepassen een dienst die daarin zit, dan wordt alles teruggedraaid en zie je welke medewerker en dag het betreft. Bekijk het bijgewerkte voorbeeld en pas opnieuw toe.
 
 ## 11. Telefoon, app en API
 

@@ -37,8 +37,3 @@ def lengte_fout(tekst: str, maximum: int, wat: str) -> str | None:
 def is_codenummer(nummer: int) -> bool:
     """Een dienstcodenummer is een positief geheel getal (en niet absurd groot)."""
     return 1 <= nummer <= MAX_GETAL
-
-
-def is_id(waarde) -> bool:
-    """Een database-ID uit een verzoek: geheel getal groter dan 0 en binnen 32 bits."""
-    return isinstance(waarde, int) and not isinstance(waarde, bool) and 0 < waarde <= MAX_GETAL

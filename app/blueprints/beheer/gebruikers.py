@@ -14,11 +14,10 @@ from ..hulp import begrensd_getal, beheerder_vereist, vinkje
 from . import bp
 
 
-def _aantal_actieve_beheerders(behalve_id: int | None = None) -> int:
-    query = Gebruiker.query.filter_by(rol=ROL_BEHEERDER, actief=True)
-    if behalve_id is not None:
-        query = query.filter(Gebruiker.id != behalve_id)
-    return query.count()
+def _aantal_actieve_beheerders(behalve_id: int) -> int:
+    """Actieve beheerders behalve deze gebruiker."""
+    return Gebruiker.query.filter(Gebruiker.rol == ROL_BEHEERDER, Gebruiker.actief.is_(True),
+                                  Gebruiker.id != behalve_id).count()
 
 
 def _nog_een_beheerder() -> bool:

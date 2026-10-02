@@ -9,3 +9,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["browser: browsertests met Playwright (Chromium nodig)"]
+
+[tool.coverage.report]
+# Het startpunt van 'python -m app.worker' draait alleen als los proces (zie docker/entrypoint.sh)
+exclude_also = ['if __name__ == "__main__":']

@@ -117,3 +117,27 @@ def test_uren_per_dienst_bij_twee_diensten(app, klaar):
     db.session.commit()
     herbereken_alle()
     assert uren_op(maandag) == {1: 8.0, 2: 16.0}
+
+
+# ---------------------------------------------------------------------------
+# Randgevallen uit de mutatietests (mutmut)
+# ---------------------------------------------------------------------------
+
+def test_begin_gelijk_aan_eind_is_nul_uur():
+    """Gelijke tijden: geen nachtdienst van 24 uur maar 0 uur, zoals de VBA ('eind < begin', niet '<=').
+
+    Het rooster en Beheer → Dienstcodes weigeren gelijke tijden (weekrooster.BEGIN_IS_EIND); dit legt
+    vast wat de berekening zelf doet als het toch voorkomt (bijv. uit een oud Excel-bestand).
+    """
+    from app.services.urenberekening import uren_uit_minuten
+
+    assert uren_uit_minuten(600, 600) == 0.0
+    assert uren_uit_minuten(600, 600, factor=2.0) == 0.0
+    assert uren_uit_minuten(0, 0) == 0.0
+    assert bereken_uren("10:00", "10:00") == 0.0
+
+
+def test_dagfactor_zonder_is_feestdag_geeft_geen_feestdagtoeslag():
+    assert dagfactor(MA, factor_feestdag=3.0) == 1.0  # is_feestdag staat standaard uit
+    assert dagfactor(ZA, factor_feestdag=3.0) == 1.5
+    assert dagfactor(MA, factor_feestdag=3.0, is_feestdag=True) == 3.0
