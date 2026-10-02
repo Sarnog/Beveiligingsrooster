@@ -2,6 +2,8 @@
 
 ## [Onuitgebracht]
 
+## [1.7.0] – 2026-10-02
+
 ### Toegevoegd
 - **Roosterpatronen: week kopiëren.** In het patroon kopieer je een week in één keer naar één of
   meer andere weken van de cyclus (bijvoorbeeld week 1 naar 3, 5 en 7). De doelweken worden precies

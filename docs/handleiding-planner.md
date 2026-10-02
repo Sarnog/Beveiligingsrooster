@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.6.0)
+# Handleiding voor de planner (beheerder, versie 1.7.0)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 
@@ -173,7 +173,7 @@ Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer v
 4. **Voorbeeld bijwerken** toont per medewerker hoeveel diensten nieuw, vervangen, verwijderd, ongewijzigd en overgeslagen zijn. Er is dan nog niets gewijzigd.
 5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Is het patroon intussen gewijzigd (bijvoorbeeld door een andere beheerder), dan verandert er niets en zie je *gewijzigd sinds het voorbeeld; controleer het bijgewerkte voorbeeld*. Heeft een planner tegelijk een dienst in de periode gewijzigd, dan wordt ook alles teruggedraaid, met een melding wie en welke dag. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
 
-### Rooster herhalen (een 8-wekelijks rooster voor het hele team)
+### Rooster herhalen (een 8-wekelijks rooster voor het hele team, sinds 1.7.0)
 
 Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyclus in (bijvoorbeeld 8 weken voor alle collega's) en klik in *Beheer → Roosterpatronen* op **Rooster herhalen…**:
 
