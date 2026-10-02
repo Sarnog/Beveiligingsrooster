@@ -356,8 +356,11 @@ def rooster_herhalen():
     bron = keuzes.bron if keuzes else huidig
     van = keuzes.van if keuzes else bron + timedelta(weeks=weken)
     medewerkers = _medewerkers()
-    gekozen = set(keuzes.medewerkers) if keuzes else \
-        {m.id for m in medewerkers if m.is_zichtbaar_op(van)}  # standaard: wie er dan nog is
+    if keuzes:
+        gekozen = set(keuzes.medewerkers)
+    else:  # standaard: wie er dan nog is én diensten in de bronweken heeft (anders wordt alles gewist)
+        met_rooster = patronen.met_diensten(bron, bron + timedelta(weeks=weken, days=-1))
+        gekozen = {m.id for m in medewerkers if m.is_zichtbaar_op(van) and m.id in met_rooster}
     return render_template(
         "beheer/rooster_herhalen.html", keuzes=keuzes, effect=effect, medewerkers=medewerkers,
         gekozen=gekozen, modi=patronen.MODI, feestdag_keuzes=patronen.FEESTDAG_KEUZES, weken=weken,

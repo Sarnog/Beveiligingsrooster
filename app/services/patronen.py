@@ -53,6 +53,7 @@ FEESTDAG_KEUZES = {
     FEESTDAG_INVULLEN: "Feestdagen gewoon invullen",
     FEESTDAG_OVERSLAAN: "Feestdagen overslaan (blijven zoals ze zijn)",
 }
+GEEN_BRONROOSTER = "geen diensten in de bronweken: in de doelperiode wordt alles gewist"
 log = logging.getLogger(__name__)
 
 
@@ -537,6 +538,12 @@ class HerhaalKeuzes:
                 f"modus {self.modus}, feestdagen {self.feestdagen}; {wie}")
 
 
+def met_diensten(van: date, tot: date) -> set[int]:
+    """IDs van de medewerkers met minstens één dienst (niet alleen een opmerking) van van t/m tot."""
+    return {d.medewerker_id for d in Dienst.query.options(joinedload(Dienst.dienstcode))
+            .filter(Dienst.datum >= van, Dienst.datum <= tot) if Inhoud.van_dienst(d).heeft_dienst}
+
+
 def herhaal_effect(keuzes: HerhaalKeuzes) -> UitrolEffect:
     """Precies wat het herhalen met deze keuzes doet. Er wordt niets opgeslagen."""
     waarschuwingen: list[str] = []
@@ -545,6 +552,8 @@ def herhaal_effect(keuzes: HerhaalKeuzes) -> UitrolEffect:
         laatste = keuzes.bron + timedelta(weeks=keuzes.weken - 1)
         cellen, _, meldingen = sjabloon(medewerker, keuzes.bron, laatste)
         waarschuwingen.extend(f"{medewerker.naam}, {melding}" for melding in meldingen)
+        if not cellen and keuzes.modus == MODUS_OVERSCHRIJVEN:  # een vergeten collega verliest alles
+            waarschuwingen.append(f"{medewerker.naam}: {GEEN_BRONROOSTER}.")
         return cellen
 
     # De cyclus begint bij de bronweek; vanaf 'van' rekenen met de bijbehorende startpositie

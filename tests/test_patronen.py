@@ -575,7 +575,7 @@ def test_scherm_rooster_herhalen(app, als_beheerder, mw):
     assert "data-herhalen-kaart" in als_beheerder.get("/beheer/patronen").data.decode()
     pagina = als_beheerder.get(url).data.decode()
     assert 'name="weken" value="8"' in pagina and "Voorbeeld bijwerken" in pagina
-    assert f'value="{a.id}" checked' in pagina and f'value="{c.id}" checked' not in pagina
+    assert f'value="{c.id}" checked' not in pagina  # standaardkeuze: zie ..._met_bronrooster
     keuzes = {"mw": [a.id, b.id], "bron": "2026-W10", "weken": "8", "van": "2026-W18",
               "tot_week": "2026-W25", "modus": "overschrijven", "feestdagen": "invullen"}
     pagina = als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"}, follow_redirects=True)
@@ -901,3 +901,46 @@ def test_scherm_herhalen_bronweken_gewijzigd_na_voorbeeld(app, als_beheerder, mw
     assert Dienst.query.filter(Dienst.datum >= date(2026, 4, 27)).count() == 0
     antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"})
     assert antwoord.status_code == 302 and _cel(a, MAANDAG + timedelta(weeks=8, days=3)) == "17"
+
+
+# ---------------------------------------------------------------------------
+# Rooster herhalen: collega's zonder diensten in de bronweken
+# ---------------------------------------------------------------------------
+
+GEWIST = "geen diensten in de bronweken: in de doelperiode wordt alles gewist"
+
+
+def test_herhalen_waarschuwt_bij_medewerker_zonder_bronrooster(app, mw):
+    a, b, _ = mw
+    _plan_acht_weken([a])
+    doel = MAANDAG + timedelta(weeks=8)
+    assert wijzig_cellen([Wijziging(b.id, doel, "code", "5")])[1] == []  # B: alleen een dienst in het doel
+    keuzes = _herhaal([a, b], doel, doel + timedelta(weeks=8, days=-1))
+    effect = patronen.herhaal_effect(keuzes)
+    assert effect.waarschuwingen == [f"Medewerker B: {GEWIST}."]
+    assert effect.per_medewerker[b.id].verwijderd == 1
+    # Bij aanvullen wordt niets gewist: geen waarschuwing
+    aanvullen = _herhaal([a, b], doel, doel + timedelta(weeks=8, days=-1), modus=patronen.MODUS_AANVULLEN)
+    assert patronen.herhaal_effect(aanvullen).waarschuwingen == []
+
+
+def test_scherm_herhalen_standaard_alleen_medewerkers_met_bronrooster(app, als_beheerder, mw, monkeypatch):
+    from app.services import klok
+
+    a, b, c = mw
+    monkeypatch.setattr(klok, "vandaag", lambda: MAANDAG + timedelta(days=2))  # standaard bronweek: week 10
+    _plan_acht_weken([a, c])
+    c.gearchiveerd_vanaf = MAANDAG + timedelta(weeks=8)  # vóór de standaard startweek
+    assert wijzig_cellen([Wijziging(b.id, MAANDAG, "opmerking", "Alleen een opmerking")])[1] == []
+    db.session.commit()
+    pagina = als_beheerder.get("/beheer/patronen/herhalen").data.decode()
+    assert 'name="bron" value="2026-W10"' in pagina
+    assert f'value="{a.id}" checked' in pagina  # diensten in de bronweken
+    assert f'value="{b.id}" checked' not in pagina  # alleen een opmerking: geen dienst
+    assert f'value="{c.id}" checked' not in pagina  # gearchiveerd
+    # Kies je B toch, dan waarschuwt het voorbeeld
+    als_beheerder.post("/beheer/patronen/herhalen", data={
+        "mw": [a.id, b.id], "bron": "2026-W10", "weken": "8", "van": "2026-W18", "tot_week": "2026-W25",
+        "modus": "overschrijven", "feestdagen": "invullen", "actie": "voorbeeld"})
+    tekst = als_beheerder.get("/beheer/patronen/herhalen").data.decode()
+    assert f"Medewerker B: {GEWIST}." in tekst and f'value="{b.id}" checked' in tekst

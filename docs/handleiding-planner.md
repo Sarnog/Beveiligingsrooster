@@ -177,7 +177,7 @@ Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer v
 Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyclus in (bijvoorbeeld 8 weken voor alle collega's) en klik in *Beheer → Roosterpatronen* op **Rooster herhalen…**:
 
 1. Kies de **eerste bronweek** en de **cyclus** (aantal weken, standaard 8).
-2. Kies vanaf welke week je wilt vullen en t/m welke week of datum, en de collega's (standaard iedereen die dan nog in het rooster staat).
+2. Kies vanaf welke week je wilt vullen en t/m welke week of datum, en de collega's. Standaard staan alleen de collega's aangevinkt die dan nog in het rooster staan **én** minstens één dienst in de bronweken hebben. Vink je toch iemand zonder diensten in de bronweken aan, dan waarschuwt het voorbeeld: bij *Overschrijven* wordt in de doelperiode alles van die collega gewist.
 3. Elke collega krijgt zijn eigen rooster uit de bronweken, steeds herhaald. De cyclus loopt door: 8 weken na bronweek 1 komt weer bronweek 1, ook als je bijvoorbeeld 11 weken later begint (dan begin je in week 4 van de cyclus; dat staat in het voorbeeld). Ook weken vóór de bronweken kunnen zo gevuld worden. De periode mag de bronweken zelf niet overlappen.
 4. Modus, feestdagen, archiefdatum en opmerkingen werken zoals bij uitrollen. Diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld.
 5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst.
