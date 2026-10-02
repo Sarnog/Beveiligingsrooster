@@ -27,7 +27,7 @@ def http_fout(status: int, reden: str = "") -> HttpError:
     (403, False, "Geen toegang"),
     (404, False, "niet gevonden"),
     (410, False, "bestaat niet meer"),
-    (429, True, "Te veel verzoeken"),
+    (429, True, "Google-limiet"),
     (500, True, "500"),
     (503, True, "503"),
     (400, False, "400"),
@@ -38,9 +38,28 @@ def test_http_fouten(status, tijdelijk, tekst):
     assert fout.tijdelijk is tijdelijk and tekst in str(fout)
 
 
-def test_403_met_snelheidslimiet_is_tijdelijk():
-    fout = _vertaal_fout(http_fout(403, "rateLimitExceeded"))
-    assert fout.tijdelijk and fout.status == 403
+@pytest.mark.parametrize("reden", ["rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"])
+def test_403_met_limiet_is_quota(reden):
+    fout = _vertaal_fout(http_fout(403, reden))
+    assert fout.tijdelijk and fout.quota and fout.status == 403
+    assert "Google-limiet" in str(fout) and reden in str(fout)
+
+
+def test_403_zonder_limiet_noemt_reden_en_beide_modi():
+    fout = _vertaal_fout(http_fout(403, "forbidden"))
+    assert not fout.tijdelijk and not fout.quota
+    assert "forbidden" in str(fout) and "Modus A" in str(fout) and "Modus B" in str(fout)
+
+
+def test_tussenpoze_tussen_aanroepen(monkeypatch):
+    slaap = []
+    monkeypatch.setattr(google_agenda, "TUSSENPOZE", 1.0)
+    monkeypatch.setattr(google_agenda.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(google_agenda.time, "sleep", slaap.append)
+    klant = AgendaKlant(None)
+    klant._voer_uit(Verzoek({}))  # eerste aanroep: niet wachten
+    klant._voer_uit(Verzoek({}))  # direct erna: 1 s wachten
+    assert slaap == [1.0]
 
 
 @pytest.mark.parametrize("tekst, verwacht", [

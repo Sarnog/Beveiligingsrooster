@@ -237,6 +237,66 @@ def test_volledige_sync_ruimt_wezen_op(app, gekoppeld, nep):
     assert Logboek.query.filter_by(actie="Agenda gesynchroniseerd").count() == 1
 
 
+def _diensten_vooruit(medewerker, aantal):
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    for dag in range(1, aantal + 1):
+        db.session.add(Dienst(medewerker_id=medewerker.id, datum=date.today() + timedelta(days=dag),
+                              dienstcode_id=code.id, begin="07:15", eind="15:45",
+                              dienstnaam_override="", opmerking_tekst=""))
+    db.session.commit()
+
+
+def test_volledige_sync_slaat_ongewijzigde_afspraken_over(app, gekoppeld, nep):
+    from app.services import sync_planning
+
+    _diensten_vooruit(gekoppeld, 3)
+    sync_planning.plan_volledig(gekoppeld)
+    wachtrij_nu_uitvoeren()
+    assert nep.aanroepen == {"maak_afspraak": 3}
+    # Tweede keer: niets veranderd, dus geen enkele schrijfactie naar Google
+    sync_planning.plan_volledig(gekoppeld)
+    wachtrij_nu_uitvoeren()
+    assert nep.aanroepen == {"maak_afspraak": 3}
+    # Eén dienst gewijzigd: alleen die wordt bijgewerkt
+    dienst = Dienst.query.order_by(Dienst.datum).first()
+    dienst.eind = "16:00"
+    db.session.commit()
+    sync_planning.plan_volledig(gekoppeld)
+    wachtrij_nu_uitvoeren()
+    assert nep.aanroepen == {"maak_afspraak": 3, "wijzig_afspraak": 1}
+
+
+def test_google_limiet_pauzeert_hele_wachtrij(app, gekoppeld, monkeypatch, als_beheerder):
+    class LimietKlant(NepKlant):
+        def maak_afspraak(self, agenda_id, body):
+            self._tel("maak_afspraak")
+            raise AgendaFout("Google-limiet bereikt (403 quotaExceeded)", status=403, quota=True)
+
+    klant = LimietKlant()
+    monkeypatch.setattr(google_agenda, "klant", lambda: klant)
+    _diensten_vooruit(gekoppeld, 3)
+    for dienst in Dienst.query.all():
+        db.session.add(SyncTaak(medewerker_id=gekoppeld.id, datum=dienst.datum, soort="dag",
+                                niet_voor=datetime(2000, 1, 1)))
+    db.session.commit()
+    assert sync.verwerk_wachtrij() == 0
+    assert klant.aanroepen == {"maak_afspraak": 1}  # na de eerste limiet stopt de ronde
+    assert sync.pauze_tot() is not None
+    # Niets mislukt, niets geteld: alles wacht gewoon
+    assert SyncTaak.query.filter_by(status="wacht").count() == 3
+    assert {t.pogingen for t in SyncTaak.query.all()} == {0}
+    assert gekoppeld.agenda_laatste_fout == ""
+    assert Logboek.query.filter_by(actie="Agenda-sync gepauzeerd").count() == 1
+    # Tijdens de pauze gaat er niets naar Google
+    SyncTaak.query.update({"niet_voor": datetime(2000, 1, 1)})
+    db.session.commit()
+    assert sync.verwerk_wachtrij() == 0 and klant.aanroepen == {"maak_afspraak": 1}
+    # Op de beheerpagina staat de pauze; met de knop wordt hij opgeheven
+    assert "Google-limiet bereikt" in als_beheerder.get("/beheer/agenda").data.decode()
+    als_beheerder.post("/beheer/agenda/opnieuw")
+    assert sync.pauze_tot() is None
+
+
 def test_tijdelijke_fout_backoff_en_definitieve_fout(app, gekoppeld, monkeypatch):
     class KapotteKlant(NepKlant):
         def maak_afspraak(self, agenda_id, body):
