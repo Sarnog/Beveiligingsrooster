@@ -157,3 +157,16 @@ def test_gunicorn_volgt_log_niveau(monkeypatch):
     monkeypatch.setenv("LOG_NIVEAU", "DEBUG")
     pad = os.path.join(os.path.dirname(__file__), "..", "docker", "gunicorn.conf.py")
     assert runpy.run_path(pad)["loglevel"] == "debug"
+
+
+@pytest.mark.parametrize("waarde", ["twaalf", "", "0", "-3", "1.5"])
+def test_ongeldige_sessie_uren_wordt_12_met_waarschuwing(monkeypatch, tmp_path, caplog, waarde):
+    from datetime import timedelta
+
+    monkeypatch.setenv("SESSIE_UREN", waarde)
+    with caplog.at_level("WARNING", logger="app.config"):
+        config = conftest.TestConfig(str(tmp_path))
+    assert config.PERMANENT_SESSION_LIFETIME == timedelta(hours=12)
+    assert f"SESSIE_UREN={waarde!r} is ongeldig" in caplog.text
+    monkeypatch.setenv("SESSIE_UREN", " 8 ")
+    assert conftest.TestConfig(str(tmp_path)).PERMANENT_SESSION_LIFETIME == timedelta(hours=8)

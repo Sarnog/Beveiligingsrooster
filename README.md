@@ -181,7 +181,7 @@ services:
 | `POORT` | `8000` | Poort op de host |
 | `BASE_URL` | leeg | Openbaar adres, bijvoorbeeld `https://rooster.voorbeeld.nl`. Zet bij HTTPS ook de `Secure`-cookies aan |
 | `PROXY_VERTROUWEN` | `0` | `1` achter Caddy, Cloudflare Tunnel of Tailscale |
-| `SESSIE_UREN` | `12` | Hoe lang je ingelogd blijft |
+| `SESSIE_UREN` | `12` | Hoe lang je ingelogd blijft (hele uren; een ongeldige waarde wordt 12, met een waarschuwing in het log) |
 | `SECRET_KEY` | leeg | Leeg laten; wordt dan bewaard in `data/secret_key` |
 | `LOG_NIVEAU` | `INFO` | Wat er in `docker compose logs` komt: `DEBUG`, `INFO`, `WARNING` of `ERROR` |
 | `DEBUG_LOG` | `0` | `1` = debuglog aan, zie [Debuglog](#debuglog) |

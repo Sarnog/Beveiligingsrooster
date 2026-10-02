@@ -5,8 +5,28 @@ of het .env-bestand ernaast). Zo staan er nooit geheimen in de repository.
 Zonder SECRET_KEY maakt de app zelf een geheime sleutel aan in de datamap.
 """
 
+import logging
 import os
 from datetime import timedelta
+
+STANDAARD_SESSIE_UREN = 12
+log = logging.getLogger(__name__)
+
+
+def _sessie_uren(waarde: str) -> int:
+    """SESSIE_UREN als positief geheel getal; anders de standaard (12) met een waarschuwing.
+
+    Zo start de app ook met een tikfout in docker-compose.yml/.env (geen kale ValueError).
+    """
+    try:
+        uren = int(waarde.strip())
+    except ValueError:
+        uren = 0
+    if uren < 1:
+        log.warning("SESSIE_UREN=%r is ongeldig (verwacht een heel aantal uren, minstens 1); "
+                    "de standaard van %d uur wordt gebruikt", waarde, STANDAARD_SESSIE_UREN)
+        return STANDAARD_SESSIE_UREN
+    return uren
 
 
 def _bool(waarde: str | None, standaard: bool = False) -> bool:
@@ -49,7 +69,7 @@ class Config:
         )
 
         # Hoe lang een sessie geldig blijft (in uren)
-        sessie_uren = int(os.environ.get("SESSIE_UREN", "12"))
+        sessie_uren = _sessie_uren(os.environ.get("SESSIE_UREN", str(STANDAARD_SESSIE_UREN)))
         self.PERMANENT_SESSION_LIFETIME = timedelta(hours=sessie_uren)
 
         # CSRF-token blijft even lang geldig als de sessie
