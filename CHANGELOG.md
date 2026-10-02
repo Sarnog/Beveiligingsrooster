@@ -2,6 +2,28 @@
 
 ## [Onuitgebracht]
 
+## [1.8.3] – 2026-10-02
+
+### Gewijzigd
+- **Pauze per dag in plaats van per dienst.** Zijn twee diensten op een dag samen langer dan
+  5,5 uur (of de grens uit de staffel), dan gaat de pauze er één keer af, bij de langste dienst
+  (bij gelijke lengte dienst 1). Voorbeeld: 08:30–12:30 en 13:00–17:00 = 7,5 uur (was 8). Dat
+  geldt ook voor een dienst plus meetellende opmerkingtijden. Zo'n dag rekent exact; een dag met
+  één dienst rekent nog precies als de oude Excel-macro. De Excel-export rekent hetzelfde (in
+  *Rekenhulp* per dag de pauze, het langste deel en het aantal delen). Wijzigt de ene dienst,
+  dan rekent de andere direct mee.
+
+### Opgelost
+- **Opmerkingtijden telden dubbel als ze samenvielen met dienst 1 zelf.** Na een import stond
+  bijv. *Soc. Veiligh. OB 13:00–17:00* op de opmerkingregel; werd dienst 1 daarna een *Cursus
+  13:00–17:00* (met `13/4` en eigen tijden), dan telde dat tijdvak twee keer (8 in plaats van 4).
+  1.8.2 keek alleen naar dienst 2. Nu tellen opmerkingtijden niet mee zodra ze samenvallen met
+  dienst 1 of dienst 2, ook in de Excel-export. Het maakt niet meer uit of de cellen na de import
+  eerst leeg zijn gemaakt.
+- **Het hele rooster opnieuw nagekeken.** Na de update kijkt de worker één keer alle dagen met
+  twee delen na (alle weken, alle personen) en zet de uren goed volgens de regels hierboven, met
+  per gecorrigeerde dienst een regel *Uren gecorrigeerd* in het logboek (met de reden).
+
 ## [1.8.2] – 2026-10-02
 
 ### Opgelost

@@ -20,7 +20,7 @@ Het bestand werkt in MS Excel zoals de app, zonder macro's (sinds 1.6.0). Formul
   bankiersafronding (precies een half kwartier naar even), plus een correctie uit Rekenhulp
   voor de gevallen waarin de VBA door kommagetallen anders afrondt (zie urenberekening.py);
   bij dienst 1 komen de opmerkingtijden erbij als Lijsten!N5 = 1 (niet als ze samenvallen met
-  dienst 2: dan tellen ze alleen daar, net als in de app);
+  dienst 1 zelf of met dienst 2: dan tellen ze alleen daar, net als in de app);
 - weektotaal (Z) = SUM van de urencellen van dienst 1 en dienst 2; urenoverzicht verwijst naar Z;
 - dienstnaam en standaardtijden zoeken de code uit het code-raster op in Lijsten, als de dienst
   de standaard van zijn code volgt (of de dag leeg is); anders zijn het vaste waarden;
@@ -321,11 +321,14 @@ CEL_ZATERDAG, CEL_ZONDAG, CEL_FEESTDAG = "Lijsten!$N$2", "Lijsten!$N$3", "Lijste
 CEL_OPMERKINGTIJDEN, CEL_PAUZE_AAN = "Lijsten!$N$5", "Lijsten!$N$6"
 PAUZE_EERSTE_RIJ = 9  # N9:N13 = grens ('meer dan ... uur'), O9:O13 = pauze eraf
 CEL_CORRECTIES_GELDIG = "Rekenhulp!$D$1"
-# Rekenhulp per dag (verborgen kolommen rechts van de tweede dienst), per dag 5 kolommen:
+# Rekenhulp per dag (verborgen kolommen rechts van de tweede dienst), per dag 7 kolommen:
 # X dienst 1, X dienst 2 (alleen bij een tweede dienst) en, als de opmerkingtijden meetellen: uren dienst 1,
-# X opmerkingtijden, uren opmerkingtijden (zo blijft het bestand klein en snel)
+# X opmerkingtijden, uren opmerkingtijden; bij meer delen op een dag (twee diensten of meetellende
+# opmerkingtijden) de pauze van de dag en het langste deel (1 = dienst 1, 2 = dienst 2,
+# 3 = opmerkingtijden) en het aantal delen met tijden. Alleen wat nodig is: zo blijft het bestand
+# klein en snel
 HULP_EERSTE = 60  # kolom BH
-HULP_BREEDTE = 5
+HULP_BREEDTE = 8
 MINUTEN_PER_DAG = 1440
 # Rekenhulp: sleutel = factor×1000×1440 + minuten; tekst = per begintijd één teken (correctie + 80)
 NUL_TEKEN = 80  # 'P' = geen correctie
@@ -367,21 +370,34 @@ class _Formules:
         return (f"IF({CEL_PAUZE_AAN}=1,IFERROR(LOOKUP({minuten}/60-1E-9,Lijsten!$N${PAUZE_EERSTE_RIJ}:"
                 f"$N${laatste},Lijsten!$O${PAUZE_EERSTE_RIJ}:$O${laatste}),0),0)")
 
-    def kwartieren_ruw(self, begin: str, eind: str, factor: str) -> str:
-        """X = (uren - pauze) * factor * 4, of "" zonder begin- of eindtijd."""
-        minuten = self.minuten(begin, eind)
-        return f'IF(COUNT({begin},{eind})<2,"",({minuten}/60-{self.pauze(minuten)})*{factor}*4)'
+    def kwartieren_ruw(self, begin: str, eind: str, factor: str, aftrek: str | None = None) -> str:
+        """X = (uren - pauze) * factor * 4, of "" zonder begin- of eindtijd.
 
-    def uren(self, x: str, begin: str, eind: str, factor: str) -> str:
+        aftrek: de pauze van de dag voor dit deel (bij meer delen op een dag); anders de staffel.
+        """
+        minuten = self.minuten(begin, eind)
+        pauze = self.pauze(minuten) if aftrek is None else aftrek
+        return f'IF(COUNT({begin},{eind})<2,"",({minuten}/60-{pauze})*{factor}*4)'
+
+    def uren(self, x: str, begin: str, eind: str, factor: str, correctie_als: str | None = None) -> str:
         """Afronden op kwartieren als de app: precies een half kwartier naar even (bankiers),
-        plus de correctie uit Rekenhulp waar de VBA door kommagetallen anders afrondt."""
+        plus de correctie uit Rekenhulp waar de VBA door kommagetallen anders afrondt.
+
+        correctie_als: voorwaarde voor die correctie. De VBA nabootsen geldt alleen voor één
+        deel op de dag; een dag met meer delen rekent de app exact (zie uren_exact)."""
         afgerond = f"IF(MOD(ROUND({x}*2,6),2)=1,2*ROUND({x}/2,0),ROUND({x},0))"
         if self.correcties:
             sleutel = f"ROUND({factor}*1000,0)*1440+{self.minuten(begin, eind)}"
             laatste = self.correcties + 1
-            afgerond += (f"+IF({CEL_CORRECTIES_GELDIG},IFERROR(CODE(MID(VLOOKUP({sleutel},Rekenhulp!$A$2:"
+            geldig = CEL_CORRECTIES_GELDIG if correctie_als is None else \
+                f"AND({CEL_CORRECTIES_GELDIG},{correctie_als})"
+            afgerond += (f"+IF({geldig},IFERROR(CODE(MID(VLOOKUP({sleutel},Rekenhulp!$A$2:"
                          f"$B${laatste},2,FALSE),MOD(ROUND({begin}*1440,0),1440)+1,1))-{NUL_TEKEN},0),0)")
         return f'IF({x}="","",({afgerond})/4)'
+
+    def deel_minuten(self, begin: str, eind: str) -> str:
+        """Gewerkte minuten van een deel van de dag, 0 zonder begin- of eindtijd."""
+        return f"IF(COUNT({begin},{eind})<2,0,{self.minuten(begin, eind)})"
 
     def overlap(self, b1: str, e1: str, b2: str, e2: str) -> str:
         """WAAR als twee tijdvakken overlappen (over middernacht), zoals rooster.tijden_overlappen."""
@@ -610,26 +626,70 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
     rij = basis + 3
     factor = _cel(2, _hulpkolom(i, 0), True)
     raster = _cel(rasterrij, CODE_KOLOMMEN[i], True)
-    # Rekenhulp: X van dienst 1 en dienst 2 (en eventueel de opmerkingtijden)
     b1, e1, b2, e2 = _cel(rij, kolom), _cel(rij, kolom + 1), _cel(rij, k2), _cel(rij, k2 + 1)
-    x1, x2 = _cel(rij, _hulpkolom(i, 0)), _cel(rij, _hulpkolom(i, 1))
-    _formule(blad, rij, _hulpkolom(i, 0), f.kwartieren_ruw(b1, e1, factor))
-    uren1 = f.uren(x1, b1, e1, factor)
-    if f.opmerkingtijden:
-        bo, eo = _cel(basis + 1, kolom), _cel(basis + 1, kolom + 1)
-        _formule(blad, rij, _hulpkolom(i, 2), uren1)
-        _formule(blad, rij, _hulpkolom(i, 3), f.kwartieren_ruw(bo, eo, factor))
-        uren_opm = f.uren(_cel(rij, _hulpkolom(i, 3)), bo, eo, factor)
-        if dienst2 is not None:  # opmerkingtijden die samenvallen met dienst 2 tellen daar al
-            uren_opm = f'IF({f.overlap(bo, eo, b2, e2)},"",{uren_opm})'
-        _formule(blad, rij, _hulpkolom(i, 4), uren_opm)
-        uren1 = f.dagtotaal(_cel(rij, _hulpkolom(i, 2)), _cel(rij, _hulpkolom(i, 4)))
+    bo, eo = _cel(basis + 1, kolom), _cel(basis + 1, kolom + 1)
+    tijden2 = (b2, e2) if dienst2 is not None else None
+    hulp, uren1, uren2 = dagformules(
+        f, lambda n: _cel(rij, _hulpkolom(i, n)), (b1, e1), (bo, eo), tijden2, factor,
+        handmatig1=dienst1 is not None and dienst1.uren_handmatig is not None,
+        handmatig2=dienst2 is not None and dienst2.uren_handmatig is not None)
+    for n, formule in hulp.items():
+        _formule(blad, rij, _hulpkolom(i, n), formule)
     _dienst(blad, basis, kolom, dienst1, f.code(raster, 1), uren1, c)
     # Formules voor dienst 2 alleen als die er is: het blok staat bijna altijd leeg, en elke
     # cel kost tijd en ruimte (een jaar moet binnen een paar seconden klaar zijn)
     if dienst2 is not None:
-        _formule(blad, rij, _hulpkolom(i, 1), f.kwartieren_ruw(b2, e2, factor))
-        _dienst(blad, basis, k2, dienst2, f.code(raster, 2), f.uren(x2, b2, e2, factor), c)
+        _dienst(blad, basis, k2, dienst2, f.code(raster, 2), uren2, c)
+
+
+def dagformules(f: _Formules, hulpcel, tijden1: tuple[str, str], opm: tuple[str, str],
+                tijden2: tuple[str, str] | None, factor: str, handmatig1: bool = False,
+                handmatig2: bool = False) -> tuple[dict[int, str], str, str | None]:
+    """De urenformules van één dag, zoals rooster.dag_uren (ook gebruikt door de tests).
+
+    hulpcel(n): het adres van rekenhulpcel n (0..7, zie HULP_BREEDTE). tijden2: begin/eind van
+    dienst 2, of None zonder tweede dienst. handmatig1/2: die dienst heeft zelf ingevulde uren
+    (een vaste waarde) en telt niet mee voor de pauze van de dag.
+    Geeft ({n: formule} voor de rekenhulp, formule uren dienst 1, formule uren dienst 2).
+    """
+    (b1, e1), (bo, eo) = tijden1, opm
+    hulp: dict[int, str] = {}
+    # Opmerkingtijden die samenvallen met dienst 1 of dienst 2 tellen daar al (zoals de app)
+    samen = f.overlap(bo, eo, b1, e1)
+    if tijden2 is not None:
+        samen = f"OR({samen},{f.overlap(bo, eo, *tijden2)})"
+    aftrek: dict[int, str | None] = {1: None, 2: None, 3: None}
+    if f.opmerkingtijden or tijden2 is not None:
+        # Meer delen op een dag: de pauze één keer van het totaal, bij het langste deel
+        m1 = "0" if handmatig1 else f.deel_minuten(b1, e1)
+        mo = "0" if handmatig1 or not f.opmerkingtijden else \
+            f"IF(OR({CEL_OPMERKINGTIJDEN}<>1,{samen}),0,{f.deel_minuten(bo, eo)})"
+        m2 = "0" if handmatig2 or tijden2 is None else f.deel_minuten(*tijden2)
+        hulp[5] = f.pauze(f"({m1}+{mo}+{m2})")
+        hulp[6] = f"IF(AND({m1}>={mo},{m1}>={m2}),1,IF({mo}>={m2},3,2))"
+        # Aantal delen met tijden: bij één deel rekent de app als de oude VBA (met correctie)
+        delen = ["0" if handmatig1 else f"IF(COUNT({b1},{e1})=2,1,0)"]
+        if f.opmerkingtijden and not handmatig1:
+            delen.append(f"IF(AND({CEL_OPMERKINGTIJDEN}=1,COUNT({bo},{eo})=2,NOT({samen})),1,0)")
+        if tijden2 is not None and not handmatig2:
+            delen.append(f"IF(COUNT({tijden2[0]},{tijden2[1]})=2,1,0)")
+        hulp[7] = "+".join(delen)
+        aftrek = {k: f"IF({hulpcel(6)}={k},{hulpcel(5)},0)" for k in aftrek}
+        enkel: str | None = f"{hulpcel(7)}=1"
+    else:
+        enkel = None
+    hulp[0] = f.kwartieren_ruw(b1, e1, factor, aftrek[1])
+    uren1 = f.uren(hulpcel(0), b1, e1, factor, enkel)
+    if f.opmerkingtijden:
+        hulp[2] = uren1
+        hulp[3] = f.kwartieren_ruw(bo, eo, factor, aftrek[3])
+        hulp[4] = f'IF({samen},"",{f.uren(hulpcel(3), bo, eo, factor, enkel)})'
+        uren1 = f.dagtotaal(hulpcel(2), hulpcel(4))
+    uren2 = None
+    if tijden2 is not None:
+        hulp[1] = f.kwartieren_ruw(*tijden2, factor, aftrek[2])
+        uren2 = f.uren(hulpcel(1), *tijden2, factor, enkel)
+    return hulp, uren1, uren2
 
 
 def _volgt_standaard(dienst: Dienst) -> bool:

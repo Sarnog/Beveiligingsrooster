@@ -65,7 +65,7 @@ def test_grens_vergelijkt_als_de_vba(app):
     assert bereken_uren("08:00", "17:00", pauze=staffel) == 8.25  # 9,000...02: zoals de VBA zou doen
 
 
-def test_pauze_per_dienst_ook_bij_twee_diensten(app, klaar):
+def test_pauze_per_dag_bij_twee_diensten(app, klaar):
     from app.services.voorbeeldpakket import laad_voorbeeldpakket
     from app.services.weekrooster import Wijziging, wijzig_cellen
 
@@ -75,10 +75,17 @@ def test_pauze_per_dienst_ook_bij_twee_diensten(app, klaar):
     db.session.commit()
     instellingen.schrijf("pauze", instellingen.pauze_json(True, [(5.5, 0.5), (9, 0.75)]))
     db.session.commit()
-    # 4 = VW Vroeg 07:15-15:45 (8,5 uur), 3 = VW Avond 14:30-23:00 (8,5 uur): elk 0,5 eraf
+    # 4 = VW Vroeg 07:15-15:45 (8,5 uur), 3 = VW Avond 14:30-23:00 (8,5 uur): samen 17 uur, dus
+    # sinds 1.8.3 één keer de hoogste regel (0,75) van de dag, bij de langste (gelijk: dienst 1)
     assert wijzig_cellen([Wijziging(mw.id, MAANDAG, "code", "4/3")])[1] == []
     per_vn = {d.volgnummer: d.uren_berekend for d in Dienst.query.filter_by(medewerker_id=mw.id)}
-    assert per_vn == {1: 8.0, 2: 8.0}
+    assert per_vn == {1: 7.75, 2: 8.5}
+
+
+def test_dag_uren_zonder_diensten(app):
+    from app.services.rooster import UrenContext, dag_uren
+
+    assert dag_uren(None, None, UrenContext(MAANDAG, MAANDAG)) == (None, None)
 
 
 # ---------------------------------------------------------------------------

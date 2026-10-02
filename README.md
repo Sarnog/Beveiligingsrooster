@@ -77,9 +77,9 @@ Meer schermafbeeldingen (telefoon 390×844 en computer 1280×800) staan in [docs
 - **Rechten worden op de server gecontroleerd.** Een gewone gebruiker krijgt bij elke wijzigpoging een foutmelding (HTTP 403), ook als hij de knoppen omzeilt. Dit staat vast in de tests.
 - **Geen wachtwoorden in platte tekst.** Wachtwoorden worden versleuteld opgeslagen (argon2). Zie [Inlogblokkade](#inlogblokkade-en-reverse-proxy) voor de beperking van foute pogingen.
 - **Sessies.** Na het wijzigen of resetten van een wachtwoord, het deactiveren van een account of een rolwijziging zijn alle andere sessies van die gebruiker direct ongeldig. Na het terugzetten van een back-up moet iedereen opnieuw inloggen.
-- **Urenberekening** (per dienst, alleen over begin- en eindtijd; bij twee diensten op een dag telt elke dienst apart):
+- **Urenberekening** (per dienst, alleen over begin- en eindtijd):
   1. Eindtijd vóór de begintijd? Dan loopt de dienst door na middernacht.
-  2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af. Sinds 1.6.0 instelbaar in *Beheer → Instellingen → Pauze*: uit, of een staffel (bijv. meer dan 9 uur: 0,75); de hoogste regel telt.
+  2. Meer dan 5,5 uur? Dan gaat er 0,5 uur pauze af. Sinds 1.6.0 instelbaar in *Beheer → Instellingen → Pauze*: uit, of een staffel (bijv. meer dan 9 uur: 0,75); de hoogste regel telt. De pauze geldt **per dag** (sinds 1.8.3): bij twee diensten (of een dienst plus meetellende opmerkingtijden) telt het totaal van de dag, en gaat de pauze één keer af bij de langste dienst.
   3. Daarna × de toeslagfactor: zaterdag 1,5 en zondag 2,0 (instelbaar), eventueel een feestdagfactor (de hoogste telt).
   4. Tot slot afronden op kwartieren, op precies dezelfde manier als Excel. Gecontroleerd op 1899 diensten uit het oude bestand.
 

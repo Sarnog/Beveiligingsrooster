@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.8.2)
+# Handleiding voor de planner (beheerder, versie 1.8.3)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 
@@ -59,8 +59,10 @@ Typ dan **twee codes** in dezelfde cel van het code-raster, gescheiden door `/`,
   regels** van het blok (dienstnaam, daaronder begin, eind en uren) en staat **dienst 2 op de
   onderste twee**. De andere dagen van die week blijven zoals ze waren.
 - Elke dienst heeft **eigen tijden en uren**; je kunt ze los aanpassen in het rooster, net als
-  bij één dienst. Pauze-aftrek en weekend-/feestdagtoeslag gelden per dienst. Het dag- en
-  weektotaal tellen beide diensten op.
+  bij één dienst. De weekend-/feestdagtoeslag geldt per dienst; de **pauze geldt per dag**
+  (sinds 1.8.3): zijn beide diensten samen langer dan 5,5 uur, dan gaat er één keer 0,5 uur af,
+  bij de langste dienst (bij gelijke lengte dienst 1). Het dag- en weektotaal tellen beide
+  diensten op.
 - De **opmerking** hoort bij de dag, niet bij een dienst. Op een dag met twee diensten staat
   ze achter de dienstnaam van dienst 1, bijvoorbeeld *VW Vroeg – Later op dienst*. Wijzigen
   kan pas weer als het één dienst is (bijvoorbeeld tijdelijk alleen `4` typen).
@@ -104,8 +106,8 @@ Wijkt een dienst af van de standaardtijden? Klik dan in het **rooster zelf** op 
 - De uren worden opnieuw berekend.
 - Begin- en eindtijd mogen niet gelijk zijn (dat zou een dienst van 0 minuten zijn); je krijgt dan een melding. Een nachtdienst typ je gewoon met een eindtijd vóór de begintijd (22:00–06:30).
 - Stonden er bij dienst 1 **zelf ingevulde uren** (bijvoorbeeld uit het oude Excel: dienst plus een training op de opmerkingregel, samen getypt als dagtotaal) en komt er een tweede dienst bij, dan vervallen die zelf ingevulde uren (sinds 1.6.0). Zo telt elke dienst zijn eigen uren en telt het tweede deel niet dubbel in het weektotaal. In het logboek staat de oude waarde. Dagen die nog uit een eerdere versie zo zijn blijven staan, vind je in *Beheer → Statistieken* onder *Mogelijk dubbel geteld*.
-- Staan bij dienst 1 **opmerkingtijden** (bijvoorbeeld *Soc. Veiligh. OB 13:00–17:00*, zoals uit de import) en is *Opmerkingtijden meetellen* aan, dan tellen die tijden **niet** mee zodra ze samenvallen met de tweede dienst (sinds 1.8.2). Dat tijdvak telt dan alleen bij dienst 2. Opmerkingtijden op een ander moment van de dag tellen gewoon mee. De Excel-export rekent hetzelfde.
-- Na de update naar 1.8.2 kijkt de app **één keer** alle dagen met een tweede dienst na en corrigeert dubbel getelde uren. Elke correctie staat in het logboek als *Uren gecorrigeerd* (met de oude en de nieuwe uren), plus één regel *Rooster nagekeken* met het aantal.
+- Staan bij dienst 1 **opmerkingtijden** (bijvoorbeeld *Soc. Veiligh. OB 13:00–17:00*, zoals uit de import) en is *Opmerkingtijden meetellen* aan, dan tellen die tijden **niet** mee zodra ze samenvallen met een dienst van die dag: met de tweede dienst (sinds 1.8.2) of met dienst 1 zelf, bijvoorbeeld een *Cursus 13:00–17:00* (sinds 1.8.3). Dat tijdvak telt dan alleen bij die dienst. Opmerkingtijden op een ander moment van de dag tellen gewoon mee. De Excel-export rekent hetzelfde. Het maakt dus niet uit of je de cellen na een import eerst leegmaakt.
+- Na een update met nieuwe rekenregels kijkt de app **één keer** het hele rooster na (alle weken, alle personen) en zet de uren goed. Elke correctie staat in het logboek als *Uren gecorrigeerd* (met de oude en de nieuwe uren en de reden), plus één regel *Rooster nagekeken* met het aantal.
 - Een handmatige tijd herken je aan de tip *Handmatig aangepast* als je er met de muis op staat. Hij blijft staan tot je de **dienstcode opnieuw wijzigt**; dan komen de standaardtijden van de nieuwe code terug.
 
 ### Vrije dienst en eigen uren
@@ -233,7 +235,7 @@ Het bestand lijkt op het oude Excel-rooster:
 
 **Het werkt in Excel zoals de app** (gewone `.xlsx`, geen macro's):
 
-- De **uren** zijn een formule: begin- en eindtijd, de pauze uit de staffel, × de toeslag van de dag (zaterdag, zondag, feestdag: de hoogste telt), afgerond op kwartieren precies zoals de app (ook bij precies een half kwartier). Wijzig je in Excel een tijd, dan rekent Excel de uren en het **weektotaal** opnieuw uit; het **urenoverzicht** verwijst naar de weektotalen.
+- De **uren** zijn een formule: begin- en eindtijd, de pauze uit de staffel (per dag, net als in de app), × de toeslag van de dag (zaterdag, zondag, feestdag: de hoogste telt), afgerond op kwartieren precies zoals de app (ook bij precies een half kwartier). Wijzig je in Excel een tijd, dan rekent Excel de uren en het **weektotaal** opnieuw uit; het **urenoverzicht** verwijst naar de weektotalen.
 - Volgt een dienst de standaard van zijn code, dan zoeken **dienstnaam en tijden** de code uit het code-raster op in *Lijsten*. Typ je in Excel een andere code (ook `4/7`), dan veranderen naam, tijden en uren mee. Afwijkende tijden, een eigen dienstnaam of een aanvulling achter de naam zijn vaste waarden. Het 2e-dienstblok heeft alleen formules op dagen die al een tweede dienst hebben (zo blijft een jaarbestand klein en snel); een nieuwe tweede dienst voeg je in de app toe.
 - **Zelf ingevulde uren** blijven een vaste waarde: rood, met een opmerking in de cel.
 - Het verborgen blad *Rekenhulp* zorgt dat Excel bij een half kwartier of precies op een pauzegrens precies zo afrondt als de app (die volgt de kommagetallen van de oude Excel-macro). Wijzig je in Excel de pauzeregels, dan rekent Excel daarna exact, zonder die correctie. Wijzig instellingen dus liever in de app en exporteer opnieuw. De opmerkingtijden tellen in Excel alleen mee als dat bij de export al aan stond.
@@ -284,9 +286,9 @@ Uren worden berekend op het moment van opslaan. Heb je de factor voor zaterdag o
 
 ### Pauze instellen
 
-In *Beheer → Instellingen*, blok **Pauze**: zet de pauzeaftrek aan of uit en vul één of meer regels in: *meer dan X uur gewerkt → Y uur pauze eraf* (hooguit 5, grenzen oplopend, pauze kleiner dan de grens). Voorbeeld: meer dan 5,5 uur → 0,5; meer dan 9 uur → 0,75. De **hoogste regel** die van toepassing is telt (de pauzes worden niet opgeteld); precies op de grens telt niet. De pauze geldt per dienst, ook bij twee diensten op één dag. Standaard staat er precies wat het oude Excel deed: meer dan 5,5 uur → 0,5. Na een wijziging zie je de tip *Alle uren herberekenen*; in het logboek staan de oude en de nieuwe regels.
+In *Beheer → Instellingen*, blok **Pauze**: zet de pauzeaftrek aan of uit en vul één of meer regels in: *meer dan X uur gewerkt → Y uur pauze eraf* (hooguit 5, grenzen oplopend, pauze kleiner dan de grens). Voorbeeld: meer dan 5,5 uur → 0,5; meer dan 9 uur → 0,75. De **hoogste regel** die van toepassing is telt (de pauzes worden niet opgeteld); precies op de grens telt niet. De pauze geldt per dag: bij twee diensten (of een dienst plus meetellende opmerkingtijden) telt het totaal van de dag, en gaat de pauze één keer af bij het langste deel. Standaard staat er precies wat het oude Excel deed: meer dan 5,5 uur → 0,5. Na een wijziging zie je de tip *Alle uren herberekenen*; in het logboek staan de oude en de nieuwe regels.
 
-Let op een eigenaardigheid die de app bewust van de oude Excel-macro overneemt: die rekent met kommagetallen, en een dienst van **precies** de grens (bijvoorbeeld 13:00–18:30, precies 5,5 uur) komt daardoor bij sommige begintijden net boven de grens uit en krijgt dan wél pauze. Zo blijven de uren gelijk aan die uit het oude bestand.
+Let op een eigenaardigheid die de app bewust van de oude Excel-macro overneemt: die rekent met kommagetallen, en een dienst van **precies** de grens (bijvoorbeeld 13:00–18:30, precies 5,5 uur) komt daardoor bij sommige begintijden net boven de grens uit en krijgt dan wél pauze. Zo blijven de uren gelijk aan die uit het oude bestand. Dat geldt alleen voor een dag met één dienst; een dag met meer delen rekent exact (precies 5,5 uur samen = geen pauze).
 
 ## 8. Een Excel-bestand importeren
 

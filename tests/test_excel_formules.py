@@ -2,8 +2,9 @@
 
 Per instelling een proefwerkboek: de echte bladen Lijsten, Feestdagen en Rekenhulp uit de
 export, plus een blad 'Proef' met per regel een datum, begin/eind, opmerkingtijden en precies
-de formules die ook in de weekbladen staan. 'formulas' rekent het werkboek uit (zie
-tests/excel_formules.py); elke uitkomst moet gelijk zijn aan die van de app.
+de formules die ook in de weekbladen staan (excel_export.dagformules), ook met een tweede
+dienst. 'formulas' rekent het werkboek uit (zie tests/excel_formules.py); elke uitkomst moet
+gelijk zijn aan die van de app.
 """
 
 import io
@@ -19,7 +20,7 @@ from app.models import Dienstcode
 from app.services import excel_export as ex
 from app.services import instellingen
 from app.services.feestdagen import feestdagen_in_periode
-from app.services.rooster import UrenContext, uren_voor
+from app.services.rooster import UrenContext, dag_uren
 from app.services.urenberekening import uren_uit_minuten
 
 from .excel_formules import bereken
@@ -35,7 +36,8 @@ def _t(minuten: int) -> str:
 
 
 def _gevallen(seed: int) -> list[tuple]:
-    """(datum, begin, eind, opm_begin, opm_eind): randgevallen plus een willekeurige steekproef."""
+    """(datum, begin, eind, opm_begin, opm_eind[, begin2, eind2]): randgevallen plus een willekeurige
+    steekproef. Met begin2/eind2 heeft de dag een tweede dienst (de pauze geldt per dag)."""
     rng = random.Random(seed)
     dagen = [MAANDAG, ZATERDAG, ZONDAG, KONINGSDAG, TWEEDE_PAASDAG, HEMELVAART, date(2026, 12, 26)]
     vast = [
@@ -59,14 +61,26 @@ def _gevallen(seed: int) -> list[tuple]:
         (MAANDAG, None, None, "13:00", "17:00"),  # alleen opmerkingtijden
         (MAANDAG, "07:15", None, None, None),  # alleen een begintijd: geen uren
         (MAANDAG, "07:15", "07:15", None, None),  # begin = eind: 0 uur
+        (MAANDAG, "08:30", "12:30", None, None, "13:00", "17:00"),  # 4 + 4: één pauze op de dag
+        (MAANDAG, "07:15", "13:00", None, None, "13:00", "17:00"),  # pauze bij het langste deel
+        (MAANDAG, "13:00", "17:00", "13:00", "17:00", "07:15", "13:00"),  # opmerking = dienst 1
+        (MAANDAG, "07:15", "13:00", "13:00", "17:00", "13:00", "17:00"),  # opmerking = dienst 2
+        (MAANDAG, "07:15", "10:00", "10:00", "12:00", "13:00", "14:00"),  # drie delen, 6 uur
+        (ZATERDAG, "08:30", "12:30", None, None, "13:00", "17:00"),  # met toeslag
+        (MAANDAG, "07:15", "15:45", None, None, "07:15", "15:45"),  # even lang: dienst 1
+        (MAANDAG, "07:15", "15:45", None, None, None, "17:00"),  # dienst 2 zonder begintijd
     ]
     for _ in range(140):
         begin = rng.randrange(1440)
         eind = (begin + rng.choice([rng.randrange(1, 1440), rng.randrange(60, 720, 5), 330, 540, 75, 495]))
         opm = rng.random() < 0.2
         opm_begin = rng.randrange(1440)
-        vast.append((rng.choice(dagen), _t(begin), _t(eind),
-                     _t(opm_begin) if opm else None, _t(opm_begin + rng.randrange(15, 300)) if opm else None))
+        geval = (rng.choice(dagen), _t(begin), _t(eind),
+                 _t(opm_begin) if opm else None, _t(opm_begin + rng.randrange(15, 300)) if opm else None)
+        if rng.random() < 0.3:  # een tweede dienst
+            begin2 = rng.randrange(1440)
+            geval += (_t(begin2), _t(begin2 + rng.choice([rng.randrange(15, 600), 240, 330, 75])))
+        vast.append(geval)
     return vast
 
 
@@ -81,7 +95,8 @@ def _proefwerkboek(gevallen) -> bytes:
     factoren = {1.0, toeslagen["factor_zaterdag"], toeslagen["factor_zondag"]} | (
         {toeslagen["factor_feestdag"]} if toeslagen["factor_feestdag"] else set())
     tabel = sorted({c for f in factoren for c in ex.correcties(f, staffel)})
-    formules = ex._Formules(len(pauze["regels"]), len(tabel))
+    opmerkingtijden = instellingen.lees_bool("opmerkingtijden_meetellen")
+    formules = ex._Formules(len(pauze["regels"]), len(tabel), opmerkingtijden)
 
     boek = Workbook()
     proef = boek.active
@@ -89,17 +104,23 @@ def _proefwerkboek(gevallen) -> bytes:
     ex._lijsten(boek.create_sheet("Lijsten"), JAAR, [], codes, toeslagen, pauze, ex._Stijlen())
     ex._feestdagen(boek.create_sheet("Feestdagen"), feestdagen)
     ex._rekenhulp(boek.create_sheet("Rekenhulp"), tabel, pauze)
-    for rij, (dag, begin, eind, opm_begin, opm_eind) in enumerate(gevallen, start=1):
+    for rij, (dag, begin, eind, opm_begin, opm_eind, *tweede) in enumerate(gevallen, start=1):
         proef.cell(rij, 1).value = datetime.combine(dag, time())
-        for kolom, tekst in ((2, begin), (3, eind), (7, opm_begin), (8, opm_eind)):
+        tijden = [(2, begin), (3, eind), (7, opm_begin), (8, opm_eind)]
+        if tweede:
+            tijden += [(12, tweede[0]), (13, tweede[1])]
+        for kolom, tekst in tijden:
             proef.cell(rij, kolom).value = time.fromisoformat(tekst) if tekst else None
         factor = f"$D${rij}"
         ex._formule(proef, rij, 4, formules.factor(f"$A${rij}", len(feestdagen)))
-        ex._formule(proef, rij, 5, formules.kwartieren_ruw(f"B{rij}", f"C{rij}", factor))
-        ex._formule(proef, rij, 6, formules.uren(f"E{rij}", f"B{rij}", f"C{rij}", factor))
-        ex._formule(proef, rij, 9, formules.kwartieren_ruw(f"G{rij}", f"H{rij}", factor))
-        ex._formule(proef, rij, 10, formules.uren(f"I{rij}", f"G{rij}", f"H{rij}", factor))
-        ex._formule(proef, rij, 11, formules.dagtotaal(f"F{rij}", f"J{rij}"))  # = de urencel van dienst 1
+        hulp, uren1, uren2 = ex.dagformules(formules, lambda n, r=rij: f"{ex.get_column_letter(20 + n)}{r}",
+                                            (f"B{rij}", f"C{rij}"), (f"G{rij}", f"H{rij}"),
+                                            (f"L{rij}", f"M{rij}") if tweede else None, factor)
+        for n, formule in hulp.items():
+            ex._formule(proef, rij, 20 + n, formule)
+        ex._formule(proef, rij, 11, uren1)  # = de urencel van dienst 1
+        if uren2:
+            ex._formule(proef, rij, 14, uren2)  # = de urencel van dienst 2
     uitvoer = io.BytesIO()
     boek.save(uitvoer)
     return uitvoer.getvalue()
@@ -109,13 +130,19 @@ def _vergelijk(gevallen) -> None:
     uitkomst = bereken(_proefwerkboek(gevallen))
     context = UrenContext(date(JAAR - 1, 12, 29), date(JAAR + 1, 1, 3))
     fout = []
-    for rij, (dag, begin, eind, opm_begin, opm_eind) in enumerate(gevallen, start=1):
-        dienst = SimpleNamespace(uren_handmatig=None, datum=dag, begin=begin, eind=eind,
-                                 opmerking_begin=opm_begin, opmerking_eind=opm_eind)
-        app = uren_voor(dienst, context)
-        excel = uitkomst[f"Proef!K{rij}"]
-        if (app is None and excel != "") or (app is not None and excel != app):
-            fout.append(f"{dag} {begin}-{eind} opm {opm_begin}-{opm_eind}: app {app}, Excel {excel!r}")
+    for rij, (dag, begin, eind, opm_begin, opm_eind, *tweede) in enumerate(gevallen, start=1):
+        dienst1 = SimpleNamespace(uren_handmatig=None, datum=dag, begin=begin, eind=eind,
+                                  opmerking_begin=opm_begin, opmerking_eind=opm_eind)
+        dienst2 = SimpleNamespace(uren_handmatig=None, datum=dag, begin=tweede[0], eind=tweede[1],
+                                  is_leeg=False) if tweede else None
+        app1, app2 = dag_uren(dienst1, dienst2, context)
+        for app, cel in ((app1, "K"), (app2, "N") if tweede else (None, None)):
+            if cel is None:
+                continue
+            excel = uitkomst[f"Proef!{cel}{rij}"]
+            if (app is None and excel != "") or (app is not None and excel != app):
+                fout.append(f"{dag} {begin}-{eind} opm {opm_begin}-{opm_eind} 2e {tweede}: {cel} app {app}, "
+                            f"Excel {excel!r}")
     assert fout == [], f"{len(fout)} verschillen, bijv.: " + "; ".join(fout[:5])
 
 

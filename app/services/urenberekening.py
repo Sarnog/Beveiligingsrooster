@@ -25,15 +25,18 @@ overgenomen).
 
 Pauze (sinds 1.6.0 instelbaar in Beheer → Instellingen): een staffel met regels "meer dan
 X uur gewerkt: Y uur eraf". De hoogste regel die van toepassing is telt (niet optellen);
-precies op de grens telt niet. De pauze geldt per dienst (ook bij twee diensten op een dag)
-en apart voor de opmerkingtijden. De standaard is nog steeds de Excel-VBA: één regel,
-meer dan 5,5 uur -> 0,5 eraf. Pauzeaftrek uit = een lege staffel.
+precies op de grens telt niet. De pauze geldt per dag (sinds 1.8.3): bij twee diensten,
+of een dienst plus meetellende opmerkingtijden, gaat de pauze één keer af van het totaal
+van de dag, bij het langste deel (zie rooster.dag_uren; die delen rekenen exact, zie
+uren_exact). De standaard is nog steeds de
+Excel-VBA: één regel, meer dan 5,5 uur -> 0,5 eraf. Pauzeaftrek uit = een lege staffel.
 
 Zomer-/wintertijd: we rekenen met wandkloktijd, net als Excel. Een nachtdienst
 22:00-06:30 telt dus altijd 8,00 uur, ook in de nacht dat de klok verzet wordt.
 """
 
 from datetime import date
+from fractions import Fraction
 
 from .tijden import tijd_naar_minuten
 
@@ -93,6 +96,21 @@ def bereken_uren(begin: str | None, eind: str | None, factor: float = 1.0,
     if begin_min is None or eind_min is None:
         return None
     return uren_uit_minuten(begin_min, eind_min, factor, pauze)
+
+
+def gewerkte_minuten(begin_min: int, eind_min: int) -> int:
+    """Gewerkte minuten van begin tot eind (eind vóór begin = over middernacht)."""
+    return (eind_min - begin_min) % 1440
+
+
+def uren_exact(minuten: int, factor: float, aftrek: float) -> float:
+    """(minuten - aftrek) × factor, exact gerekend en op kwartieren afgerond (half naar even).
+
+    Voor een deel van een dag met meer delen (zie rooster.dag_uren): daar bestaat geen oude
+    VBA om na te bootsen, dus geen kommagetallen. Zo rekent de Excel-export ook.
+    """
+    x = (Fraction(minuten, 60) - Fraction(str(aftrek))) * Fraction(str(factor)) * 4
+    return round(x) / 4  # round() op een Fraction: exact, half naar even
 
 
 def uren_uit_minuten(begin_min: int, eind_min: int, factor: float = 1.0,

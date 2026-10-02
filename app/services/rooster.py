@@ -7,9 +7,16 @@ from ..models import Dienst, Dienstcode
 from . import instellingen, klok
 from .feestdagen import feestdagen_in_periode
 from .tijden import tijd_naar_minuten
-from .urenberekening import bereken_uren, dagfactor
+from .urenberekening import (
+    bereken_uren,
+    dagfactor,
+    gewerkte_minuten,
+    pauze_aftrek,
+    uren_exact,
+    uren_uit_minuten,
+)
 
-_ZOEKEN = object()  # uren_voor: dienst 2 van de dag zelf opzoeken
+_ZOEKEN = object()  # uren_voor: de andere dienst van de dag zelf opzoeken
 
 
 class UrenContext:
@@ -51,48 +58,91 @@ def tijden_overlappen(begin1: str | None, eind1: str | None,
     return b1 < e2 and b2 < e1
 
 
-def opmerking_is_tweede_dienst(dienst, tweede: Dienst | None) -> bool:
-    """De opmerkingtijden van dienst 1 vallen (deels) samen met dienst 2.
+def opmerking_valt_samen(dienst, tweede: Dienst | None) -> bool:
+    """De opmerkingtijden van dienst 1 vallen (deels) samen met een dienst van die dag.
 
-    Zo stond een tweede dienst vóór versie 1.4.0 (en in het oude Excel) in het rooster:
-    als opmerking met tijden, bijv. 'Soc. Veiligh. OB 13:00-17:00'. Wordt dat daarna een
-    echte dienst 2, dan telt dat tijdvak alleen nog bij dienst 2 (anders telt het dubbel).
+    Met dienst 1 zelf of met dienst 2: die tijd telt al bij die dienst en mag niet nog eens
+    meetellen. Zo stond een tweede dienst vóór versie 1.4.0 (en in het oude Excel) in het
+    rooster: als opmerking met tijden, bijv. 'Soc. Veiligh. OB 13:00-17:00'. Wordt dat daarna
+    een echte dienst (dienst 2, of dienst 1 zelf, bijv. 'Cursus 13:00-17:00'), dan telt dat
+    tijdvak alleen nog bij die dienst. Opmerkingtijden op een ander moment tellen gewoon mee.
     """
+    if tijden_overlappen(dienst.opmerking_begin, dienst.opmerking_eind, dienst.begin, dienst.eind):
+        return True
     return tweede is not None and tijden_overlappen(
         dienst.opmerking_begin, dienst.opmerking_eind, tweede.begin, tweede.eind)
 
 
-def _tweede_dienst_van(dienst) -> Dienst | None:
-    """Dienst 2 van dezelfde dag (alleen voor een opgeslagen dienst 1)."""
-    if getattr(dienst, "volgnummer", None) != 1 or not getattr(dienst, "medewerker_id", None):
+def _andere_dienst_van(dienst) -> Dienst | None:
+    """De andere dienst van dezelfde dag (alleen voor een opgeslagen dienst)."""
+    volgnummer = getattr(dienst, "volgnummer", None)
+    if volgnummer not in (1, 2) or not getattr(dienst, "medewerker_id", None):
         return None
     with db.session.no_autoflush:
         return Dienst.query.filter_by(medewerker_id=dienst.medewerker_id, datum=dienst.datum,
-                                      volgnummer=2).first()
+                                      volgnummer=3 - volgnummer).first()
 
 
-def uren_voor(dienst: Dienst, context: UrenContext, tweede=_ZOEKEN) -> float | None:
-    """Uren van één dienst: de tijdenregel, plus eventueel de opmerkingtijden.
+def dag_uren(dienst1, dienst2, context: UrenContext) -> tuple[float | None, float | None]:
+    """Uren van dienst 1 en dienst 2 van één dag (dienst1 of dienst2 mag None zijn).
 
-    De pauzestaffel geldt per dienst, en apart voor de opmerkingtijden. Vallen de
-    opmerkingtijden samen met dienst 2 van die dag, dan tellen ze niet mee (zie
-    opmerking_is_tweede_dienst). tweede: dienst 2 als die al bekend is (scheelt een query).
+    Delen van de dag: de tijden van dienst 1, de opmerkingtijden van dienst 1 (als die
+    meetellen en niet samenvallen met een dienst, zie opmerking_valt_samen) en de tijden van
+    dienst 2. De pauze geldt per dag: de staffel op het totaal van alle delen, één keer
+    afgetrokken bij het langste deel (bij gelijke lengte het eerste). Elk deel krijgt de
+    toeslagfactor en wordt exact op kwartieren afgerond (uren_exact, zoals de Excel-export).
+    Eén deel: precies de oude VBA (uren_uit_minuten), ook met zijn kommagetallen.
+    Zelf ingevulde uren gaan voor en tellen niet mee in het totaal voor de pauze.
+    """
+    if dienst2 is not None and dienst2.is_leeg:
+        dienst2 = None
+    if dienst1 is None and dienst2 is None:
+        return None, None
+    datum = (dienst1 or dienst2).datum
+    delen = []  # (volgnummer, begin, eind) in minuten
+    if dienst1 is not None and dienst1.uren_handmatig is None:
+        tijden = [(dienst1.begin, dienst1.eind)]
+        if context.opmerkingtijden_meetellen and not opmerking_valt_samen(dienst1, dienst2):
+            tijden.append((dienst1.opmerking_begin, dienst1.opmerking_eind))
+        delen += [(1, tijd_naar_minuten(b), tijd_naar_minuten(e)) for b, e in tijden]
+    if dienst2 is not None and dienst2.uren_handmatig is None:
+        delen.append((2, tijd_naar_minuten(dienst2.begin), tijd_naar_minuten(dienst2.eind)))
+    delen = [d for d in delen if d[1] is not None and d[2] is not None]
+    factor = context.factor(datum)
+    uren: dict[int, float | None] = {1: None, 2: None}
+    if len(delen) == 1:  # één deel: de pauze uit de staffel, precies als de VBA
+        volgnummer, begin, eind = delen[0]
+        uren[volgnummer] = uren_uit_minuten(begin, eind, factor, context.pauze)
+    elif delen:
+        minuten = [gewerkte_minuten(begin, eind) for _, begin, eind in delen]
+        aftrek = pauze_aftrek(sum(minuten) / 60, context.pauze)
+        langste = minuten.index(max(minuten))
+        for nummer, (volgnummer, _, _) in enumerate(delen):
+            deel = uren_exact(minuten[nummer], factor, aftrek if nummer == langste else 0)
+            uren[volgnummer] = (uren[volgnummer] or 0) + deel
+    if dienst1 is not None and dienst1.uren_handmatig is not None:
+        uren[1] = dienst1.uren_handmatig
+    if dienst2 is not None and dienst2.uren_handmatig is not None:
+        uren[2] = dienst2.uren_handmatig
+    return uren[1], uren[2]
+
+
+def uren_voor(dienst: Dienst, context: UrenContext, ander=_ZOEKEN) -> float | None:
+    """Uren van één dienst: de tijdenregel, plus eventueel de opmerkingtijden (zie dag_uren).
+
+    De pauze geldt per dag, dus de andere dienst van die dag telt mee. ander: die andere
+    dienst als die al bekend is (scheelt een query; None = er is geen andere dienst).
 
     Zelf ingevulde uren (uren_handmatig) gaan altijd voor, zonder toeslagfactor:
     zo werkte het ook in Excel als je een getal in de urenkolom typte.
     """
     if dienst.uren_handmatig is not None:
         return dienst.uren_handmatig
-    factor = context.factor(dienst.datum)
-    uren = bereken_uren(dienst.begin, dienst.eind, factor, context.pauze)
-    if context.opmerkingtijden_meetellen:
-        extra = bereken_uren(dienst.opmerking_begin, dienst.opmerking_eind, factor, context.pauze)
-        if extra is not None:
-            if tweede is _ZOEKEN:
-                tweede = _tweede_dienst_van(dienst)
-            if not opmerking_is_tweede_dienst(dienst, tweede):
-                uren = (uren or 0) + extra
-    return uren
+    if ander is _ZOEKEN:
+        ander = _andere_dienst_van(dienst)
+    if getattr(dienst, "volgnummer", 1) == 2:
+        return dag_uren(ander, dienst, context)[1]
+    return dag_uren(dienst, ander, context)[0]
 
 
 def herbereken_alle(van: date | None = None, tot: date | None = None) -> int:
@@ -112,11 +162,11 @@ def herbereken_alle(van: date | None = None, tot: date | None = None) -> int:
     eerste = min(d.datum for d in diensten)
     laatste = max(d.datum for d in diensten)
     context = UrenContext(eerste, laatste)
-    tweede = {(d.medewerker_id, d.datum): d for d in diensten if d.volgnummer == 2}
+    per_dag = {(d.medewerker_id, d.datum, d.volgnummer): d for d in diensten}
     gewijzigd = 0
     for dienst in diensten:
-        nieuw = uren_voor(dienst, context, tweede.get((dienst.medewerker_id, dienst.datum))
-                          if dienst.volgnummer == 1 else None)
+        nieuw = uren_voor(dienst, context, per_dag.get((dienst.medewerker_id, dienst.datum,
+                                                         3 - dienst.volgnummer)))
         if nieuw != dienst.uren_berekend:
             dienst.uren_berekend = nieuw
             gewijzigd += 1
@@ -129,23 +179,32 @@ def _is_dagtotaal(dienst1: Dienst, dienst2: Dienst, context: UrenContext) -> boo
 
     Zo kwam het uit de import (dienst plus een training op de opmerkingregel, zoals in Excel)
     of van vóór versie 1.6.0: dienst 1 + dienst 2, of dienst 1 + de opmerkingtijden die
-    samenvallen met dienst 2. Andere eigen uren laten we staan (die zijn bewust zo gezet).
+    samenvallen met een dienst; met de pauze per dienst (zoals Excel) of per dag. Andere
+    eigen uren laten we staan (die zijn bewust zo gezet).
     """
+    from types import SimpleNamespace
+
     factor = context.factor(dienst1.datum)
     eigen = bereken_uren(dienst1.begin, dienst1.eind, factor, context.pauze) or 0
     totalen = [eigen + (bereken_uren(dienst2.begin, dienst2.eind, factor, context.pauze) or 0)]
-    if opmerking_is_tweede_dienst(dienst1, dienst2):
+    if opmerking_valt_samen(dienst1, dienst2):
         totalen.append(eigen + (bereken_uren(dienst1.opmerking_begin, dienst1.opmerking_eind, factor,
                                              context.pauze) or 0))
+    zonder = SimpleNamespace(datum=dienst1.datum, begin=dienst1.begin, eind=dienst1.eind, uren_handmatig=None,
+                             opmerking_begin=dienst1.opmerking_begin, opmerking_eind=dienst1.opmerking_eind)
+    totalen.append(sum(u or 0 for u in dag_uren(zonder, dienst2, context)))
     return any(abs(dienst1.uren_handmatig - totaal) < 0.01 for totaal in totalen)
 
 
-def herstel_tweede_diensten() -> int:
-    """Controleer alle dagen met een tweede dienst en corrigeer dubbel getelde uren (eenmalig, 1.8.2).
+def herstel_dubbele_uren() -> int:
+    """Kijk alle dagen na en corrigeer de uren volgens de huidige regels (eenmalig, zie worker).
 
-    - Zelf ingevulde uren van dienst 1 die het dagtotaal zijn (zie _is_dagtotaal) vervallen.
-    - Opmerkingtijden die samenvallen met dienst 2 tellen niet meer mee (zie uren_voor).
-    Elke gecorrigeerde dienst komt in het logboek. Geeft het aantal gecorrigeerde dagen;
+    Raakt alleen dagen met twee delen: twee diensten, of een dienst met opmerkingtijden.
+    - Opmerkingtijden die samenvallen met dienst 1 zelf of met dienst 2 tellen niet mee.
+    - De pauze geldt per dag (één keer, bij het langste deel), niet per dienst.
+    - Zelf ingevulde uren van dienst 1 naast een dienst 2 die het dagtotaal zijn (zie
+      _is_dagtotaal) vervallen.
+    Elke gecorrigeerde dienst komt in het logboek. Geeft het aantal gecorrigeerde diensten;
     commit doet de aanroeper.
     """
     from sqlalchemy.orm import joinedload
@@ -153,34 +212,40 @@ def herstel_tweede_diensten() -> int:
     from . import logboek
     from .urenberekening import formatteer_uren
 
-    tweede = {(d.medewerker_id, d.datum): d for d in Dienst.query.filter_by(volgnummer=2).all()
-              if not d.is_leeg}
-    if not tweede:
+    per_dag: dict[tuple[int, date], dict[int, Dienst]] = {}
+    for dienst in Dienst.query.options(joinedload(Dienst.medewerker)).all():
+        per_dag.setdefault((dienst.medewerker_id, dienst.datum), {})[dienst.volgnummer] = dienst
+    dagen = [(d.get(1), d.get(2)) for d in per_dag.values()
+             if (d.get(2) is not None and not d[2].is_leeg)
+             or (d.get(1) is not None and d[1].opmerking_begin and d[1].opmerking_eind)]
+    if not dagen:
         return 0
-    eerste = (Dienst.query.options(joinedload(Dienst.medewerker))
-              .filter(Dienst.volgnummer == 1, Dienst.datum >= min(d for _, d in tweede),
-                      Dienst.datum <= max(d for _, d in tweede)).all())
-    context = UrenContext(min(d for _, d in tweede), max(d for _, d in tweede))
+    datums = [(d1 or d2).datum for d1, d2 in dagen]
+    context = UrenContext(min(datums), max(datums))
     gecorrigeerd = 0
-    for dienst1 in eerste:
-        dienst2 = tweede.get((dienst1.medewerker_id, dienst1.datum))
-        if dienst2 is None:
-            continue
-        oud = dienst1.uren_berekend
-        reden = "opmerkingtijden vallen samen met dienst 2"
-        if dienst1.uren_handmatig is not None and _is_dagtotaal(dienst1, dienst2, context):
+    for dienst1, dienst2 in dagen:
+        reden = "de pauze geldt per dag, niet per dienst"
+        if dienst1 is not None and dienst1.opmerking_begin and context.opmerkingtijden_meetellen \
+                and opmerking_valt_samen(dienst1, dienst2):
+            reden = "opmerkingtijden vallen samen met een dienst van die dag"
+        if dienst1 is not None and dienst1.uren_handmatig is not None and dienst2 is not None \
+                and not dienst2.is_leeg and _is_dagtotaal(dienst1, dienst2, context):
             dienst1.uren_handmatig = None
             reden = "zelf ingevulde uren waren het totaal van de dag, met dienst 2 erbij"
-        nieuw = uren_voor(dienst1, context, dienst2)
-        if nieuw == oud:
-            continue
-        dienst1.uren_berekend = nieuw
-        dienst1.versie = (dienst1.versie or 0) + 1
-        gecorrigeerd += 1
-        logboek.log("Uren gecorrigeerd", f"Dubbel geteld: {reden}", datum=dienst1.datum,
-                    medewerker=dienst1.medewerker.naam, veld="uren", oud=formatteer_uren(oud),
-                    nieuw=formatteer_uren(nieuw), gebruiker="systeem")
+        for dienst, nieuw in zip((dienst1, dienst2), dag_uren(dienst1, dienst2, context), strict=True):
+            if dienst is None or dienst.uren_berekend == nieuw:
+                continue
+            oud = dienst.uren_berekend
+            dienst.uren_berekend = nieuw
+            dienst.versie = (dienst.versie or 0) + 1
+            gecorrigeerd += 1
+            logboek.log("Uren gecorrigeerd", f"Gecorrigeerd: {reden}", datum=dienst.datum,
+                        medewerker=dienst.medewerker.naam, veld=VELD_UREN[dienst.volgnummer],
+                        oud=formatteer_uren(oud), nieuw=formatteer_uren(nieuw), gebruiker="systeem")
     return gecorrigeerd
+
+
+VELD_UREN = {1: "uren", 2: "dienst 2: uren"}
 
 
 def diensten_met_afwijkende_std_tijden(code: Dienstcode, vanaf: date) -> list[Dienst]:

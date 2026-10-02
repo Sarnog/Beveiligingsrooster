@@ -323,4 +323,5 @@ def test_tweede_dienst_in_de_api(app, rooster):
     assert eerste["tweede_diensten"][dag - 1]["dienstnaam"] == "VW Avond"
     assert eerste["tweede_diensten"][dag - 1]["volgnummer"] == 2
     assert [d for i, d in enumerate(eerste["tweede_diensten"]) if i != dag - 1] == [None] * 6
-    assert eerste["weektotaal"] == 24.0  # 8 + 8 (andere dag) + 8 (dienst 2)
+    # 8 (andere dag) + 8,5 + 8,5 - 0,5: de pauze geldt per dag (sinds 1.8.3)
+    assert eerste["weektotaal"] == 24.5
