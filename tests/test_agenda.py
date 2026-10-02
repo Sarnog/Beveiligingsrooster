@@ -264,6 +264,14 @@ def test_volledige_sync_slaat_ongewijzigde_afspraken_over(app, gekoppeld, nep):
     sync_planning.plan_volledig(gekoppeld)
     wachtrij_nu_uitvoeren()
     assert nep.aanroepen == {"maak_afspraak": 3, "wijzig_afspraak": 1}
+    # Afspraak-ID kwijt in het rooster, maar bij Google al goed: alleen het ID terugzetten
+    Dienst.query.update({"google_event_id": ""})
+    db.session.commit()
+    sync_planning.plan_volledig(gekoppeld)
+    wachtrij_nu_uitvoeren()
+    assert nep.aanroepen == {"maak_afspraak": 3, "wijzig_afspraak": 1}
+    db.session.expire_all()
+    assert all(d.google_event_id for d in Dienst.query.all())
 
 
 def test_google_limiet_pauzeert_hele_wachtrij(app, gekoppeld, monkeypatch, als_beheerder):
