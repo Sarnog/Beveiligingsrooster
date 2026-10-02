@@ -2,6 +2,16 @@
 
 ## [Onuitgebracht]
 
+### Gewijzigd
+- **Google Agenda: geen limietfouten meer bij grote roosters.** Na het invullen van een heel
+  jaarrooster gaf Google "Geen toegang tot deze agenda (403)": in werkelijkheid was de limiet op het
+  aantal wijzigingen per service-account bereikt. De app stuurt nu maximaal één aanroep per seconde,
+  *Volledig synchroniseren* slaat ongewijzigde afspraken over (vingerafdruk in de afspraak), en bij
+  een limietmelding (`quotaExceeded`, `rateLimitExceeded`, 429) pauzeert de hele wachtrij 30 minuten
+  zonder dat taken mislukken. De pauze staat op *Beheer → Google Agenda*; *Mislukte opnieuw proberen*
+  heft hem op. Een taak mag nu 30 minuten (was 10) op 'bezig' staan.
+- **Duidelijkere 403-melding:** de reden van Google staat erbij, en de tekst noemt modus A én B.
+
 ## [1.8.0] – 2026-10-02
 
 ### Toegevoegd

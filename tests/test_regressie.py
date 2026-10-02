@@ -420,8 +420,9 @@ def test_h3_blijven_hangen_op_bezig_wordt_hersteld(app, gekoppeld, monkeypatch):
     from .test_agenda import NepKlant
 
     monkeypatch.setattr(google_agenda, "klant", NepKlant)
+    te_lang = klok.utc_nu() - sync.VASTGELOPEN - timedelta(minutes=1)
     db.session.add(SyncTaak(medewerker_id=gekoppeld.id, datum=MAANDAG, soort="dag",
-                            status="bezig", niet_voor=klok.utc_nu() - timedelta(minutes=11)))
+                            status="bezig", niet_voor=te_lang))
     db.session.add(SyncTaak(medewerker_id=gekoppeld.id, datum=MAANDAG + timedelta(days=1),
                             soort="dag", status="bezig", niet_voor=klok.utc_nu()))
     db.session.commit()

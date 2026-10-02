@@ -29,7 +29,8 @@
   <h2>2. Medewerkers koppelen</h2>
   <p class="hulp">Wijzigingen verschijnen binnen ongeveer een minuut in de agenda. Volledige synchronisatie: {{ periode[0]|datum_nl }} t/m {{ periode[1]|datum_nl }}.
     Wachtrij: {{ wachtrij.get('wacht', 0) }} wachtend, {{ wachtrij.get('fout', 0) }} mislukt.
-    {% if wachtrij.get('fout') %}{{ post_knop(url_for('beheer.agenda_opnieuw'), 'Mislukte opnieuw proberen', 'knop klein') }}{% endif %}</p>
+    {% if pauze %}<br><span class="melding-inline fout">Google-limiet bereikt: synchronisatie gepauzeerd tot {{ pauze.strftime('%H:%M') }}. Daarna gaat hij vanzelf verder.</span>{% endif %}
+    {% if wachtrij.get('fout') or pauze %}{{ post_knop(url_for('beheer.agenda_opnieuw'), 'Mislukte opnieuw proberen', 'knop klein') }}{% endif %}</p>
   <div class="tabel-schuif">
   <table class="tabel">
     <thead><tr><th>Medewerker</th><th>Google Agenda</th><th>Status</th><th>Acties</th><th>ICS-feed</th></tr></thead>

@@ -128,6 +128,10 @@ De status toont:
 
 ## Fouten
 
+- **Google-limiet.** Google laat één service-account maar een beperkt aantal wijzigingen in korte tijd doen. Alle agenda's van modus A horen bij hetzelfde service-account, dus collega's delen die limiet. Daarom:
+  - stuurt de app maximaal één wijziging per seconde naar Google (een heel jaarrooster duurt per collega dus een paar minuten);
+  - slaat **Volledig synchroniseren** afspraken over die al goed staan;
+  - pauzeert de app bij een limietmelding van Google (`quotaExceeded`, `rateLimitExceeded`) de **hele** wachtrij 30 minuten en gaat daarna vanzelf verder. Op *Beheer → Google Agenda* zie je tot hoe laat. Taken gaan daarbij niet verloren en tellen niet als mislukt. Met **Mislukte opnieuw proberen** hef je de pauze meteen op.
 - **Tijdelijke fouten** (Google is druk, of er is geen internet) worden automatisch opnieuw geprobeerd, steeds met langere pauzes: 30 seconden, 1 minuut, 2 minuten, en zo verder tot maximaal 1 uur.
 - **Na 6 mislukte pogingen**, of bij een blijvende fout (bijvoorbeeld geen toegang), gebeurt het volgende:
   - de fout komt bij de medewerker te staan;
@@ -137,7 +141,8 @@ De status toont:
 
 | Melding | Oplossing |
 |---|---|
-| Geen toegang tot deze agenda (403) | Modus B: is de agenda gedeeld met het service-account, met het recht "Wijzigingen aanbrengen"? |
+| Geen toegang tot deze agenda (403 …) | Modus A: staat de sleutel van **hetzelfde** service-account erin als toen de agenda werd aangemaakt? Zo niet: zet de oude sleutel terug, of ontkoppel en maak de agenda opnieuw aan. Modus B: is de agenda gedeeld met het service-account, met het recht "Wijzigingen aanbrengen"? |
+| Google-limiet bereikt (403 quotaExceeded) | Geen actie nodig: de app pauzeert en gaat vanzelf verder. Gebeurt het vaak? Gebruik dan niet steeds *Volledig synchroniseren*. |
 | Agenda niet gevonden (404) | Klopt het agenda-ID? Is de agenda verwijderd? Ontkoppel en koppel opnieuw. |
 | Google weigert de sleutel (401) | Is de sleutel ingetrokken in Google Cloud? Upload een nieuwe sleutel. |
 | Er is nog geen service-account-sleutel geüpload | Zie deel 1, stap 5. |

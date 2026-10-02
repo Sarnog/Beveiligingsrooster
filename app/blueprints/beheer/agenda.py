@@ -2,6 +2,7 @@
 
 import re
 import secrets
+from datetime import UTC
 
 from flask import flash, redirect, render_template, request, url_for
 
@@ -25,8 +26,11 @@ def agenda():
     )
     wachtrij = dict(db.session.query(SyncTaak.status, db.func.count(SyncTaak.id))
                     .group_by(SyncTaak.status).all())
+    pauze = sync.pauze_tot()  # UTC; tonen in lokale tijd
+    pauze = pauze.replace(tzinfo=UTC).astimezone(klok.tijdzone()) if pauze else None
     return render_template(
         "beheer/agenda.html", medewerkers=medewerkers, afspraken=afspraken, wachtrij=wachtrij,
+        pauze=pauze,
         sleutel=google_agenda.sleutel_aanwezig(), sa_email=google_agenda.service_account_email(),
         periode=sync.sync_periode(),
     )

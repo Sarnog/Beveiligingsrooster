@@ -37,6 +37,14 @@ def _vergeet_ingelogde_gebruiker():
     g.pop("_login_user", None)
 
 
+@pytest.fixture(autouse=True)
+def _geen_tussenpoze(monkeypatch):
+    """De Google-klant wacht in het echt 1 s tussen aanroepen; in de tests niet."""
+    from app.services import google_agenda
+
+    monkeypatch.setattr(google_agenda, "TUSSENPOZE", 0)
+
+
 @pytest.fixture
 def app(tmp_path):
     app = create_app(TestConfig(str(tmp_path)))

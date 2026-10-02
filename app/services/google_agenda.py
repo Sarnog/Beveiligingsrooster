@@ -7,9 +7,11 @@ Alle Google-aanroepen lopen via de klasse AgendaKlant. In de tests wordt die
 vervangen door een nep-versie, zodat er nooit echt met Google gepraat wordt.
 """
 
+import hashlib
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -23,17 +25,27 @@ BESTANDSNAAM = "google-service-account.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 BRON = "beveiligingsrooster"  # markering in extendedProperties.private
 TIMEOUT = 30  # seconden
+# Minimale tijd tussen twee Google-aanroepen. Google heeft een (geheime) limiet op het aantal
+# wijzigingen per account in korte tijd; daar valt een heel jaarrooster in één keer zo niet onder.
+TUSSENPOZE = 1.0  # seconden
+# Redenen waarmee Google zegt "even te veel": tijdelijk, de hele wachtrij pauzeert
+QUOTA_REDENEN = ("quotaExceeded", "rateLimitExceeded", "userRateLimitExceeded")
 log = logging.getLogger(__name__)
 BEHEERD_TEKST = "Automatisch beheerd door Beveiligingsrooster – niet handmatig wijzigen"
 
 
 class AgendaFout(Exception):
-    """Fout bij een Google-aanroep. tijdelijk=True: later opnieuw proberen."""
+    """Fout bij een Google-aanroep. tijdelijk=True: later opnieuw proberen.
 
-    def __init__(self, melding: str, tijdelijk: bool = False, status: int | None = None):
+    quota=True: Google-limiet bereikt; de worker pauzeert dan de hele wachtrij.
+    """
+
+    def __init__(self, melding: str, tijdelijk: bool = False, status: int | None = None,
+                 quota: bool = False):
         super().__init__(melding)
-        self.tijdelijk = tijdelijk
+        self.tijdelijk = tijdelijk or quota
         self.status = status
+        self.quota = quota
 
 
 # ---------------------------------------------------------------------------
@@ -99,15 +111,21 @@ def _vertaal_fout(fout: Exception) -> AgendaFout:
             reden = json.loads(fout.content.decode())["error"]["errors"][0].get("reason", "")
         except Exception:  # reden is alleen extra informatie
             reden = ""
-        tijdelijk = status == 429 or status >= 500 or reden in (
-            "rateLimitExceeded", "userRateLimitExceeded", "backendError")
+        quota = status == 429 or reden in QUOTA_REDENEN
+        if quota:
+            code = f"{status} {reden}".strip()
+            return AgendaFout(f"Google-limiet bereikt ({code}): te veel wijzigingen in "
+                              "korte tijd. De synchronisatie pauzeert en gaat daarna vanzelf verder.",
+                              status=status, quota=True)
+        tijdelijk = status >= 500 or reden == "backendError"
         meldingen = {
             401: "Google weigert de sleutel (401). Upload het sleutelbestand opnieuw.",
-            403: "Geen toegang tot deze agenda (403). Is de agenda gedeeld met het service-account?",
+            403: f"Geen toegang tot deze agenda (403 {reden or 'forbidden'}). Modus A: is de sleutel "
+                 "nog van hetzelfde service-account? Modus B: is de agenda gedeeld met het "
+                 "service-account?",
             404: "Agenda of afspraak niet gevonden (404).",
             410: "Afspraak bestaat niet meer (410).",
             409: "Afspraak bestaat al (409).",
-            429: "Te veel verzoeken aan Google (429); wordt later opnieuw geprobeerd.",
         }
         melding = meldingen.get(status, f"Google gaf fout {status} {reden}".strip())
         return AgendaFout(melding, tijdelijk=tijdelijk, status=status)
@@ -136,9 +154,18 @@ class AgendaKlant:
 
     def __init__(self, service) -> None:
         self.service = service
+        self._vorige = 0.0  # time.monotonic() van de vorige aanroep
+
+    def _rem(self) -> None:
+        """Wacht tot er TUSSENPOZE seconden sinds de vorige aanroep voorbij zijn."""
+        wachten = self._vorige + TUSSENPOZE - time.monotonic()
+        if wachten > 0:
+            time.sleep(wachten)
+        self._vorige = time.monotonic()
 
     def _voer_uit(self, verzoek):
         naam = getattr(verzoek, "methodId", type(verzoek).__name__)
+        self._rem()
         try:
             antwoord = verzoek.execute()
         except Exception as fout:  # wordt vertaald
@@ -289,7 +316,16 @@ def afspraak_voor(dienst: Dienst | None, dagtekst: str = "") -> Afspraak | None:
         body["end"] = {"date": (dienst.datum + timedelta(days=1)).isoformat()}
     else:
         return None
+    # Vingerafdruk van de inhoud: een volledige sync slaat ongewijzigde afspraken zo over
+    body["extendedProperties"]["private"]["inhoud"] = inhoud_hash(body)
     return Afspraak(body=body)
+
+
+def inhoud_hash(body: dict) -> str:
+    """Korte hash van de afspraak (zonder de hash zelf)."""
+    privé = {k: v for k, v in body["extendedProperties"]["private"].items() if k != "inhoud"}
+    tekst = json.dumps(dict(body, extendedProperties={"private": privé}), sort_keys=True)
+    return hashlib.sha256(tekst.encode()).hexdigest()[:16]
 
 
 def dagtekst_voor(datum: date) -> str:

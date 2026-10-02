@@ -11,7 +11,13 @@ wijziging binnen, dan maakt sync_planning een NIEUWE wachtende taak; de worker
 verwijdert alleen de taak die hij zelf geclaimd had. Zo gaat er niets verloren.
 Een taak die na een crash op 'bezig' blijft hangen, gaat na VASTGELOPEN terug naar 'wacht'.
 
-Fouten: bij tijdelijke fouten (429, 5xx, netwerk) proberen we het later opnieuw,
+Tempo: de klant wacht TUSSENPOZE (1 s) tussen twee Google-aanroepen, en een volledige sync
+slaat ongewijzigde afspraken over (vingerafdruk 'inhoud'). Meldt Google toch een limiet
+(quotaExceeded, rateLimitExceeded, 429), dan pauzeert de HELE wachtrij QUOTA_PAUZE lang:
+alle modus A-agenda's horen bij hetzelfde service-account en delen dus dezelfde limiet.
+Zo'n taak gaat terug naar 'wacht' en telt niet als mislukte poging.
+
+Fouten: bij andere tijdelijke fouten (5xx, netwerk) proberen we het later opnieuw,
 steeds langer wachtend (exponentiële backoff: 30 s, 1 min, 2 min, ... max 1 uur).
 Na MAX_POGINGEN, of bij een blijvende fout, krijgt de taak status 'fout' en komt
 de melding in het logboek en bij de medewerker (Beheer -> Google Agenda).
@@ -22,7 +28,7 @@ import base64
 import hashlib
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -34,12 +40,22 @@ from .google_agenda import BRON, AgendaFout, afspraak_voor, dagtekst_voor
 log = logging.getLogger(__name__)
 MAX_POGINGEN = 6
 MAX_TAKEN_PER_RONDE = 50
-VASTGELOPEN = timedelta(minutes=10)  # zo lang mag een taak op 'bezig' staan
+VASTGELOPEN = timedelta(minutes=30)  # zo lang mag een taak op 'bezig' staan (jaar = ~6 min)
+QUOTA_PAUZE = timedelta(minutes=30)  # wachtrij stil na een Google-limiet
 
 
 def wachttijd(pogingen: int) -> timedelta:
     """Exponentiële backoff: 30 s, 60 s, 120 s, ... maximaal 1 uur."""
     return timedelta(seconds=min(30 * 2 ** max(pogingen - 1, 0), 3600))
+
+
+def pauze_tot() -> datetime | None:
+    """Tot wanneer (UTC) de wachtrij stilstaat na een Google-limiet, of None."""
+    try:
+        tot = datetime.fromisoformat(instellingen.lees("agenda_pauze_tot"))
+    except ValueError:
+        return None
+    return tot if tot > klok.utc_nu() else None
 
 
 def sync_periode() -> tuple[date, date]:
@@ -181,7 +197,12 @@ def sync_volledig(klant, medewerker: Medewerker) -> int:
         huidig = dienst.google_event_id if dienst.google_event_id in bestaande else ""
         huidig = huidig or per_dienst.get(str(dienst.id), "")
         gewenst = afspraak_voor(dienst, dagtekst_voor(dienst.datum))
-        _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, huidig)
+        if gewenst is not None and huidig and _privé(bestaande[huidig]).get("inhoud") \
+                == _privé(gewenst.body)["inhoud"]:
+            if dienst.google_event_id != huidig:  # al goed bij Google: geen aanroep nodig
+                _bewaar_event_id(dienst, huidig)
+        else:
+            _zet_afspraak(klant, medewerker.agenda_id, dienst, gewenst, huidig)
         if dienst.google_event_id:
             gebruikt.add(dienst.google_event_id)
             aantal += 1
@@ -241,6 +262,16 @@ def _voer_uit(klant, taak: SyncTaak) -> None:
 
 
 def _verwerk_fout(taak: SyncTaak, fout: AgendaFout) -> None:
+    if fout.quota:  # Google-limiet: alles pauzeren, deze taak telt niet als mislukt
+        tot = klok.utc_nu() + QUOTA_PAUZE
+        instellingen.schrijf("agenda_pauze_tot", tot.isoformat())
+        taak.status = "wacht"
+        taak.niet_voor = tot
+        taak.laatste_fout = str(fout)[:1000]
+        minuten = int(QUOTA_PAUZE.total_seconds() // 60)
+        logboek.log("Agenda-sync gepauzeerd", f"{fout} Pauze: {minuten} minuten.")
+        log.warning("Google-limiet bereikt; agenda-wachtrij gepauzeerd tot %s (UTC)", tot)
+        return
     taak.pogingen += 1
     taak.laatste_fout = str(fout)[:1000]
     medewerker = db.session.get(Medewerker, taak.medewerker_id) if taak.medewerker_id else None
@@ -283,6 +314,8 @@ def _claim(taak_id: int) -> SyncTaak | None:
 def verwerk_wachtrij(klant_maker=None) -> int:
     """Verwerk alle taken die aan de beurt zijn. Geeft het aantal verwerkte taken."""
     herstel_vastgelopen()
+    if pauze_tot():
+        return 0  # Google-limiet: even niets naar Google sturen
     taak_ids = [t.id for t in (
         SyncTaak.query.filter(SyncTaak.status == "wacht", SyncTaak.niet_voor <= klok.utc_nu())
         .order_by(SyncTaak.niet_voor, SyncTaak.id).limit(MAX_TAKEN_PER_RONDE).all()
@@ -322,12 +355,19 @@ def verwerk_wachtrij(klant_maker=None) -> int:
                 continue  # intussen verwijderd
             _verwerk_fout(taak, fout)
             db.session.commit()
+            if fout.quota:
+                break  # de rest van de ronde wacht tot na de pauze
     return verwerkt
 
 
 def probeer_mislukte_opnieuw() -> int:
-    """Zet alle mislukte taken terug in de wachtrij."""
+    """Zet alle mislukte taken terug in de wachtrij en hef een Google-pauze op."""
+    nu = klok.utc_nu()
     aantal = SyncTaak.query.filter_by(status="fout").update(
-        {"status": "wacht", "pogingen": 0, "niet_voor": klok.utc_nu()})
+        {"status": "wacht", "pogingen": 0, "niet_voor": nu})
+    if pauze_tot():  # taken die op het einde van de pauze wachten: nu meteen
+        SyncTaak.query.filter(SyncTaak.status == "wacht", SyncTaak.niet_voor > nu).update(
+            {"niet_voor": nu}, synchronize_session=False)
+        instellingen.schrijf("agenda_pauze_tot", "")
     db.session.commit()
     return aantal
