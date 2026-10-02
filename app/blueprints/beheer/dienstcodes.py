@@ -6,6 +6,7 @@ from flask import flash, redirect, render_template, request, url_for
 from ...extensions import db
 from ...models import Dienst, Dienstcode, OpmerkingKleurregel
 from ...services import instellingen, klok, logboek, sync_planning
+from ...services.patronen import patronen_met_code
 from ...services.rooster import diensten_met_afwijkende_std_tijden, pas_std_tijden_toe
 from ...services.tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from ...services.validatie import MAX_OMSCHRIJVING, is_codenummer, lengte_fout
@@ -48,6 +49,8 @@ def _lees_formulier(code: Dienstcode | None) -> tuple[dict, list[str]]:
         bestaand = Dienstcode.query.filter_by(nummer=nummer).first()
         if bestaand and (code is None or bestaand.id != code.id):
             fouten.append(f"Code {nummer} bestaat al.")
+        if code is not None and nummer != code.nummer and (namen := patronen_met_code(code.nummer)):
+            fouten.append(_in_patronen(code, namen, "hernummerd"))
 
     omschrijving = formulier.get("omschrijving", "").strip()
     if not omschrijving:
@@ -154,10 +157,20 @@ def _hernoem_aanvullingen(code: Dienstcode, oude_naam: str) -> None:
                         nieuw=dienst.dienstnaam_override)
 
 
+def _in_patronen(code: Dienstcode, namen: list[str], wat: str) -> str:
+    """Melding: een patroon bewaart codenummers en zou anders stil naar een andere dienst wijzen."""
+    soort = "roosterpatroon" if len(namen) == 1 else "roosterpatronen"
+    return (f"Code {code.nummer} staat in {soort} {', '.join(namen)} en kan daarom niet {wat} "
+            "worden. Pas eerst het patroon aan; deactiveren kan wel.")
+
+
 @bp.route("/dienstcodes/<int:cid>/verwijder", methods=["POST"])
 @beheerder_vereist
 def dienstcode_verwijder(cid: int):
-    """Een code die in gebruik is kan niet weg, alleen gedeactiveerd worden."""
+    """Een code die in gebruik is kan niet weg, alleen gedeactiveerd worden.
+
+    Staat de code alleen in een roosterpatroon, dan wordt het verwijderen geweigerd.
+    """
     code = db.get_or_404(Dienstcode, cid)
     if Dienst.query.filter_by(dienstcode_id=cid).count():
         code.actief = False
@@ -165,6 +178,8 @@ def dienstcode_verwijder(cid: int):
                     veld="actief", oud=True, nieuw=False)
         flash(f"Code {code.nummer} is in gebruik en is daarom gedeactiveerd in plaats van verwijderd.",
               "info")
+    elif namen := patronen_met_code(code.nummer):
+        flash(_in_patronen(code, namen, "verwijderd"), "fout")
     else:
         logboek.log("Dienstcode verwijderd", code.omschrijving, oud=code.nummer)
         db.session.delete(code)

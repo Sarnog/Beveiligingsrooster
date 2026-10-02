@@ -163,6 +163,17 @@ def beschrijving(patroon: RoosterPatroon) -> str:
     return f"{patroon.weken} weken" + (f" – {regels}" if regels else "")
 
 
+def patronen_met_code(nummer: int) -> list[str]:
+    """Namen (op volgorde) van de patronen die dienstcode 'nummer' gebruiken.
+
+    Een patroon bewaart codenummers ('4/7'): na hernummeren of verwijderen van de code zou het
+    stil naar een andere (of geen) dienst verwijzen. Beheer → Dienstcodes weigert dat daarom.
+    """
+    dagen = RoosterPatroonDag.query.options(joinedload(RoosterPatroonDag.patroon))
+    namen = {dag.patroon.naam for dag in dagen if str(nummer) in dag.codes.split("/")}
+    return sorted(namen, key=str.lower)
+
+
 def kopieer_week(cellen: dict[tuple[int, int], str], bron: int, naar, weken: int) \
         -> dict[tuple[int, int], str]:
     """Kopie van de cellen waarin de weken in 'naar' precies gelijk zijn aan week 'bron'.

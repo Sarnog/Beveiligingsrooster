@@ -786,3 +786,58 @@ def test_scherm_week_kopieren_en_opslaan_bestaand_patroon(app, als_beheerder, mw
     assert antwoord.status_code == 302
     db.session.expire_all()
     assert RoosterPatroon.query.one().cellen() == {(1, 0): "4", (2, 0): "4", (3, 0): "4"}
+
+
+# ---------------------------------------------------------------------------
+# Dienstcodes die in een patroon staan: niet hernummeren of verwijderen
+# ---------------------------------------------------------------------------
+
+def test_patronen_met_code(app, mw):
+    _patroon("Vroeg", cellen={(1, 0): "4", (2, 0): "7"})
+    _patroon("Tweede dienst", cellen={(1, 1): "/4", (2, 1): "5/17"})
+    _patroon("Zonder 4", cellen={(1, 0): "14"})
+    assert patronen.patronen_met_code(4) == ["Tweede dienst", "Vroeg"]
+    assert patronen.patronen_met_code(17) == ["Tweede dienst"]
+    assert patronen.patronen_met_code(1) == []  # '14' is niet code 1 of 4
+
+
+def _code_formulier(code, **extra):
+    return {"nummer": str(code.nummer), "omschrijving": code.omschrijving, "std_begin": code.std_begin,
+            "std_eind": code.std_eind, "std_uren": str(code.std_uren), "vet": "1", "actief": "1",
+            "in_agenda": "1", **extra}
+
+
+def test_scherm_code_in_patroon_niet_hernummeren(app, als_beheerder, mw):
+    from app.models import Dienstcode
+
+    patroon = _patroon("Vroeg-laat", cellen={(1, 0): "4", (2, 0): "7"})
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    antwoord = als_beheerder.post(f"/beheer/dienstcodes/{code.id}", data=_code_formulier(code, nummer="40"))
+    tekst = antwoord.data.decode()
+    assert antwoord.status_code == 400 and "Vroeg-laat" in tekst and "roosterpatroon" in tekst
+    db.session.expire_all()
+    assert Dienstcode.query.filter_by(nummer=4).one() and patroon.cellen()[(1, 0)] == "4"
+    # Andere velden wijzigen en deactiveren mag wel
+    antwoord = als_beheerder.post(f"/beheer/dienstcodes/{code.id}",
+                                  data={**_code_formulier(code, omschrijving="VW Ochtend"), "actief": ""})
+    assert antwoord.status_code == 302
+    db.session.expire_all()
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    assert code.omschrijving == "VW Ochtend" and not code.actief
+
+
+def test_scherm_code_in_patroon_niet_verwijderen(app, als_beheerder, mw):
+    from app.models import Dienstcode
+
+    _patroon("Vroeg-laat", cellen={(1, 0): "4", (2, 0): "7"})
+    _patroon("Alleen 2e dienst", cellen={(1, 0): "/4"})
+    code = Dienstcode.query.filter_by(nummer=4).one()
+    antwoord = als_beheerder.post(f"/beheer/dienstcodes/{code.id}/verwijder", follow_redirects=True)
+    tekst = antwoord.data.decode()
+    assert "Alleen 2e dienst, Vroeg-laat" in tekst and 'class="melding fout"' in tekst
+    db.session.expire_all()
+    assert Dienstcode.query.filter_by(nummer=4).one().actief  # niets veranderd
+    # Een code die niet in een patroon staat, kan nog steeds weg
+    vrij = Dienstcode.query.filter_by(nummer=5).one()
+    als_beheerder.post(f"/beheer/dienstcodes/{vrij.id}/verwijder")
+    assert Dienstcode.query.filter_by(nummer=5).first() is None
