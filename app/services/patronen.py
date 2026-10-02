@@ -128,12 +128,30 @@ def sla_op(patroon: RoosterPatroon | None, naam: str, weken, cellen: dict) \
         db.session.add(patroon)
     oud = "" if nieuw else beschrijving(patroon)
     patroon.naam, patroon.weken = naam, aantal
-    patroon.dagen = [RoosterPatroonDag(week=w, dag=d, codes=c) for (w, d), c in sorted(schoon.items())]
+    _werk_dagen_bij(patroon, schoon)
     db.session.flush()
     logboek.log("Roosterpatroon opgeslagen", "nieuw" if nieuw else "gewijzigd", veld=naam, oud=oud,
                 nieuw=beschrijving(patroon))
     db.session.commit()
     return patroon, []
+
+
+def _werk_dagen_bij(patroon: RoosterPatroon, schoon: dict[tuple[int, int], str]) -> None:
+    """Werk de rijen per (week, dag) bij: bestaande bijwerken, nieuwe toevoegen, overbodige weg.
+
+    Niet de hele lijst vervangen: dan voegt SQLAlchemy de nieuwe rijen toe vóór het verwijderen
+    van de oude, en botst een cel die blijft staan op de unieke index uq_patroon_week_dag.
+    """
+    bestaand = {(d.week, d.dag): d for d in patroon.dagen}
+    for sleutel, dag in bestaand.items():
+        if sleutel in schoon:
+            dag.codes = schoon[sleutel]
+        else:
+            patroon.dagen.remove(dag)  # delete-orphan
+    for (week, dag), codes in sorted(schoon.items()):
+        if (week, dag) not in bestaand:
+            patroon.dagen.append(RoosterPatroonDag(week=week, dag=dag, codes=codes))
+    patroon.dagen.sort(key=lambda d: (d.week, d.dag))
 
 
 def beschrijving(patroon: RoosterPatroon) -> str:

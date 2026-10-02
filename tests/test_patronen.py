@@ -738,3 +738,51 @@ def test_effect_slaat_onbekende_medewerker_over(app, mw):
                                               MAANDAG + timedelta(days=6)))
     assert list(effect.per_medewerker) == [mw[0].id] and effect.totaal.nieuw == 1
     assert patronen.effect(patroon, _keuzes(patroon, [], MAANDAG, MAANDAG)).acties == []
+
+
+# ---------------------------------------------------------------------------
+# Bestaand patroon opnieuw opslaan (audit: IntegrityError op uq_patroon_week_dag)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nieuwe_cellen", [
+    {(1, 0): "4", (2, 0): "7"},  # ongewijzigd
+    {(1, 0): "5", (2, 0): "7"},  # gewijzigde cel
+    {(1, 0): "4", (2, 0): "7", (1, 3): "4/7"},  # extra cel
+    {(1, 0): "", (2, 0): ""},  # alle cellen leeg
+], ids=["ongewijzigd", "gewijzigd", "extra", "leeg"])
+def test_bestaand_patroon_opnieuw_opslaan(app, mw, nieuwe_cellen):
+    patroon = _patroon()
+    opgeslagen, fouten = patronen.sla_op(patroon, patroon.naam, 2, nieuwe_cellen)
+    assert fouten == [] and opgeslagen is patroon
+    db.session.expire_all()
+    verwacht = {k: v for k, v in nieuwe_cellen.items() if v}
+    assert RoosterPatroon.query.one().cellen() == verwacht
+
+
+@pytest.mark.parametrize("raster, verwacht", [
+    ({"w1_0": "4", "w2_0": "7"}, {(1, 0): "4", (2, 0): "7"}),
+    ({"w1_0": "5", "w2_0": "7"}, {(1, 0): "5", (2, 0): "7"}),
+    ({"w1_0": "4", "w2_0": "7", "w1_3": "4/7"}, {(1, 0): "4", (2, 0): "7", (1, 3): "4/7"}),
+    ({}, {}),
+], ids=["ongewijzigd", "gewijzigd", "extra", "leeg"])
+def test_scherm_bestaand_patroon_opnieuw_opslaan(app, als_beheerder, mw, raster, verwacht):
+    patroon = _patroon()
+    antwoord = als_beheerder.post(f"/beheer/patronen/{patroon.id}", data={
+        "naam": patroon.naam, "weken": "2", "actie": "opslaan", **_raster(**raster)})
+    assert antwoord.status_code == 302
+    db.session.expire_all()
+    assert RoosterPatroon.query.one().cellen() == verwacht
+
+
+def test_scherm_week_kopieren_en_opslaan_bestaand_patroon(app, als_beheerder, mw):
+    patroon = _patroon(weken=3, cellen={(1, 0): "4", (2, 0): "7", (3, 0): "5"})
+    url = f"/beheer/patronen/{patroon.id}"
+    tekst = als_beheerder.post(url, data={
+        "naam": patroon.naam, "weken": "3", "actie": "kopieer", "kopieer_van": "1",
+        "kopieer_naar": ["2", "3"], **_raster(w1_0="4", w2_0="7", w3_0="5")}).data.decode()
+    assert 'name="c-2-0" value="4"' in tekst and 'name="c-3-0" value="4"' in tekst
+    antwoord = als_beheerder.post(url, data={
+        "naam": patroon.naam, "weken": "3", "actie": "opslaan", **_raster(w1_0="4", w2_0="4", w3_0="4")})
+    assert antwoord.status_code == 302
+    db.session.expire_all()
+    assert RoosterPatroon.query.one().cellen() == {(1, 0): "4", (2, 0): "4", (3, 0): "4"}
