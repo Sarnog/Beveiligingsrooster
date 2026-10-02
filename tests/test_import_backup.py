@@ -150,6 +150,43 @@ def test_droogloop(app, klaar, bestand):
     assert Dienst.query.count() == 0  # droogloop schrijft niets
 
 
+
+@pytest.mark.parametrize("dienst2_tijden", [("07:15", "13:00"), ("07:15", "15:45")])
+def test_na_import_tweede_dienst_maken_telt_de_opmerkingtijden_niet_dubbel(app, als_beheerder, bestand,
+                                                                           dienst2_tijden):
+    """Melding 1.8.2 (D. Bevers): na de import staat op donderdag 'VW Vroeg 07:15-13:00' met
+    'Training 13:00-17:00' op de opmerkingregel. De planner maakt er '13/4' van (Cursus +
+    VW Vroeg) en zet de cursus op 13:00-17:00. De opmerkingtijden vallen dan samen met de
+    cursus zelf: 4 uur, niet 8. Ook als dienst 2 daarna niet meer over 13:00-17:00 loopt."""
+    laad_voorbeeldpakket()  # code 13 = Cursus
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    db.session.commit()
+    importeer(lees_bestand(bestand))
+    a = Medewerker.query.filter_by(initialen="MVA").one()
+    donderdag = date(2026, 3, 5)
+
+    def cel(veld, waarde, volgnummer=1):
+        antwoord = als_beheerder.post("/api/cellen", json={"opslaan": True, "wijzigingen": [{
+            "mw": a.id, "datum": donderdag.isoformat(), "veld": veld, "waarde": waarde,
+            "volgnummer": volgnummer}]})
+        assert antwoord.json["fouten"] == []
+
+    def uren():
+        db.session.expire_all()
+        return {d.volgnummer: d.uren_berekend for d in Dienst.query.filter_by(medewerker_id=a.id,
+                                                                                datum=donderdag)}
+
+    assert uren() == {1: 9.25}  # 5,25 + 4 (training op de opmerkingregel)
+    cel("code", "13/4")
+    cel("begin", "13:00")
+    cel("eind", "17:00")
+    assert uren()[1] == 4.0
+    cel("begin", dienst2_tijden[0], volgnummer=2)
+    cel("eind", dienst2_tijden[1], volgnummer=2)
+    assert uren() == {1: 4.0, 2: 5.25 if dienst2_tijden[1] == "13:00" else 8.0}
+    week = als_beheerder.get("/week/2026/10").data.decode()
+    assert "8,00" in week
+
 def test_definitief_importeren(app, klaar, bestand):
     laad_voorbeeldpakket()  # code 4 en 10 bestaan al; 42 komt erbij
     resultaat = importeer(lees_bestand(bestand))

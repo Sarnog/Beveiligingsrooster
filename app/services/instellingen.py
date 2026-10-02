@@ -36,7 +36,8 @@ STANDAARD: dict[str, str] = {
     "agenda_sync_dagen_terug": "7",
     "agenda_sync_maanden_vooruit": "12",
     "agenda_pauze_tot": "",  # UTC (ISO); na een Google-limiet staat de wachtrij tot dan stil
-    "herstel_tweede_dienst": "",  # "1" = dagen met een tweede dienst nagekeken (eenmalig, 1.8.2)
+    # Laatste ronde van 'dubbel getelde uren nakijken' (eenmalig na een update, zie worker)
+    "herstel_dubbele_uren": "",
     "backup_bewaren": "30",
     "log_niveau": "",  # leeg = LOG_NIVEAU uit .env; anders DEBUG, INFO, WARNING of ERROR
     "debug_log": "",  # leeg = DEBUG_LOG uit .env; "1" = aan, "0" = uit

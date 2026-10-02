@@ -3,7 +3,7 @@
 Gekozen voor een eigen lus in plaats van APScheduler: geen extra afhankelijkheid
 en makkelijk te volgen. Elke ronde (elke paar seconden):
 - de Google Agenda-wachtrij verwerken;
-- eenmalig (na de update naar 1.8.2): dagen met een tweede dienst nakijken op dubbel getelde uren;
+- eenmalig na een update (HERSTEL_RONDE): het hele rooster nakijken op dubbel getelde uren;
 - één keer per dag: logboek, oude loginpogingen en achtergebleven importbestanden opruimen;
 - één keer per nacht (na 02:00): een back-up maken en oude back-ups opruimen.
 
@@ -30,6 +30,8 @@ log = logging.getLogger("worker")
 INTERVAL_SECONDEN = 5
 BACKUP_UUR = 2  # back-up na 02:00 's nachts
 BACKUP_BACKOFF = timedelta(minutes=30)  # wachttijd na een mislukte back-up
+# Ophogen als de regels voor dubbel getelde uren veranderen: dan kijkt de worker alles opnieuw na
+HERSTEL_RONDE = "1.8.3"
 
 
 class Planning:
@@ -47,17 +49,17 @@ def _stap_sync() -> None:
     sync.verwerk_wachtrij()
 
 
-def _stap_herstel_tweede_dienst() -> None:
-    from .services.rooster import herstel_tweede_diensten, markeer_bijgewerkt
+def _stap_herstel_dubbele_uren() -> None:
+    from .services.rooster import herstel_dubbele_uren, markeer_bijgewerkt
 
-    aantal = herstel_tweede_diensten()
-    logboek.log("Rooster nagekeken", f"Dagen met een tweede dienst: {aantal} gecorrigeerd "
-                "(dubbel getelde uren)", gebruiker="systeem")
+    aantal = herstel_dubbele_uren()
+    logboek.log("Rooster nagekeken", f"Alle diensten op dubbel getelde uren: {aantal} gecorrigeerd",
+                gebruiker="systeem")
     if aantal:
         markeer_bijgewerkt()
-    instellingen.schrijf("herstel_tweede_dienst", "1")
+    instellingen.schrijf("herstel_dubbele_uren", HERSTEL_RONDE)
     db.session.commit()
-    log.info("Tweede diensten nagekeken: %s dagen gecorrigeerd", aantal)
+    log.info("Dubbel getelde uren nagekeken: %s diensten gecorrigeerd", aantal)
 
 
 def _stap_opschonen(nu: datetime) -> None:
@@ -119,12 +121,12 @@ def een_ronde(planning: Planning, nu: datetime | None = None) -> None:
     if not instellingen.setup_voltooid():
         return
 
-    # Eenmalig na de update naar 1.8.2: dubbel getelde uren bij een tweede dienst corrigeren
-    if instellingen.lees("herstel_tweede_dienst") != "1":
+    # Eenmalig na de update: dubbel getelde uren in het hele rooster corrigeren
+    if instellingen.lees("herstel_dubbele_uren") != HERSTEL_RONDE:
         try:
-            _stap_herstel_tweede_dienst()
+            _stap_herstel_dubbele_uren()
         except Exception:  # volgende ronde opnieuw
-            log.exception("Fout bij het nakijken van de tweede diensten")
+            log.exception("Fout bij het nakijken op dubbel getelde uren")
             db.session.rollback()
 
     # 2. Dagelijks opschonen (bij een fout: morgen opnieuw)

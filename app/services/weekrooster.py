@@ -27,6 +27,7 @@ from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_vo
 from .kalender import dagen_van_week
 from .rooster import (
     UrenContext,
+    dag_uren,
     dienst_samenvatting,
     logveld,
     markeer_bijgewerkt,
@@ -641,24 +642,31 @@ def ruim_dag_op(medewerker_id: int, datum: date) -> None:
     - Dienst 1 blijft (leeg) staan zolang er een gevulde dienst 2 is, en wordt zo nodig
       als lege plaatshouder aangemaakt (bijv. '/3' in het code-raster). Zo hoort de dag
       altijd bij dienst 1 (opmerking, versie) en is de volgorde van de diensten vast.
-    - De uren van dienst 1 met opmerkingtijden worden opnieuw berekend: of die tijden
-      meetellen, hangt af van dienst 2 (zie rooster.opmerking_is_tweede_dienst).
+    - De uren van beide diensten worden opnieuw berekend: de pauze geldt per dag, en of de
+      opmerkingtijden meetellen hangt ook van dienst 2 af (zie rooster.dag_uren).
     """
     db.session.flush()
     per_vn = {d.volgnummer: d for d in Dienst.query.filter_by(medewerker_id=medewerker_id, datum=datum)}
     dienst1, dienst2 = per_vn.get(1), per_vn.get(2)
+    tweede_was_er = dienst2 is not None
     if dienst2 is not None and dienst2.is_leeg and not dienst2.google_event_id:
         db.session.delete(dienst2)
         dienst2 = None
     tweede_gevuld = dienst2 is not None and not dienst2.is_leeg
     if dienst1 is None and tweede_gevuld:
-        db.session.add(Dienst(medewerker_id=medewerker_id, datum=datum, volgnummer=1, versie=1,
-                              dienstnaam_override="", opmerking_tekst="", tijden_handmatig=False))
+        dienst1 = Dienst(medewerker_id=medewerker_id, datum=datum, volgnummer=1, versie=1,
+                         dienstnaam_override="", opmerking_tekst="", tijden_handmatig=False)
+        db.session.add(dienst1)
     elif dienst1 is not None and dienst1.is_leeg and not dienst1.google_event_id and not tweede_gevuld:
         db.session.delete(dienst1)
-    elif dienst1 is not None and dienst1.opmerking_begin and dienst1.opmerking_eind:
-        # Telt de opmerkingtijd mee? Dat hangt af van dienst 2, die na dienst 1 kan veranderen
-        dienst1.uren_berekend = uren_voor(dienst1, UrenContext(datum, datum), dienst2)
+        dienst1 = None
+    # De uren hangen van beide diensten af (pauze per dag, opmerkingtijden die samenvallen):
+    # na een wijziging van de ene dienst ook de andere opnieuw berekenen
+    if dienst1 is not None and (tweede_was_er or (dienst1.opmerking_begin and dienst1.opmerking_eind)):
+        uren1, uren2 = dag_uren(dienst1, dienst2 if tweede_gevuld else None, UrenContext(datum, datum))
+        dienst1.uren_berekend = uren1
+        if tweede_gevuld:
+            dienst2.uren_berekend = uren2
     db.session.flush()
 
 
