@@ -8,6 +8,9 @@
   na opnieuw inloggen en op andere apparaten. Zonder keuze volgt de app, net als eerst, het
   apparaat. Het thema wordt door de server op `<html data-thema>` gezet, dus geen flits bij het laden.
 
+### Gewijzigd
+- **Beheer:** de versie stond twee keer op de pagina; alleen die onderaan (onder de tegels) blijft.
+
 ## [1.7.0] – 2026-10-02
 
 ### Toegevoegd
