@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="nl">
+{#- Thema van de ingelogde gebruiker; zonder keuze volgt de app het apparaat -#}
+<html lang="nl"{% if current_user.is_authenticated and current_user.thema %} data-thema="{{ current_user.thema }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -33,6 +34,16 @@
       {% endif %}
       {% if current_user.is_beheerder %}<a href="{{ url_for('beheer.index') }}">Beheer</a>{% endif %}
       <span class="menu-rechts">
+        {# Schakelaar licht/donker; app.js vult het gekozen thema in, anders wisselt de server #}
+        <form method="post" action="{{ url_for('account.thema') }}" class="inline" data-thema-wissel>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="volgende" value="{{ request.full_path }}">
+          <input type="hidden" name="thema" value="">
+          <button type="submit" class="thema-schakelaar" title="Licht of donker thema" aria-label="Donker thema aan of uit">
+            <span class="thema-zon" aria-hidden="true">&#9728;&#65039;</span>
+            <span class="thema-maan" aria-hidden="true">&#127769;</span>
+          </button>
+        </form>
         <a href="{{ url_for('auth.wachtwoord_wijzigen') }}" title="Wachtwoord wijzigen">{{ current_user.weergavenaam }}</a>
         <form method="post" action="{{ url_for('auth.uitloggen') }}" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,10 +1,12 @@
 /* ==========================================================
    Beveiligingsrooster – eigen stylesheet (licht en donker)
    Kleuren staan als variabelen bovenaan; donkere modus volgt
-   automatisch de instelling van het apparaat.
+   de instelling van het apparaat, of de keuze van de gebruiker
+   met de zon/maan-schakelaar (data-thema op <html>).
    ========================================================== */
 
 :root {
+  color-scheme: light;
   --achtergrond: #f4f6f9;
   --kaart: #ffffff;
   --tekst: #1d2330;
@@ -31,8 +33,10 @@
   --kleur-dagopmerking: #1F3864;
 }
 
+/* Donker: volgens het apparaat, tenzij de gebruiker zelf "licht" koos ... */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-thema="licht"]) {
+    color-scheme: dark;
     --achtergrond: #12151b;
     --kaart: #1b1f27;
     --tekst: #e6e9ef;
@@ -47,6 +51,23 @@
     --rij-hover: #232a36;
     --schaduw: none;
   }
+}
+/* ... of altijd, als de gebruiker met de schakelaar "donker" koos */
+:root[data-thema="donker"] {
+  color-scheme: dark;
+  --achtergrond: #12151b;
+  --kaart: #1b1f27;
+  --tekst: #e6e9ef;
+  --tekst-zacht: #a3abba;
+  --rand: #313846;
+  --primair: #5b9bff;
+  --primair-tekst: #0d1117;
+  --gevaar: #ff6b61;
+  --succes: #5fd07a;
+  --info: #5b9bff;
+  --balk: #0d1b33;
+  --rij-hover: #232a36;
+  --schaduw: none;
 }
 
 * { box-sizing: border-box; }
@@ -76,6 +97,25 @@ pre { background: var(--achtergrond); padding: .6rem; border-radius: var(--radiu
 .menu a { color: var(--balk-tekst); text-decoration: none; opacity: .9; }
 .menu a:hover { opacity: 1; text-decoration: underline; }
 .menu-rechts { margin-left: auto; display: flex; gap: .6rem; align-items: center; }
+/* Schakelaar licht/donker: zon links, maan rechts, het bolletje schuift naar het actieve thema */
+.thema-schakelaar {
+  --schuif: 28px;  /* hoe ver het bolletje schuift */
+  position: relative; display: inline-flex; align-items: center; justify-content: space-between;
+  width: 56px; height: 28px; padding: 0 6px; border-radius: 14px; cursor: pointer;
+  background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .35);
+  font-size: 14px; line-height: 1;
+}
+.thema-schakelaar::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--balk-tekst); transition: transform .2s;
+}
+.thema-schakelaar:focus-visible { outline: 2px solid var(--balk-tekst); outline-offset: 2px; }
+.thema-zon, .thema-maan { position: relative; z-index: 1; }
+/* Het bolletje staat achter het actieve icoon: licht = zon (links), donker = maan (rechts) */
+:root[data-thema="donker"] .thema-schakelaar::after { transform: translateX(var(--schuif)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-thema="licht"]) .thema-schakelaar::after { transform: translateX(var(--schuif)); }
+}
 .menu-knop { display: none; background: none; border: 0; color: var(--balk-tekst); font-size: 1.5rem; cursor: pointer; }
 
 /* Hamburgermenu: smalle schermen, en telefoons/tablets (aanraakscherm) tot 1024 px breed */
@@ -85,6 +125,9 @@ pre { background: var(--achtergrond); padding: .6rem; border-radius: var(--radiu
     min-width: 44px; min-height: 44px; border-radius: var(--radius);
   }
   .menu-knop:focus-visible { outline: 2px solid var(--balk-tekst); }
+  /* Groter aanraakvlak (minimaal 44 px) voor de schakelaar licht/donker */
+  .thema-schakelaar { --schuif: 40px; width: 84px; height: 44px; border-radius: 22px; padding: 0 11px; font-size: 18px; margin: .3rem 0; }
+  .thema-schakelaar::after { width: 38px; height: 38px; }
   .menu { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; }
   .menu.open { display: flex; }
   .menu a { display: flex; align-items: center; min-height: 44px; padding: 0 .5rem; border-radius: var(--radius); }
@@ -317,8 +360,13 @@ td.negatief { color: #c62828; font-weight: 600; }
 td.nul { color: #2e7d32; font-weight: 600; }
 td.positief { color: #1565c0; font-weight: 600; }
 @media (prefers-color-scheme: dark) {
-  td.negatief { color: #ff8a80; } td.nul { color: #81c784; } td.positief { color: #82b1ff; }
+  :root:not([data-thema="licht"]) td.negatief { color: #ff8a80; }
+  :root:not([data-thema="licht"]) td.nul { color: #81c784; }
+  :root:not([data-thema="licht"]) td.positief { color: #82b1ff; }
 }
+:root[data-thema="donker"] td.negatief { color: #ff8a80; }
+:root[data-thema="donker"] td.nul { color: #81c784; }
+:root[data-thema="donker"] td.positief { color: #82b1ff; }
 
 /* ==========================================================
    Urenoverzicht

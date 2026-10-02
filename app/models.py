@@ -43,6 +43,8 @@ class Gebruiker(UserMixin, db.Model):
     # Wordt opgehoogd bij wachtwoord wijzigen/resetten en deactiveren: alle bestaande
     # sessies van deze gebruiker zijn dan direct ongeldig (zie get_id en laad_gebruiker)
     sessie_versie = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    # Weergave: 'licht' of 'donker'; leeg = volg de instelling van het apparaat
+    thema = db.Column(db.String(10), nullable=True)
 
     medewerker = db.relationship("Medewerker")
 

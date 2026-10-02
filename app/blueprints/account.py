@@ -1,4 +1,4 @@
-"""Account: persoonlijke API-tokens voor een app (aanmaken en intrekken).
+"""Account: persoonlijke API-tokens voor een app (aanmaken en intrekken) en het thema.
 
 Elke gebruiker beheert alleen zijn eigen tokens. Een nieuw token wordt één keer
 getoond, direct in het antwoord (niet via een flash-melding in de sessiecookie).
@@ -10,6 +10,9 @@ from flask_login import current_user, login_required
 from ..extensions import db
 from ..models import ApiToken
 from ..services import api_tokens, klok
+from .auth import _veilige_volgende
+
+THEMAS = ("licht", "donker")
 
 bp = Blueprint("account", __name__, url_prefix="/account")
 
@@ -51,3 +54,16 @@ def token_intrekken(tid: int):
     db.session.commit()
     flash(f"Token '{record.naam}' is ingetrokken; het werkt niet meer.", "succes")
     return redirect(url_for("account.tokens"))
+
+
+@bp.route("/thema", methods=["POST"])
+@login_required
+def thema():
+    """Licht/donker wisselen; bewaard bij de gebruiker, dus ook na opnieuw inloggen."""
+    gekozen = request.form.get("thema")
+    if gekozen not in THEMAS:
+        # Zonder JavaScript weet de server niet wat het apparaat toont: dan gewoon wisselen
+        gekozen = "licht" if current_user.thema == "donker" else "donker"
+    current_user.thema = gekozen
+    db.session.commit()
+    return redirect(_veilige_volgende(request.form.get("volgende")))
