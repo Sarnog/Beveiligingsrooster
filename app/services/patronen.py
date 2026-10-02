@@ -21,6 +21,7 @@ per gewijzigde dienst en Google-synchronisatie alleen voor de geraakte medewerke
 één transactie, met vooraf een back-up 'voor-patroon'.
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -57,6 +58,22 @@ log = logging.getLogger(__name__)
 
 class PatroonFout(ValueError):
     """Ongeldig patroon of ongeldige keuzes voor het uitrollen."""
+
+
+class VoorbeeldVerouderd(PatroonFout):
+    """Het patroon of de bronweken zijn gewijzigd sinds het getoonde voorbeeld."""
+
+
+def _afdruk(inhoud) -> str:
+    """Korte, vaste samenvatting (hash) van de inhoud, om in de sessie te bewaren."""
+    return hashlib.sha256(repr(inhoud).encode()).hexdigest()[:32]
+
+
+def _controleer_afdruk(verwacht: str | None, huidig, wat: str) -> None:
+    """Weigert als de inhoud afwijkt van het voorbeeld (verwacht=None: geen controle)."""
+    if verwacht is not None and verwacht != huidig():
+        raise VoorbeeldVerouderd(f"Er is niets gewijzigd: {wat} is gewijzigd sinds het voorbeeld; controleer "
+                                 "het bijgewerkte voorbeeld hieronder en bevestig opnieuw.")
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +336,11 @@ def _codes(cel: str, codes: dict[int, Dienstcode]) -> list[Dienstcode | None]:
     return [codes.get(int(deel)) if deel else None for deel in delen]
 
 
+def vingerafdruk(patroon: RoosterPatroon) -> str:
+    """De inhoud van het patroon (lengte en cellen), om het voorbeeld met het resultaat te vergelijken."""
+    return _afdruk((patroon.id, patroon.weken, sorted(patroon.cellen().items())))
+
+
 def effect(patroon: RoosterPatroon, keuzes: UitrolKeuzes) -> UitrolEffect:
     """Precies wat het uitrollen met deze keuzes doet. Er wordt niets opgeslagen.
 
@@ -395,13 +417,16 @@ def _acties_dag(mid: int, dag: date, gewenst: list[Dienstcode | None], oud: dict
     return acties
 
 
-def pas_toe(patroon: RoosterPatroon, keuzes: UitrolKeuzes) -> dict[str, int]:
+def pas_toe(patroon: RoosterPatroon, keuzes: UitrolKeuzes, afdruk: str | None = None) -> dict[str, int]:
     """Rol het patroon uit, in één transactie (alles of niets), met vooraf een back-up.
 
     Geeft het aantal per soort (zie roosteracties.SOORTEN). Ongeldige keuzes: PatroonFout.
+    afdruk: de vingerafdruk van het getoonde voorbeeld; wijkt het patroon daarvan af, dan
+    VoorbeeldVerouderd (er verandert niets).
     """
     if fouten := keuzes.controleer(patroon):
         raise PatroonFout("Er is niets gewijzigd: " + " ".join(fouten))
+    _controleer_afdruk(afdruk, lambda: vingerafdruk(patroon), "het patroon")
     return _voer_uit(keuzes, lambda: effect(patroon, keuzes), "voor-patroon", "Roosterpatroon toegepast",
                      f"Roosterpatroon '{patroon.naam}'",
                      lambda namen: keuzes.beschrijving(patroon, namen))
@@ -530,9 +555,23 @@ def herhaal_effect(keuzes: HerhaalKeuzes) -> UitrolEffect:
     return resultaat
 
 
-def herhaal_pas_toe(keuzes: HerhaalKeuzes) -> dict[str, int]:
-    """Herhaal de bronweken, in één transactie (alles of niets), met vooraf een back-up."""
+def herhaal_vingerafdruk(keuzes: HerhaalKeuzes) -> str:
+    """De inhoud van de bronweken per gekozen medewerker (alle velden van elke dienst)."""
+    diensten = (Dienst.query.options(joinedload(Dienst.dienstcode))
+                .filter(Dienst.medewerker_id.in_(keuzes.medewerkers), Dienst.datum >= keuzes.bron,
+                        Dienst.datum <= keuzes.bron_tot).all())
+    regels = [((d.medewerker_id, d.datum, d.volgnummer), Inhoud.van_dienst(d)) for d in diensten
+              if not d.is_leeg]
+    return _afdruk(sorted(regels, key=lambda regel: regel[0]))
+
+
+def herhaal_pas_toe(keuzes: HerhaalKeuzes, afdruk: str | None = None) -> dict[str, int]:
+    """Herhaal de bronweken, in één transactie (alles of niets), met vooraf een back-up.
+
+    afdruk: de vingerafdruk van het getoonde voorbeeld (zie herhaal_vingerafdruk).
+    """
     if fouten := keuzes.controleer():
         raise PatroonFout("Er is niets gewijzigd: " + " ".join(fouten))
+    _controleer_afdruk(afdruk, lambda: herhaal_vingerafdruk(keuzes), "het rooster in de bronweken")
     return _voer_uit(keuzes, lambda: herhaal_effect(keuzes), "voor-herhalen", "Rooster herhaald",
                      "Rooster herhaald", keuzes.beschrijving)

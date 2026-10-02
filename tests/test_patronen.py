@@ -630,7 +630,7 @@ def test_scherm_rooster_herhalen_toepassen_mislukt(app, als_beheerder, mw, monke
     keuzes = {"mw": [mw[0].id], "bron": "2026-W10", "weken": "8", "van": "2026-W18", "tot_week": "2026-W18",
               "modus": "overschrijven", "feestdagen": "invullen"}
 
-    def kapot(_keuzes):
+    def kapot(_keuzes, _afdruk):
         raise RuntimeError("schijf vol")
 
     als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"})
@@ -639,7 +639,7 @@ def test_scherm_rooster_herhalen_toepassen_mislukt(app, als_beheerder, mw, monke
                                   follow_redirects=True)
     assert "Het herhalen is mislukt; er is niets gewijzigd (RuntimeError)" in antwoord.data.decode()
 
-    def ongeldig(_keuzes):
+    def ongeldig(_keuzes, _afdruk):
         raise PatroonFout("Er is niets gewijzigd: test")
 
     als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"})
@@ -667,7 +667,7 @@ def test_scherm_uitrollen_toepassen_mislukt(app, als_beheerder, mw, monkeypatch)
               "modus": "overschrijven", "feestdagen": "invullen"}
     for fout, melding in ((RuntimeError("weg"), "mislukt; er is niets gewijzigd (RuntimeError)"),
                           (PatroonFout("Er is niets gewijzigd: test"), "Er is niets gewijzigd: test")):
-        def kapot(_patroon, _keuzes, fout=fout):
+        def kapot(_patroon, _keuzes, _afdruk, fout=fout):
             raise fout
 
         als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"})
@@ -841,3 +841,63 @@ def test_scherm_code_in_patroon_niet_verwijderen(app, als_beheerder, mw):
     vrij = Dienstcode.query.filter_by(nummer=5).one()
     als_beheerder.post(f"/beheer/dienstcodes/{vrij.id}/verwijder")
     assert Dienstcode.query.filter_by(nummer=5).first() is None
+
+
+# ---------------------------------------------------------------------------
+# Voorbeeld en resultaat: de inhoud mag intussen niet veranderd zijn (vingerafdruk)
+# ---------------------------------------------------------------------------
+
+VEROUDERD = "gewijzigd sinds het voorbeeld; controleer het bijgewerkte voorbeeld"
+
+
+def test_vingerafdruk_patroon_en_bronweken(app, mw):
+    patroon = _patroon()
+    keuzes = _keuzes(patroon, [(mw[0].id, 1)], MAANDAG, MAANDAG + timedelta(days=13))
+    afdruk = patronen.vingerafdruk(patroon)
+    assert afdruk == patronen.vingerafdruk(patroon)
+    patronen.sla_op(patroon, patroon.naam, 2, {(1, 0): "5", (2, 0): "7"})
+    with pytest.raises(patronen.VoorbeeldVerouderd, match=VEROUDERD):
+        patronen.pas_toe(patroon, keuzes, afdruk)
+    assert Dienst.query.count() == 0
+    assert patronen.pas_toe(patroon, keuzes, patronen.vingerafdruk(patroon))["nieuw"] == 2
+    # Herhalen: de broncellen per medewerker
+    a = mw[0]
+    herhaal = _herhaal([a], MAANDAG + timedelta(weeks=8), MAANDAG + timedelta(weeks=9, days=-1))
+    afdruk = patronen.herhaal_vingerafdruk(herhaal)
+    assert wijzig_cellen([Wijziging(a.id, MAANDAG + timedelta(days=3), "code", "17")])[1] == []
+    assert patronen.herhaal_vingerafdruk(herhaal) != afdruk
+    with pytest.raises(patronen.VoorbeeldVerouderd):
+        patronen.herhaal_pas_toe(herhaal, afdruk)
+    assert Dienst.query.filter(Dienst.datum >= herhaal.van).count() == 0
+
+
+def test_scherm_uitrollen_patroon_gewijzigd_na_voorbeeld(app, als_beheerder, mw):
+    patroon = _patroon()
+    url = f"/beheer/patronen/{patroon.id}/uitrollen"
+    keuzes = {"mw": [mw[0].id], f"start-{mw[0].id}": "1", "van": "2026-W10", "tot_week": "2026-W11",
+              "modus": "overschrijven", "feestdagen": "invullen"}
+    als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"}, follow_redirects=True)
+    patronen.sla_op(patroon, patroon.naam, 2, {(1, 0): "5", (2, 0): "7"})  # intussen gewijzigd
+    antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"},
+                                  follow_redirects=True)
+    tekst = antwoord.data.decode()
+    assert VEROUDERD in tekst and "Totaal: <strong>2</strong> nieuw" in tekst  # bijgewerkt voorbeeld
+    assert Dienst.query.count() == 0
+    antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"})
+    assert antwoord.status_code == 302 and _code(mw[0], MAANDAG) == 5
+
+
+def test_scherm_herhalen_bronweken_gewijzigd_na_voorbeeld(app, als_beheerder, mw):
+    a = mw[0]
+    _plan_acht_weken([a])
+    url = "/beheer/patronen/herhalen"
+    keuzes = {"mw": [a.id], "bron": "2026-W10", "weken": "8", "van": "2026-W18", "tot_week": "2026-W25",
+              "modus": "overschrijven", "feestdagen": "invullen"}
+    als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"}, follow_redirects=True)
+    assert wijzig_cellen([Wijziging(a.id, MAANDAG + timedelta(days=3), "code", "17")])[1] == []
+    antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"},
+                                  follow_redirects=True)
+    assert VEROUDERD in antwoord.data.decode() and "data-herhaal-uitleg" in antwoord.data.decode()
+    assert Dienst.query.filter(Dienst.datum >= date(2026, 4, 27)).count() == 0
+    antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"})
+    assert antwoord.status_code == 302 and _cel(a, MAANDAG + timedelta(weeks=8, days=3)) == "17"
