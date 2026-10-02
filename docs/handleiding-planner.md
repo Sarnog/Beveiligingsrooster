@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.8.0)
+# Handleiding voor de planner (beheerder, versie 1.8.1)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 

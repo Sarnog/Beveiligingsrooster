@@ -2,7 +2,9 @@
 
 ## [Onuitgebracht]
 
-### Gewijzigd
+## [1.8.1] – 2026-10-02
+
+### Opgelost
 - **Google Agenda: geen limietfouten meer bij grote roosters.** Na het invullen van een heel
   jaarrooster gaf Google "Geen toegang tot deze agenda (403)": in werkelijkheid was de limiet op het
   aantal wijzigingen per service-account bereikt. De app stuurt nu maximaal één aanroep per seconde,
