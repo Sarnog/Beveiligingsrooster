@@ -33,6 +33,7 @@ from ...services.excel_import import (
 )
 from ...services.kalender import MAX_JAAR, MIN_JAAR, eerste_en_laatste_dag_isojaar
 from ...services.tijden import is_cijfers, parse_datum
+from ...services.weekrooster import VersieConflict
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
@@ -199,7 +200,7 @@ def excel_import_voorbeeld():
         try:
             backup.maak_backup("voor-import")  # altijd eerst een back-up
             resultaat = importeer(plan, keuzes)  # controleert de keuzes opnieuw
-        except ImportFout as uitzondering:
+        except (ImportFout, VersieConflict) as uitzondering:  # VersieConflict: een planner was tegelijk bezig
             flash(str(uitzondering), "fout")
             return redirect(url_for("beheer.excel_import_voorbeeld"))
         except Exception as uitzondering:  # nooit een kale foutpagina

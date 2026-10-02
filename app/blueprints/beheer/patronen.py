@@ -19,6 +19,7 @@ from ...services import klok, patronen
 from ...services.kalender import aantal_weken
 from ...services.patronen import HerhaalKeuzes, PatroonFout, UitrolKeuzes
 from ...services.tijden import parse_datum
+from ...services.weekrooster import VersieConflict
 from ..hulp import beheerder_vereist, vinkje
 from . import bp
 
@@ -222,7 +223,7 @@ def _toepassen(sleutel: str, terug: str, keuzes, fouten: list[str], afdruk, pas_
         return None, redirect(terug)
     try:
         resultaat = pas_toe(getoonde_afdruk)
-    except PatroonFout as uitzondering:
+    except (PatroonFout, VersieConflict) as uitzondering:  # VersieConflict: een planner was tegelijk bezig
         flash(str(uitzondering), "fout")
         return None, redirect(terug)
     except Exception as uitzondering:  # nooit een kale foutpagina
