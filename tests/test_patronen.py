@@ -944,3 +944,127 @@ def test_scherm_herhalen_standaard_alleen_medewerkers_met_bronrooster(app, als_b
         "modus": "overschrijven", "feestdagen": "invullen", "actie": "voorbeeld"})
     tekst = als_beheerder.get("/beheer/patronen/herhalen").data.decode()
     assert f"Medewerker B: {GEWIST}." in tekst and f'value="{b.id}" checked' in tekst
+
+
+# ---------------------------------------------------------------------------
+# Rooster herhalen: exact kopiëren (zoals Week kopiëren)
+# ---------------------------------------------------------------------------
+
+def _inhoud(medewerker, datum):
+    """Alle velden van de diensten van één dag, zoals Week kopiëren ze overneemt."""
+    from app.services.weekrooster import LEGE_DIENST
+
+    db.session.expire_all()
+    return {d.volgnummer: {k: getattr(d, k) for k in [*LEGE_DIENST, "uren_berekend"]}
+            for d in Dienst.query.filter_by(medewerker_id=medewerker.id, datum=datum)}
+
+
+def _bijzondere_week(a):
+    """Week 10: afwijkende tijden, eigen uren, vrije dienstnaam, opmerking en twee diensten."""
+    dinsdag, woensdag, donderdag = (MAANDAG + timedelta(days=i) for i in (1, 2, 3))
+    assert wijzig_cellen([
+        Wijziging(a.id, MAANDAG, "code", "4"), Wijziging(a.id, MAANDAG, "begin", "08:00"),
+        Wijziging(a.id, MAANDAG, "opmerking", "Locatie A"),
+        Wijziging(a.id, dinsdag, "code", "5"), Wijziging(a.id, dinsdag, "uren", "6"),
+        Wijziging(a.id, woensdag, "dienstnaam", "Cursus extern"), Wijziging(a.id, woensdag, "begin", "09:00"),
+        Wijziging(a.id, woensdag, "eind", "13:00"),
+        Wijziging(a.id, donderdag, "code", "17/3"),
+    ])[1] == []
+
+
+def test_herhalen_exact_kopieren_neemt_alle_velden_over(app, mw):
+    a = mw[0]
+    _bijzondere_week(a)
+    van = MAANDAG + timedelta(weeks=1)
+    keuzes = _herhaal([a], van, van + timedelta(days=13), weken=1, soort=patronen.KOPIE_EXACT)
+    effect = patronen.herhaal_effect(keuzes)
+    assert effect.waarschuwingen == []  # een vrije dienstnaam gaat gewoon mee
+    assert effect.per_medewerker[a.id].nieuw == 2 * 5  # 4 dagen, donderdag met 2 diensten
+    patronen.herhaal_pas_toe(keuzes)
+    for week in (1, 2):
+        for dag in range(7):
+            bron = MAANDAG + timedelta(days=dag)
+            assert _inhoud(a, bron + timedelta(weeks=week)) == _inhoud(a, bron), (week, dag)
+    # Nogmaals: alles gelijk
+    t = patronen.herhaal_effect(keuzes).per_medewerker[a.id]
+    assert (t.nieuw, t.vervangen, t.verwijderd, t.gelijk) == (0, 0, 0, 10)
+
+
+def test_herhalen_alleen_codes_neemt_standaardtijden(app, mw):
+    a = mw[0]
+    _bijzondere_week(a)
+    van = MAANDAG + timedelta(weeks=1)
+    patronen.herhaal_pas_toe(_herhaal([a], van, van + timedelta(days=6), weken=1))
+    doel = _inhoud(a, van)[1]
+    assert (doel["begin"], doel["opmerking_tekst"]) == ("07:15", "")
+    assert _inhoud(a, van + timedelta(days=1))[1]["uren_handmatig"] is None
+    assert _inhoud(a, van + timedelta(days=2)) == {}  # vrije dienstnaam telt als vrij
+
+
+def test_herhalen_exact_overschrijven_en_aanvullen(app, mw):
+    a = mw[0]
+    _bijzondere_week(a)
+    doel = MAANDAG + timedelta(weeks=1)
+    vrijdag, zaterdag = doel + timedelta(days=4), doel + timedelta(days=5)
+    assert wijzig_cellen([
+        Wijziging(a.id, doel, "code", "7"),  # wordt vervangen
+        Wijziging(a.id, doel + timedelta(days=1), "opmerking", "Alleen een opmerking"),  # telt als leeg
+        Wijziging(a.id, vrijdag, "code", "6"), Wijziging(a.id, vrijdag, "opmerking", "Weg"),  # bron leeg
+        Wijziging(a.id, zaterdag, "opmerking", "Blijft bij aanvullen"),
+    ])[1] == []
+    aanvullen = _herhaal([a], doel, doel + timedelta(days=6), weken=1, soort=patronen.KOPIE_EXACT,
+                         modus=patronen.MODUS_AANVULLEN)
+    t = patronen.herhaal_effect(aanvullen).per_medewerker[a.id]
+    assert (t.nieuw, t.vervangen, t.verwijderd, t.overgeslagen) == (3, 1, 0, 1)  # di: alleen opmerking
+    patronen.herhaal_pas_toe(aanvullen)
+    assert _cel(a, doel) == "7" and _cel(a, vrijdag) == "6"  # hadden al een dienst
+    assert _inhoud(a, doel + timedelta(days=1)) == _inhoud(a, MAANDAG + timedelta(days=1))
+    assert _inhoud(a, zaterdag)[1]["opmerking_tekst"] == "Blijft bij aanvullen"
+    overschrijven = _herhaal([a], doel, doel + timedelta(days=6), weken=1, soort=patronen.KOPIE_EXACT)
+    t = patronen.herhaal_effect(overschrijven).per_medewerker[a.id]
+    assert (t.vervangen, t.verwijderd) == (1, 2)  # maandag; vrijdag en zaterdag worden leeg
+    patronen.herhaal_pas_toe(overschrijven)
+    for dag in range(7):
+        assert _inhoud(a, doel + timedelta(days=dag)) == _inhoud(a, MAANDAG + timedelta(days=dag)), dag
+
+
+def test_herhalen_exact_feestdag_en_waarschuwing(app, mw):
+    a, b, _ = mw
+    koningsdag = date(2026, 4, 27)  # maandag
+    bron = koningsdag - timedelta(weeks=1)
+    assert wijzig_cellen([Wijziging(a.id, bron, "dienstnaam", "Cursus extern")])[1] == []
+    db.session.add(Dienst(medewerker_id=b.id, datum=bron, volgnummer=1, versie=1,
+                          google_event_id="afspraak-1"))  # lege regel die op de agenda wacht: telt niet
+    db.session.commit()
+    keuzes = patronen.HerhaalKeuzes((a.id, b.id), bron, 1, koningsdag, koningsdag + timedelta(days=6),
+                                    feestdagen=patronen.FEESTDAG_OVERSLAAN, soort=patronen.KOPIE_EXACT)
+    effect = patronen.herhaal_effect(keuzes)
+    assert effect.per_medewerker[a.id].overgeslagen == 1
+    assert effect.waarschuwingen == [f"Medewerker B: {GEWIST}."]
+
+
+def test_herhalen_soort_ongeldig_en_als_dict(app, mw):
+    keuzes = _herhaal(mw, MAANDAG + timedelta(weeks=8), MAANDAG + timedelta(weeks=9, days=-1),
+                      soort=patronen.KOPIE_EXACT)
+    assert patronen.HerhaalKeuzes.uit_dict(keuzes.als_dict()) == keuzes
+    assert "exact kopiëren" in keuzes.beschrijving({})
+    oud = {k: v for k, v in keuzes.als_dict().items() if k != "soort"}  # sessie van vóór deze versie
+    assert patronen.HerhaalKeuzes.uit_dict(oud).soort == patronen.KOPIE_CODES
+    fout = _herhaal(mw, keuzes.van, keuzes.tot, soort="half")
+    assert fout.controleer() == ["Kies hoe er gekopieerd wordt (alleen codes of exact)."]
+
+
+def test_scherm_herhalen_exact_kopieren(app, als_beheerder, mw):
+    a = mw[0]
+    _bijzondere_week(a)
+    url = "/beheer/patronen/herhalen"
+    pagina = als_beheerder.get(url).data.decode()
+    assert "Exact kopiëren (zoals Week kopiëren)" in pagina and 'value="codes" checked' in pagina
+    keuzes = {"mw": [a.id], "bron": "2026-W10", "weken": "1", "van": "2026-W11", "tot_week": "2026-W11",
+              "modus": "overschrijven", "feestdagen": "invullen", "soort": "exact"}
+    tekst = als_beheerder.post(url, data={**keuzes, "actie": "voorbeeld"},
+                               follow_redirects=True).data.decode()
+    assert 'value="exact" checked' in tekst and "Totaal: <strong>5</strong> nieuw" in tekst
+    antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"})
+    assert antwoord.status_code == 302
+    assert _inhoud(a, MAANDAG + timedelta(weeks=1)) == _inhoud(a, MAANDAG)

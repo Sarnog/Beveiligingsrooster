@@ -179,7 +179,10 @@ Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyc
 1. Kies de **eerste bronweek** en de **cyclus** (aantal weken, standaard 8).
 2. Kies vanaf welke week je wilt vullen en t/m welke week of datum, en de collega's. Standaard staan alleen de collega's aangevinkt die dan nog in het rooster staan **én** minstens één dienst in de bronweken hebben. Vink je toch iemand zonder diensten in de bronweken aan, dan waarschuwt het voorbeeld: bij *Overschrijven* wordt in de doelperiode alles van die collega gewist.
 3. Elke collega krijgt zijn eigen rooster uit de bronweken, steeds herhaald. De cyclus loopt door: 8 weken na bronweek 1 komt weer bronweek 1, ook als je bijvoorbeeld 11 weken later begint (dan begin je in week 4 van de cyclus; dat staat in het voorbeeld). Ook weken vóór de bronweken kunnen zo gevuld worden. De periode mag de bronweken zelf niet overlappen.
-4. Modus, feestdagen, archiefdatum en opmerkingen werken zoals bij uitrollen. Diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld.
+4. Kies **wat er gekopieerd wordt**:
+   - **Alleen codes** (standaard, zoals een patroon): diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld. De opmerking van de dag blijft staan, zoals bij uitrollen.
+   - **Exact kopiëren (zoals Week kopiëren)**: elke dag wordt precies de brondag, met afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en de opmerking. Bij *Overschrijven* maakt een lege brondag de dag leeg (ook de opmerking); bij *Alleen lege dagen aanvullen* krijgt alleen een dag zonder dienst de brondag en wist een lege brondag niets.
+   - Modus, feestdagen en archiefdatum werken in beide gevallen zoals bij uitrollen.
 5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst.
 
 ## 5. Printen

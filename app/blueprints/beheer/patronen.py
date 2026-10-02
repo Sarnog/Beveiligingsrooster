@@ -322,7 +322,8 @@ def _herhaal_uit_formulier() -> tuple[HerhaalKeuzes | None, list[str]]:
     if fouten:
         return None, fouten
     keuzes = HerhaalKeuzes(tuple(gekozen), bron, weken, van, tot, request.form.get("modus", ""),
-                           request.form.get("feestdagen", ""))
+                           request.form.get("feestdagen", ""),
+                           request.form.get("soort", patronen.KOPIE_CODES))
     return keuzes, keuzes.controleer()
 
 
@@ -364,7 +365,8 @@ def rooster_herhalen():
         gekozen = {m.id for m in medewerkers if m.is_zichtbaar_op(van) and m.id in met_rooster}
     return render_template(
         "beheer/rooster_herhalen.html", keuzes=keuzes, effect=effect, medewerkers=medewerkers,
-        gekozen=gekozen, modi=patronen.MODI, feestdag_keuzes=patronen.FEESTDAG_KEUZES, weken=weken,
+        gekozen=gekozen, modi=patronen.MODI, feestdag_keuzes=patronen.FEESTDAG_KEUZES,
+        kopie_soorten=patronen.KOPIE_SOORTEN, weken=weken,
         max_weken=patronen.MAX_WEKEN, bron=_weektekst(bron), van=_weektekst(van),
         tot_datum=keuzes.tot.isoformat() if keuzes else "",
         tot_week=_weektekst(van + timedelta(weeks=2 * weken - 1)))

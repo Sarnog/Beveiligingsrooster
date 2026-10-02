@@ -373,6 +373,15 @@ def begint_met_dienstnaam(tekst: str, omschrijving: str) -> bool:
     return rest == "" or not rest[0].isalnum()
 
 
+def tijden_afwijkend(code: Dienstcode | None, begin: str | None, eind: str | None) -> bool:
+    """Handmatige tijden (tijden_handmatig): afwijkend van de standaardtijden van de code.
+
+    Zonder code (vrije dienstnaam) is elke ingevulde tijd handmatig.
+    """
+    standaard = (code.std_begin, code.std_eind) if code else (None, None)
+    return (begin, eind) != standaard and bool(begin or eind)
+
+
 def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
     """Wijzig één veld van een dienst. Geeft (oude waarde, nieuwe waarde) als tekst."""
     if veld == "code" and dienst.volgnummer == 2 and _lees_code(waarde) is None:
@@ -405,11 +414,7 @@ def _pas_veld_toe(dienst: Dienst, veld: str, waarde: str) -> tuple[str, str]:
         if nieuw is not None and nieuw == andere:
             raise CelFout(BEGIN_IS_EIND)
         setattr(dienst, veld, nieuw)
-        code = dienst.dienstcode
-        standaard = (code.std_begin, code.std_eind) if code else (None, None)
-        # Handmatig = afwijkend van de standaardtijden van de code
-        dienst.tijden_handmatig = (dienst.begin, dienst.eind) != standaard and bool(
-            dienst.begin or dienst.eind)
+        dienst.tijden_handmatig = tijden_afwijkend(dienst.dienstcode, dienst.begin, dienst.eind)
         return oud, getattr(dienst, veld) or ""
 
     if veld == "opmerking":

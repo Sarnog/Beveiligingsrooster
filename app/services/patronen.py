@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import joinedload
 
 from ..extensions import db
-from ..models import Dienst, Dienstcode, Medewerker, RoosterPatroon, RoosterPatroonDag
+from ..models import MAX_DIENSTEN_PER_DAG, Dienst, Dienstcode, Medewerker, RoosterPatroon, RoosterPatroonDag
 from . import backup, logboek
 from .feestdagen import feestdagen_in_periode, zorg_voor_jaar
 from .kalender import MAX_JAAR, MIN_JAAR
@@ -52,6 +52,12 @@ FEESTDAG_OVERSLAAN = "overslaan"
 FEESTDAG_KEUZES = {
     FEESTDAG_INVULLEN: "Feestdagen gewoon invullen",
     FEESTDAG_OVERSLAAN: "Feestdagen overslaan (blijven zoals ze zijn)",
+}
+KOPIE_CODES = "codes"
+KOPIE_EXACT = "exact"
+KOPIE_SOORTEN = {
+    KOPIE_CODES: "Alleen codes (zoals een patroon, met de standaardtijden van de code)",
+    KOPIE_EXACT: "Exact kopiëren (zoals Week kopiëren)",
 }
 GEEN_BRONROOSTER = "geen diensten in de bronweken: in de doelperiode wordt alles gewist"
 log = logging.getLogger(__name__)
@@ -353,10 +359,11 @@ def effect(patroon: RoosterPatroon, keuzes: UitrolKeuzes) -> UitrolEffect:
 
 
 def _bereken(plan, cellen_van, weken: int, van: date, tot: date, modus: str,
-             feestdag_keuze: str) -> UitrolEffect:
+             feestdag_keuze: str, exact: bool = False) -> UitrolEffect:
     """De acties voor plan ((medewerker_id, startpositie), ...) van van t/m tot.
 
-    cellen_van(medewerker) geeft de cellen van de cyclus voor die medewerker ((week, dag) -> cel).
+    cellen_van(medewerker) geeft de cellen van de cyclus voor die medewerker: (week, dag) -> code-cel,
+    of bij exact kopiëren (week, dag) -> {volgnummer: Inhoud}.
     """
     resultaat = UitrolEffect()
     ids = [mid for mid, _ in plan]
@@ -379,21 +386,56 @@ def _bereken(plan, cellen_van, weken: int, van: date, tot: date, modus: str,
         telling = resultaat.per_medewerker.setdefault(mid, Telling())
         resultaat.namen[mid] = medewerker.naam
         for dag in dagen:
-            gewenst = _codes(cellen.get((_cycluspositie(van, weken, startpositie, dag), dag.weekday()), ""),
-                             codes)
+            cel = cellen.get((_cycluspositie(van, weken, startpositie, dag), dag.weekday()))
             oud = bestaand.get((mid, dag), {})
-            for actie in _acties_dag(mid, dag, gewenst, oud, modus, medewerker, dag in feestdagen):
+            feestdag = dag in feestdagen
+            acties = _acties_exact(mid, dag, cel or {}, oud, modus, medewerker, feestdag) if exact \
+                else _acties_dag(mid, dag, _codes(cel or "", codes), oud, modus, medewerker, feestdag)
+            for actie in acties:
                 telling.tel(actie.soort)
                 resultaat.acties.append(actie)
     return resultaat
 
 
+def _overslaan(dag: date, oud: dict[int, Dienst], modus: str, medewerker: Medewerker,
+               feestdag: bool) -> tuple[set[int], bool]:
+    """(volgnummers met een dienst, of de dag overgeslagen wordt): archief, feestdag of aanvullen."""
+    met_dienst = {vn for vn, d in oud.items() if Inhoud.van_dienst(d).heeft_dienst}
+    return met_dienst, (not medewerker.is_zichtbaar_op(dag) or feestdag
+                        or bool(modus == MODUS_AANVULLEN and met_dienst))
+
+
+def _acties_exact(mid: int, dag: date, gewenst: dict[int, Inhoud], oud: dict[int, Dienst], modus: str,
+                  medewerker: Medewerker, feestdag: bool) -> list[Actie]:
+    """Exact kopiëren: de dag wordt precies de brondag, met alle velden (zoals Week kopiëren).
+
+    Dus ook afwijkende tijden, zelf ingevulde uren, een vrije dienstnaam en de opmerking. Bij
+    aanvullen krijgt alleen een dag zonder dienst de brondag, en wist een lege brondag niets.
+    """
+    _, overslaan = _overslaan(dag, oud, modus, medewerker, feestdag)
+    acties = []
+    for vn in range(1, MAX_DIENSTEN_PER_DAG + 1):
+        nieuw, dienst = gewenst.get(vn), oud.get(vn)
+        huidig = Inhoud.van_dienst(dienst) if dienst is not None and not dienst.is_leeg else None
+        if overslaan:
+            if nieuw is not None:
+                acties.append(Actie(mid, dag, vn, "overgeslagen", dienst))
+        elif nieuw == huidig:
+            if nieuw is not None:
+                acties.append(Actie(mid, dag, vn, "gelijk", dienst, nieuw))
+        elif huidig is None:
+            acties.append(Actie(mid, dag, vn, "nieuw", dienst, nieuw))
+        elif nieuw is not None:
+            acties.append(Actie(mid, dag, vn, "vervangen", dienst, nieuw))
+        elif modus == MODUS_OVERSCHRIJVEN:  # een lege brondag maakt de dag leeg, ook de opmerking
+            acties.append(Actie(mid, dag, vn, "verwijderd", dienst))
+    return acties
+
+
 def _acties_dag(mid: int, dag: date, gewenst: list[Dienstcode | None], oud: dict[int, Dienst],
                 modus: str, medewerker: Medewerker, feestdag: bool) -> list[Actie]:
     """De acties voor één dag van één medewerker (dienst 1 en dienst 2)."""
-    met_dienst = {vn for vn, d in oud.items() if Inhoud.van_dienst(d).heeft_dienst}
-    overslaan = (not medewerker.is_zichtbaar_op(dag) or feestdag
-                 or (modus == MODUS_AANVULLEN and met_dienst))
+    met_dienst, overslaan = _overslaan(dag, oud, modus, medewerker, feestdag)
     acties = []
     dienst1 = oud.get(1)
     opmerking = (dienst1.opmerking_tekst or "", dienst1.opmerking_begin, dienst1.opmerking_eind) \
@@ -466,7 +508,10 @@ class HerhaalKeuzes:
 
     De cyclus loopt door vanaf de bronweken: met een 8-wekelijks rooster krijgt de week 8 weken na
     bronweek 1 weer bronweek 1, ook als 'van' midden in de cyclus valt. Per medewerker telt zijn
-    eigen rooster in de bronweken (zoals een sjabloon: de code-cel, met de standaardtijden).
+    eigen rooster in de bronweken:
+    - soort 'codes': zoals een sjabloon, de code-cel met de standaardtijden (de opmerking blijft);
+    - soort 'exact': elke dag precies de brondag met alle velden, zoals Week kopiëren (afwijkende
+      tijden, zelf ingevulde uren, vrije dienstnaam en opmerking).
     """
 
     medewerkers: tuple[int, ...]
@@ -476,6 +521,7 @@ class HerhaalKeuzes:
     tot: date  # laatste dag (inclusief)
     modus: str = MODUS_OVERSCHRIJVEN
     feestdagen: str = FEESTDAG_INVULLEN
+    soort: str = KOPIE_CODES
 
     @property
     def bron_tot(self) -> date:
@@ -516,26 +562,29 @@ class HerhaalKeuzes:
             fouten.append("Kies een geldige modus (overschrijven of aanvullen).")
         if self.feestdagen not in FEESTDAG_KEUZES:
             fouten.append("Kies wat er met feestdagen gebeurt (invullen of overslaan).")
+        if self.soort not in KOPIE_SOORTEN:
+            fouten.append("Kies hoe er gekopieerd wordt (alleen codes of exact).")
         return fouten
 
     def als_dict(self) -> dict:
         """Voor in de sessie (alleen JSON-waarden)."""
         return {"medewerkers": list(self.medewerkers), "bron": self.bron.isoformat(), "weken": self.weken,
                 "van": self.van.isoformat(), "tot": self.tot.isoformat(), "modus": self.modus,
-                "feestdagen": self.feestdagen}
+                "feestdagen": self.feestdagen, "soort": self.soort}
 
     @classmethod
     def uit_dict(cls, bewaard: dict) -> "HerhaalKeuzes":
         return cls(tuple(bewaard["medewerkers"]), date.fromisoformat(bewaard["bron"]), bewaard["weken"],
                    date.fromisoformat(bewaard["van"]), date.fromisoformat(bewaard["tot"]),
-                   bewaard["modus"], bewaard["feestdagen"])
+                   bewaard["modus"], bewaard["feestdagen"], bewaard.get("soort", KOPIE_CODES))
 
     def beschrijving(self, namen: dict[int, str]) -> str:
         """Voor het logboek."""
         wie = ", ".join(str(namen.get(mid, mid)) for mid in self.medewerkers)
+        soort = "exact kopiëren" if self.soort == KOPIE_EXACT else "alleen codes"
         return (f"bronweken {self.bron:%d-%m-%Y} t/m {self.bron_tot:%d-%m-%Y} ({self.weken} weken), "
                 f"{self.van:%d-%m-%Y} t/m {self.tot:%d-%m-%Y} (start in week {self.startpositie}), "
-                f"modus {self.modus}, feestdagen {self.feestdagen}; {wie}")
+                f"{soort}, modus {self.modus}, feestdagen {self.feestdagen}; {wie}")
 
 
 def met_diensten(van: date, tot: date) -> set[int]:
@@ -544,22 +593,44 @@ def met_diensten(van: date, tot: date) -> set[int]:
             .filter(Dienst.datum >= van, Dienst.datum <= tot) if Inhoud.van_dienst(d).heeft_dienst}
 
 
+def _brondagen(medewerker: Medewerker, van: date, tot: date) -> dict[tuple[int, int], dict[int, Inhoud]]:
+    """Voor exact kopiëren: (week, dag) -> {volgnummer: Inhoud} van van (maandag) t/m tot.
+
+    Inhoud bevat dezelfde velden die Week kopiëren overneemt (weekrooster.LEGE_DIENST); of de tijden
+    afwijken (tijden_handmatig) volgt bij het schrijven uit de code (roosteracties.vul_dienst).
+    """
+    dagen: dict[tuple[int, int], dict[int, Inhoud]] = {}
+    for dienst in (Dienst.query.options(joinedload(Dienst.dienstcode))
+                   .filter(Dienst.medewerker_id == medewerker.id, Dienst.datum >= van, Dienst.datum <= tot)):
+        if not dienst.is_leeg:
+            sleutel = ((dienst.datum - van).days // 7 + 1, dienst.datum.weekday())
+            dagen.setdefault(sleutel, {})[dienst.volgnummer] = Inhoud.van_dienst(dienst)
+    return dagen
+
+
 def herhaal_effect(keuzes: HerhaalKeuzes) -> UitrolEffect:
     """Precies wat het herhalen met deze keuzes doet. Er wordt niets opgeslagen."""
     waarschuwingen: list[str] = []
 
-    def cellen_van(medewerker: Medewerker) -> dict[tuple[int, int], str]:
-        laatste = keuzes.bron + timedelta(weeks=keuzes.weken - 1)
-        cellen, _, meldingen = sjabloon(medewerker, keuzes.bron, laatste)
-        waarschuwingen.extend(f"{medewerker.naam}, {melding}" for melding in meldingen)
-        if not cellen and keuzes.modus == MODUS_OVERSCHRIJVEN:  # een vergeten collega verliest alles
+    exact = keuzes.soort == KOPIE_EXACT
+
+    def cellen_van(medewerker: Medewerker) -> dict:
+        if exact:
+            cellen = _brondagen(medewerker, keuzes.bron, keuzes.bron_tot)
+            leeg = not any(i.heeft_dienst for dag in cellen.values() for i in dag.values())
+        else:
+            laatste = keuzes.bron + timedelta(weeks=keuzes.weken - 1)
+            cellen, _, meldingen = sjabloon(medewerker, keuzes.bron, laatste)
+            waarschuwingen.extend(f"{medewerker.naam}, {melding}" for melding in meldingen)
+            leeg = not cellen
+        if leeg and keuzes.modus == MODUS_OVERSCHRIJVEN:  # een vergeten collega verliest alles
             waarschuwingen.append(f"{medewerker.naam}: {GEEN_BRONROOSTER}.")
         return cellen
 
     # De cyclus begint bij de bronweek; vanaf 'van' rekenen met de bijbehorende startpositie
     plan = tuple((mid, keuzes.startpositie) for mid in keuzes.medewerkers)
     resultaat = _bereken(plan, cellen_van, keuzes.weken, keuzes.van, keuzes.tot, keuzes.modus,
-                         keuzes.feestdagen)
+                         keuzes.feestdagen, exact)
     resultaat.waarschuwingen = waarschuwingen
     return resultaat
 

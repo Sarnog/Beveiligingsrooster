@@ -19,7 +19,7 @@ from ..extensions import db
 from ..models import Dienst, Dienstcode, Medewerker
 from . import logboek, sync_planning
 from .rooster import UrenContext, dienst_tekst, logveld, uren_voor
-from .weekrooster import LEGE_DIENST, VersieConflict, _claim, ruim_dag_op
+from .weekrooster import LEGE_DIENST, VersieConflict, _claim, ruim_dag_op, tijden_afwijkend
 
 SOORTEN = ("nieuw", "vervangen", "verwijderd", "gelijk", "overgeslagen")
 log = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ def vul_dienst(dienst: Dienst, inhoud: Inhoud | None, codes: dict[int, Dienstcod
     dienst.dienstcode_id = code.id if code else None
     dienst.dienstnaam_override = inhoud.dienstnaam
     dienst.begin, dienst.eind = inhoud.begin, inhoud.eind
-    dienst.tijden_handmatig = bool(code and (inhoud.begin, inhoud.eind) != (code.std_begin, code.std_eind))
+    dienst.tijden_handmatig = tijden_afwijkend(code, inhoud.begin, inhoud.eind)  # zoals in het rooster
     dienst.opmerking_tekst = inhoud.opmerking
     dienst.opmerking_begin, dienst.opmerking_eind = inhoud.opm_begin, inhoud.opm_eind
     dienst.uren_handmatig = inhoud.uren_handmatig

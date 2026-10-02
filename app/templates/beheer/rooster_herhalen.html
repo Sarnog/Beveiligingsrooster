@@ -3,7 +3,7 @@
 {% block titel %}Rooster herhalen{% endblock %}
 {% block inhoud %}
 <h1>Rooster herhalen</h1>
-<p class="hulp">Kies de bronweken (bijvoorbeeld de 8 weken van je cyclus) en de periode die je wilt vullen. Elke gekozen medewerker krijgt zijn eigen rooster uit de bronweken, herhaald met dezelfde cyclus: zo herhaalt een 8-wekelijks rooster zich om de 8 weken. Diensten krijgen de standaardtijden van hun code; een dienst zonder code telt als vrij. Je ziet eerst een voorbeeld; pas daarna wordt er iets gewijzigd (met vooraf een back-up).</p>
+<p class="hulp">Kies de bronweken (bijvoorbeeld de 8 weken van je cyclus) en de periode die je wilt vullen. Elke gekozen medewerker krijgt zijn eigen rooster uit de bronweken, herhaald met dezelfde cyclus: zo herhaalt een 8-wekelijks rooster zich om de 8 weken. Je ziet eerst een voorbeeld; pas daarna wordt er iets gewijzigd (met vooraf een back-up).</p>
 
 <form method="post" class="kaart" data-herhaal-keuzes>
   {{ csrf() }}
@@ -27,9 +27,14 @@
     </div>
   </fieldset>
   <fieldset>
+    <legend>Wat wordt er gekopieerd?</legend>
+    {% for waarde, tekst in kopie_soorten.items() %}<label class="vink"><input type="radio" name="soort" value="{{ waarde }}"{% if (keuzes.soort if keuzes else 'codes') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
+    <p class="hulp"><em>Alleen codes</em>: diensten krijgen de standaardtijden van hun code; een dienst zonder code telt als vrij en de opmerking van de dag blijft staan. <em>Exact kopiëren</em>: elke dag wordt precies de brondag, met afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en de opmerking.</p>
+  </fieldset>
+  <fieldset>
     <legend>Modus</legend>
     {% for waarde, tekst in modi.items() %}<label class="vink"><input type="radio" name="modus" value="{{ waarde }}"{% if (keuzes.modus if keuzes else 'overschrijven') == waarde %} checked{% endif %}><span>{{ tekst }}</span></label>{% endfor %}
-    <p class="hulp">De opmerking van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.</p>
+    <p class="hulp">Bij <em>alleen codes</em> blijft de opmerking van een dag (regel a en b) staan. Een dag met alleen een opmerking telt als leeg.</p>
   </fieldset>
   <fieldset>
     <legend>Feestdagen</legend>
