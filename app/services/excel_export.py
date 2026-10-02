@@ -19,7 +19,8 @@ Het bestand werkt in MS Excel zoals de app, zonder macro's (sinds 1.6.0). Formul
   × de toeslagfactor van de dag (za/zo, feestdag: de hoogste), afgerond op kwartieren met
   bankiersafronding (precies een half kwartier naar even), plus een correctie uit Rekenhulp
   voor de gevallen waarin de VBA door kommagetallen anders afrondt (zie urenberekening.py);
-  bij dienst 1 komen de opmerkingtijden erbij als Lijsten!N5 = 1;
+  bij dienst 1 komen de opmerkingtijden erbij als Lijsten!N5 = 1 (niet als ze samenvallen met
+  dienst 2: dan tellen ze alleen daar, net als in de app);
 - weektotaal (Z) = SUM van de urencellen van dienst 1 en dienst 2; urenoverzicht verwijst naar Z;
 - dienstnaam en standaardtijden zoeken de code uit het code-raster op in Lijsten, als de dienst
   de standaard van zijn code volgt (of de dag leeg is); anders zijn het vaste waarden;
@@ -382,6 +383,12 @@ class _Formules:
                          f"$B${laatste},2,FALSE),MOD(ROUND({begin}*1440,0),1440)+1,1))-{NUL_TEKEN},0),0)")
         return f'IF({x}="","",({afgerond})/4)'
 
+    def overlap(self, b1: str, e1: str, b2: str, e2: str) -> str:
+        """WAAR als twee tijdvakken overlappen (over middernacht), zoals rooster.tijden_overlappen."""
+        s1, s2 = f"MOD(ROUND({b1}*1440,0),1440)", f"MOD(ROUND({b2}*1440,0),1440)"
+        return (f"AND(COUNT({b1},{e1},{b2},{e2})=4,{s1}<{s2}+{self.minuten(b2, e2)},"
+                f"{s2}<{s1}+{self.minuten(b1, e1)})")
+
     @staticmethod
     def dagtotaal(uren1: str, uren_opm: str) -> str:
         """Uren van dienst 1: de tijdenregel plus (als dat aan staat) de opmerkingtijden."""
@@ -612,7 +619,10 @@ def _dag(blad, basis: int, rasterrij: int, i: int, per_vn: dict, c: _WeekContext
         bo, eo = _cel(basis + 1, kolom), _cel(basis + 1, kolom + 1)
         _formule(blad, rij, _hulpkolom(i, 2), uren1)
         _formule(blad, rij, _hulpkolom(i, 3), f.kwartieren_ruw(bo, eo, factor))
-        _formule(blad, rij, _hulpkolom(i, 4), f.uren(_cel(rij, _hulpkolom(i, 3)), bo, eo, factor))
+        uren_opm = f.uren(_cel(rij, _hulpkolom(i, 3)), bo, eo, factor)
+        if dienst2 is not None:  # opmerkingtijden die samenvallen met dienst 2 tellen daar al
+            uren_opm = f'IF({f.overlap(bo, eo, b2, e2)},"",{uren_opm})'
+        _formule(blad, rij, _hulpkolom(i, 4), uren_opm)
         uren1 = f.dagtotaal(_cel(rij, _hulpkolom(i, 2)), _cel(rij, _hulpkolom(i, 4)))
     _dienst(blad, basis, kolom, dienst1, f.code(raster, 1), uren1, c)
     # Formules voor dienst 2 alleen als die er is: het blok staat bijna altijd leeg, en elke

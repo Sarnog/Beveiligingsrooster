@@ -550,6 +550,133 @@ def test_tweede_dienst_erbij_zelf_ingevulde_uren_dienst1_vervallen(als_beheerder
     assert gegevens["fouten"] == []
 
 
+def _soc_veiligh(nummer=20):
+    """Een code voor de tweede dienst van 13:00 tot 17:00 (4 uur), zoals 'Soc. Veiligh. OB'."""
+    from app.models import Dienstcode
+
+    db.session.add(Dienstcode(nummer=nummer, omschrijving="Soc. Veiligh. OB", std_begin="13:00",
+                              std_eind="17:00", kleur_achtergrond="#FFFFFF", kleur_tekst="#000000"))
+    db.session.commit()
+
+
+def test_opmerkingtijden_van_de_tweede_dienst_tellen_niet_dubbel(als_beheerder, rooster):
+    """Melding 1.8.1: op 29-10 stond 'Soc. Veiligh. OB 13:00-17:00' als opmerking bij dienst 1
+    (zo kwam hij uit de import). Met 'opmerkingtijden meetellen' aan telde dat tijdvak na '13/20'
+    dubbel: bij dienst 1 (opmerking) en als echte dienst 2. Nu telt het alleen bij dienst 2."""
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    _soc_veiligh()
+    a = rooster["a"]
+    donderdag = date(2026, 10, 29)
+    for veld, waarde in (("code", "4"), ("opmerking", "Soc. Veiligh. OB"), ("opm_begin", "13:00"),
+                         ("opm_eind", "17:00")):
+        cel(als_beheerder, a, donderdag, veld, waarde)
+    assert diensten(a, donderdag)[1].uren_berekend == 12.0  # 8 + 4 (opmerkingtijden tellen mee)
+    assert cel(als_beheerder, a, donderdag, "code", "13/20").json["fouten"] == []
+    per_vn = diensten(a, donderdag)
+    assert (per_vn[1].uren_berekend, per_vn[2].uren_berekend) == (8.0, 4.0)  # niet 12 + 4
+    week = als_beheerder.get("/week/2026/44").data.decode()
+    assert "12,00" in week and "16,00" not in week
+    # Dienst 2 weer weg: dan is de opmerking weer het enige tweede deel en telt die mee
+    cel(als_beheerder, a, donderdag, "code", "13")
+    assert set(diensten(a, donderdag)) == {1} and diensten(a, donderdag)[1].uren_berekend == 12.0
+    # Dienst 2 op een ander tijdstip: de opmerkingtijden tellen gewoon mee
+    cel(als_beheerder, a, donderdag, "code", "13/3")  # VW Avond 14:30-23:00 overlapt 13-17 wel
+    assert diensten(a, donderdag)[1].uren_berekend == 8.0
+    cellen(als_beheerder, [{"mw": a.id, "datum": donderdag.isoformat(), "veld": "begin", "volgnummer": 2,
+                            "waarde": "17:00"}])  # 17:00-23:00 sluit aan, overlapt niet
+    assert diensten(a, donderdag)[1].uren_berekend == 12.0
+
+
+def test_herberekenen_volgt_de_regel_voor_opmerkingtijden(als_beheerder, rooster):
+    from app.services.rooster import herbereken_alle
+
+    _soc_veiligh()
+    a = rooster["a"]
+    donderdag = date(2026, 10, 29)
+    cel(als_beheerder, a, donderdag, "code", "13/20")
+    for veld, waarde in (("opm_begin", "13:00"), ("opm_eind", "17:00")):
+        cel(als_beheerder, a, donderdag, veld, waarde)
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    db.session.commit()
+    herbereken_alle()
+    assert diensten(a, donderdag)[1].uren_berekend == 8.0
+
+
+def _worker_ronde():
+    """Eén worker-ronde zonder back-up en opschonen (01:00, al opgeschoond)."""
+    from datetime import datetime
+
+    from app import worker
+
+    planning = worker.Planning()
+    planning.opschonen_gedaan = date(2026, 10, 2)
+    worker.een_ronde(planning, nu=datetime(2026, 10, 2, 1, 0))
+
+
+def test_eenmalig_nakijken_corrigeert_dubbel_getelde_dagen(app, rooster):
+    """Na de update naar 1.8.2 kijkt de worker één keer alle dagen met een tweede dienst na."""
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    _soc_veiligh()
+    a, b = rooster["a"], rooster["b"]
+    dag1, dag2, dag3 = date(2026, 10, 29), date(2026, 11, 5), date(2026, 11, 12)
+
+    def dag(mw, datum, **dienst1):
+        db.session.add(Dienst(medewerker_id=mw.id, datum=datum, volgnummer=1, versie=1, **dienst1))
+        db.session.add(Dienst(medewerker_id=mw.id, datum=datum, volgnummer=2, versie=1,
+                              dienstcode_id=_code_id(20), begin="13:00", eind="17:00", uren_berekend=4.0))
+
+    # a: zoals uit de import, opmerkingtijden telden dubbel (8 + 4 bij dienst 1, plus dienst 2)
+    dag(a, dag1, dienstcode_id=_code_id(13), begin="07:15", eind="15:45", uren_berekend=12.0,
+        opmerking_tekst="Soc. Veiligh. OB", opmerking_begin="13:00", opmerking_eind="17:00")
+    # a: zelf ingevulde uren voor de hele dag (5,25 + 4) naast een echte dienst 2
+    dag(a, dag2, dienstcode_id=_code_id(4), begin="07:15", eind="13:00", tijden_handmatig=True,
+        uren_handmatig=9.25, uren_berekend=9.25, opmerking_tekst="Soc. Veiligh. OB",
+        opmerking_begin="13:00", opmerking_eind="17:00")
+    # b: bewust eigen uren (geen dagtotaal): blijven staan
+    dag(b, dag3, dienstcode_id=_code_id(4), begin="07:15", eind="13:00", tijden_handmatig=True,
+        uren_handmatig=6.0, uren_berekend=6.0)
+    # b: alleen dienst 1 (geen tweede dienst): wordt niet aangeraakt
+    db.session.add(Dienst(medewerker_id=b.id, datum=dag2, volgnummer=1, versie=1, dienstcode_id=_code_id(4),
+                          begin="07:15", eind="15:45", uren_berekend=12.0, opmerking_tekst="Training",
+                          opmerking_begin="13:00", opmerking_eind="17:00"))
+    db.session.commit()
+
+    _worker_ronde()
+    assert (diensten(a, dag1)[1].uren_berekend, diensten(a, dag1)[2].uren_berekend) == (8.0, 4.0)
+    assert diensten(a, dag2)[1].uren_handmatig is None and diensten(a, dag2)[1].uren_berekend == 5.25
+    assert diensten(b, dag3)[1].uren_handmatig == 6.0 and diensten(b, dag3)[1].uren_berekend == 6.0
+    assert diensten(b, dag2)[1].uren_berekend == 12.0 and diensten(b, dag2)[1].versie == 1
+    regels = Logboek.query.filter_by(actie="Uren gecorrigeerd").order_by(Logboek.id).all()
+    assert sorted((r.dag, r.oude_waarde, r.nieuwe_waarde) for r in regels) == [
+        ("05-11-2026", "9,25", "5,25"), ("29-10-2026", "12,00", "8,00")]
+    regels.sort(key=lambda r: r.dag, reverse=True)  # 29-10 eerst
+    assert "opmerkingtijden" in regels[0].details and "totaal van de dag" in regels[1].details
+    assert "2 gecorrigeerd" in Logboek.query.filter_by(actie="Rooster nagekeken").one().details
+    assert instellingen.lees("herstel_tweede_dienst") == "1"
+    # Maar één keer: daarna blijft alles zoals het is
+    diensten(a, dag1)[1].uren_berekend = 99.0
+    db.session.commit()
+    _worker_ronde()
+    assert diensten(a, dag1)[1].uren_berekend == 99.0
+
+
+def test_eenmalig_nakijken_zonder_tweede_diensten(app, rooster):
+    _worker_ronde()
+    assert "0 gecorrigeerd" in Logboek.query.filter_by(actie="Rooster nagekeken").one().details
+    assert instellingen.lees("herstel_tweede_dienst") == "1"
+
+
+def test_eenmalig_nakijken_mislukt_en_probeert_het_later_opnieuw(app, rooster, monkeypatch):
+    from app.services import rooster as rooster_service
+
+    def kapot():
+        raise RuntimeError("kapot")
+
+    monkeypatch.setattr(rooster_service, "herstel_tweede_diensten", kapot)
+    _worker_ronde()
+    assert instellingen.lees("herstel_tweede_dienst") == ""
+
+
 def test_zelf_ingevulde_uren_bij_bestaande_tweede_dienst_blijven(als_beheerder, rooster):
     """Alleen bij het erbij komen van dienst 2: daarna mag dienst 1 gewoon eigen uren krijgen."""
     a = rooster["a"]

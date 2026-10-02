@@ -25,8 +25,15 @@ from ..models import MAX_DIENSTEN_PER_DAG, Dagopmerking, Dienst, Dienstcode, Med
 from . import instellingen, klok, logboek, sync_planning
 from .feestdagen import feestdagen_in_periode, vakantiedagen_in_periode, zorg_voor_jaar
 from .kalender import dagen_van_week
-from .rooster import UrenContext, dienst_samenvatting, logveld, markeer_bijgewerkt, uren_voor
-from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd, tijd_naar_minuten
+from .rooster import (
+    UrenContext,
+    dienst_samenvatting,
+    logveld,
+    markeer_bijgewerkt,
+    tijden_overlappen,
+    uren_voor,
+)
+from .tijden import OngeldigeTijd, is_cijfers, normaliseer_tijd
 from .urenberekening import formatteer_uren
 from .validatie import MAX_GETAL
 
@@ -152,14 +159,7 @@ def overlappen(dienst1: Dienst | None, dienst2: Dienst | None) -> bool:
     """
     if dienst1 is None or dienst2 is None:
         return False
-    vakken = []
-    for dienst in (dienst1, dienst2):
-        begin, eind = tijd_naar_minuten(dienst.begin), tijd_naar_minuten(dienst.eind)
-        if begin is None or eind is None:
-            return False
-        vakken.append((begin, eind + 1440 if eind < begin else eind))
-    (b1, e1), (b2, e2) = vakken
-    return b1 < e2 and b2 < e1
+    return tijden_overlappen(dienst1.begin, dienst1.eind, dienst2.begin, dienst2.eind)
 
 
 def dag_naar_dict(dienst1: Dienst | None, dienst2: Dienst | None, regels: dict | None = None) -> dict:
@@ -641,6 +641,8 @@ def ruim_dag_op(medewerker_id: int, datum: date) -> None:
     - Dienst 1 blijft (leeg) staan zolang er een gevulde dienst 2 is, en wordt zo nodig
       als lege plaatshouder aangemaakt (bijv. '/3' in het code-raster). Zo hoort de dag
       altijd bij dienst 1 (opmerking, versie) en is de volgorde van de diensten vast.
+    - De uren van dienst 1 met opmerkingtijden worden opnieuw berekend: of die tijden
+      meetellen, hangt af van dienst 2 (zie rooster.opmerking_is_tweede_dienst).
     """
     db.session.flush()
     per_vn = {d.volgnummer: d for d in Dienst.query.filter_by(medewerker_id=medewerker_id, datum=datum)}
@@ -654,6 +656,9 @@ def ruim_dag_op(medewerker_id: int, datum: date) -> None:
                               dienstnaam_override="", opmerking_tekst="", tijden_handmatig=False))
     elif dienst1 is not None and dienst1.is_leeg and not dienst1.google_event_id and not tweede_gevuld:
         db.session.delete(dienst1)
+    elif dienst1 is not None and dienst1.opmerking_begin and dienst1.opmerking_eind:
+        # Telt de opmerkingtijd mee? Dat hangt af van dienst 2, die na dienst 1 kan veranderen
+        dienst1.uren_berekend = uren_voor(dienst1, UrenContext(datum, datum), dienst2)
     db.session.flush()
 
 
