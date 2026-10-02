@@ -169,8 +169,9 @@ Draait het team een vaste cyclus, bijvoorbeeld 8 weken? Leg die dan één keer v
    - **Feestdagen** invullen of overslaan (dan blijft de feestdag zoals hij is).
    - Een gearchiveerde medewerker krijgt niets op of na de archiefdatum.
    - De **opmerking** van een dag (regel a en b) blijft altijd staan; een dag met alleen een opmerking telt als leeg.
+   - Een patroon onthoudt de **codenummers**. Staat een code in een patroon, dan kun je die code in *Beheer → Dienstcodes* niet hernummeren of verwijderen (de melding noemt de patronen); deactiveren kan wel. Pas dan eerst het patroon aan.
 4. **Voorbeeld bijwerken** toont per medewerker hoeveel diensten nieuw, vervangen, verwijderd, ongewijzigd en overgeslagen zijn. Er is dan nog niets gewijzigd.
-5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
+5. Vink de bevestiging aan en klik op **Definitief toepassen**. Dat kan alleen met precies de keuzes van het voorbeeld. Is het patroon intussen gewijzigd (bijvoorbeeld door een andere beheerder), dan verandert er niets en zie je *gewijzigd sinds het voorbeeld; controleer het bijgewerkte voorbeeld*. Heeft een planner tegelijk een dienst in de periode gewijzigd, dan wordt ook alles teruggedraaid, met een melding wie en welke dag. Er wordt eerst een back-up gemaakt (*voor-patroon*), alles gebeurt in één keer, met de standaardtijden van de codes, de uren, een logboekregel per gewijzigde dienst en Google Agenda alleen voor de geraakte collega's. Nogmaals toepassen verandert niets.
 
 ### Rooster herhalen (een 8-wekelijks rooster voor het hele team)
 
@@ -183,7 +184,7 @@ Plan je liever gewoon in het weekrooster? Vul dan één keer de weken van de cyc
    - **Alleen codes** (standaard, zoals een patroon): diensten krijgen de standaardtijden van hun code; een dienst zonder code (vrije dienstnaam) telt als vrij en staat als waarschuwing in het voorbeeld. De opmerking van de dag blijft staan, zoals bij uitrollen.
    - **Exact kopiëren (zoals Week kopiëren)**: elke dag wordt precies de brondag, met afwijkende tijden, zelf ingevulde uren, vrije dienstnamen en de opmerking. Bij *Overschrijven* maakt een lege brondag de dag leeg (ook de opmerking); bij *Alleen lege dagen aanvullen* krijgt alleen een dag zonder dienst de brondag en wist een lege brondag niets.
    - Modus, feestdagen en archiefdatum werken in beide gevallen zoals bij uitrollen.
-5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst.
+5. **Voorbeeld bijwerken**, bevestiging aanvinken en **Definitief toepassen**. Vooraf komt er een back-up (*voor-herhalen*); in het logboek staat *Rooster herhaald* en elke gewijzigde dienst. Is het rooster in de bronweken intussen gewijzigd, dan verandert er niets en zie je eerst het bijgewerkte voorbeeld.
 
 ## 5. Printen
 
@@ -315,6 +316,8 @@ Werkt de website niet meer, maar draait de container nog? Dan kan het ook op de 
 ## 10. Twee planners tegelijk
 
 Heeft een andere beheerder dezelfde dag van dezelfde medewerker al opgeslagen terwijl jij er nog mee bezig bent? Dan krijg je bij die cel een melding en wordt jouw wijziging daar niet opgeslagen. Ververs de pagina om de nieuwste stand te zien. Er gaat niets stilletjes verloren.
+
+Dat geldt ook voor de Excel-import, het uitrollen van een patroon en Rooster herhalen: wijzigt iemand tijdens het toepassen een dienst die daarin zit, dan wordt alles teruggedraaid en zie je welke medewerker en dag het betreft. Bekijk het bijgewerkte voorbeeld en pas opnieuw toe.
 
 ## 11. Telefoon, app en API
 
