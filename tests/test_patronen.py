@@ -1068,3 +1068,160 @@ def test_scherm_herhalen_exact_kopieren(app, als_beheerder, mw):
     antwoord = als_beheerder.post(url, data={**keuzes, "actie": "toepassen", "bevestig": "1"})
     assert antwoord.status_code == 302
     assert _inhoud(a, MAANDAG + timedelta(weeks=1)) == _inhoud(a, MAANDAG)
+
+
+# ---------------------------------------------------------------------------
+# Testgaten uit de mutatietests (mutmut): grenzen en volledige meldingen
+# ---------------------------------------------------------------------------
+
+def test_uitrollen_bestaande_dienst_op_de_laatste_dag(app, mw):
+    """De laatste dag (tot) hoort bij de periode: de dienst daar wordt vervangen, niet dubbel aangemaakt."""
+    a = mw[0]
+    zondag = MAANDAG + timedelta(days=6)
+    assert wijzig_cellen([Wijziging(a.id, zondag, "code", "5")])[1] == []
+    patroon = _patroon(weken=1, cellen={(1, 6): "4"})
+    keuzes = _keuzes(patroon, [(a.id, 1)], MAANDAG, zondag)
+    t = patronen.effect(patroon, keuzes).per_medewerker[a.id]
+    assert (t.nieuw, t.vervangen) == (0, 1)
+    patronen.pas_toe(patroon, keuzes)
+    assert Dienst.query.filter_by(medewerker_id=a.id, datum=zondag).count() == 1 and _cel(a, zondag) == "4"
+
+
+def test_herhalen_bestaande_dienst_op_de_laatste_dag(app, mw):
+    a = mw[0]
+    zondag = MAANDAG + timedelta(days=6)
+    doel = zondag + timedelta(weeks=1)
+    assert wijzig_cellen([Wijziging(a.id, zondag, "code", "4"), Wijziging(a.id, doel, "code", "5")])[1] == []
+    for soort in patronen.KOPIE_SOORTEN:
+        keuzes = _herhaal([a], MAANDAG + timedelta(weeks=1), doel, weken=1, soort=soort)
+        t = patronen.herhaal_effect(keuzes).per_medewerker[a.id]
+        assert (t.nieuw, t.vervangen + t.gelijk) == (0, 1), soort
+        patronen.herhaal_pas_toe(keuzes)
+        assert Dienst.query.filter_by(medewerker_id=a.id, datum=doel).count() == 1 and _cel(a, doel) == "4"
+
+
+def test_patroon_van_twaalf_weken(app, mw):
+    a = mw[0]
+    patroon = _patroon(weken=12, cellen={(1, 0): "4", (12, 6): "7"})
+    assert patroon.weken == 12 and patroon.cellen() == {(1, 0): "4", (12, 6): "7"}
+    laatste = MAANDAG + timedelta(weeks=12, days=-1)  # zondag van week 12
+    patronen.pas_toe(patroon, _keuzes(patroon, [(a.id, 1)], MAANDAG, laatste))
+    assert _cel(a, MAANDAG) == "4" and _cel(a, laatste) == "7"
+    # Sjabloon en herhalen kunnen ook 12 weken (de bronperiode: week 1 t/m 12)
+    cellen, weken, _ = patronen.sjabloon(a, MAANDAG, MAANDAG + timedelta(weeks=11))
+    assert weken == 12 and cellen == {(1, 0): "4", (12, 6): "7"}
+    van = MAANDAG + timedelta(weeks=12)
+    keuzes = _herhaal([a], van, van + timedelta(weeks=12, days=-1), weken=12)
+    assert keuzes.controleer() == [] and keuzes.bron_tot == laatste
+    patronen.herhaal_pas_toe(keuzes)
+    assert _cel(a, van) == "4" and _cel(a, van + timedelta(weeks=12, days=-1)) == "7"
+
+
+def test_week_acht_van_acht_als_bron_bij_kopieren(app, als_beheerder, mw):
+    cellen = {(8, 0): "4", (8, 6): "4/7", (1, 2): "5"}
+    assert patronen.kopieer_week(cellen, 8, [1], 8) == {(8, 0): "4", (8, 6): "4/7",
+                                                       **{(1, d): cellen.get((8, d), "") for d in range(7)}}
+    tekst = als_beheerder.post("/beheer/patronen/nieuw", data={
+        "naam": "Acht", "weken": "8", "actie": "kopieer", "kopieer_van": "8", "kopieer_naar": ["1"],
+        **_raster(w8_0="4", w1_2="5")}).data.decode()
+    assert "Week 8 gekopieerd naar week 1" in tekst and 'name="c-1-0" value="4"' in tekst
+    assert 'name="c-1-2" value=""' in tekst
+
+
+def test_herhalen_feestdagen_overslaan(app, mw):
+    a = mw[0]
+    koningsdag = date(2026, 4, 27)  # maandag
+    bron = koningsdag - timedelta(weeks=1)
+    assert wijzig_cellen([Wijziging(a.id, bron, "code", "4"),
+                          Wijziging(a.id, bron + timedelta(days=1), "code", "4"),
+                          Wijziging(a.id, koningsdag, "code", "5")])[1] == []
+    for soort in patronen.KOPIE_SOORTEN:
+        keuzes = patronen.HerhaalKeuzes((a.id,), bron, 1, koningsdag, koningsdag + timedelta(days=6),
+                                        feestdagen=patronen.FEESTDAG_OVERSLAAN, soort=soort)
+        t = patronen.herhaal_effect(keuzes).per_medewerker[a.id]
+        assert (t.overgeslagen, t.nieuw) == (1, 1), soort
+    patronen.herhaal_pas_toe(keuzes)
+    assert _cel(a, koningsdag) == "5" and _cel(a, koningsdag + timedelta(days=1)) == "4"
+    invullen = patronen.HerhaalKeuzes((a.id,), bron, 1, koningsdag, koningsdag + timedelta(days=6))
+    patronen.herhaal_pas_toe(invullen)
+    assert _cel(a, koningsdag) == "4"
+
+
+def test_herhalen_lengte_van_de_bronperiode(app, mw):
+    """De bronperiode is precies 'weken' weken: de laatste zondag telt mee, de dag erna niet."""
+    a = mw[0]
+    laatste = MAANDAG + timedelta(weeks=2, days=-1)
+    assert wijzig_cellen([Wijziging(a.id, laatste, "code", "4")])[1] == []
+    van = MAANDAG + timedelta(weeks=4)
+    for soort in patronen.KOPIE_SOORTEN:
+        keuzes = _herhaal([a], van, van + timedelta(weeks=2, days=-1), weken=2, soort=soort)
+        assert keuzes.bron_tot == laatste
+        assert patronen.herhaal_effect(keuzes).per_medewerker[a.id].nieuw == 1, soort
+    afdruk = patronen.herhaal_vingerafdruk(keuzes)
+    assert wijzig_cellen([Wijziging(a.id, laatste + timedelta(days=1), "code", "5")])[1] == []
+    assert patronen.herhaal_vingerafdruk(keuzes) == afdruk  # buiten de bronweken
+    assert wijzig_cellen([Wijziging(a.id, laatste, "code", "7")])[1] == []
+    assert patronen.herhaal_vingerafdruk(keuzes) != afdruk
+    assert wijzig_cellen([Wijziging(a.id, MAANDAG - timedelta(days=1), "code", "6")])[1] == []
+    assert patronen.herhaal_vingerafdruk(keuzes) == patronen.herhaal_vingerafdruk(keuzes)
+
+
+def test_uitrolkeuzes_volledige_meldingen(app, mw):
+    from app.models import Dienstcode
+
+    patroon = _patroon(cellen={(1, 0): "4", (2, 0): "7"})
+    Dienstcode.query.filter_by(nummer=4).one().actief = False
+    db.session.commit()
+    keuzes = UitrolKeuzes(patroon.id, ((999, 0), (999, 3)), date(1900, 1, 1), date(1900, 1, 7), "alles",
+                          "soms")
+    assert keuzes.controleer(patroon) == [
+        "Elke medewerker mag maar één keer gekozen worden.",
+        "Onbekende medewerker(s): 999, 999.",
+        "De startpositie in de cyclus is 1 t/m 2.",
+        "Kies een periode tussen 1950 en 2150.",
+        "Kies een geldige modus (overschrijven of aanvullen).",
+        "Kies wat er met feestdagen gebeurt (invullen of overslaan).",
+        "Patroon week 1, maandag: Onbekende dienstcode: 4",
+    ]
+    goed = {"patroon_id": patroon.id, "medewerkers": ((mw[0].id, 1),), "van": MAANDAG, "tot": MAANDAG}
+    patroon = _patroon("Geldig", cellen={(1, 0): "5"})
+    goed["patroon_id"] = patroon.id
+    for wijziging, melding in (
+            ({"medewerkers": ()}, "Kies minstens één medewerker."),
+            ({"van": MAANDAG + timedelta(days=1)}, "De startweek moet op een maandag beginnen."),
+            ({"tot": MAANDAG - timedelta(days=1)}, "De einddatum moet op of na de startweek liggen."),
+            ({"tot": MAANDAG + timedelta(weeks=106)}, "Rol hooguit 106 weken in één keer uit."),
+    ):
+        assert UitrolKeuzes(**{**goed, **wijziging}).controleer(patroon) == [melding]
+    assert UitrolKeuzes(**{**goed, "tot": MAANDAG + timedelta(weeks=106, days=-1)}).controleer(patroon) == []
+
+
+def test_herhaalkeuzes_volledige_meldingen(app, mw):
+    van = MAANDAG + timedelta(weeks=8)
+    keuzes = patronen.HerhaalKeuzes((999, 999), date(1900, 1, 1), 8, van, van, "alles", "soms", "half")
+    assert keuzes.controleer() == [
+        "Elke medewerker mag maar één keer gekozen worden.",
+        "Onbekende medewerker(s): 999, 999.",
+        "Kies weken tussen 1950 en 2150.",
+        "Kies een geldige modus (overschrijven of aanvullen).",
+        "Kies wat er met feestdagen gebeurt (invullen of overslaan).",
+        "Kies hoe er gekopieerd wordt (alleen codes of exact).",
+    ]
+    assert patronen.HerhaalKeuzes((), MAANDAG, 13, van, van).controleer() == [
+        "Kies minstens één medewerker.", "Herhaal 1 t/m 12 weken."]
+    goed = {"medewerkers": (mw[0].id,), "bron": MAANDAG, "weken": 8, "van": van, "tot": van}
+    maandag = "De bronweek en de startweek moeten op een maandag beginnen."
+    for wijziging, melding in (
+            ({"bron": MAANDAG + timedelta(days=1)}, maandag),
+            ({"van": van + timedelta(days=1)}, maandag),
+            ({"tot": van - timedelta(days=1)}, "De einddatum moet op of na de startweek liggen."),
+            ({"tot": van + timedelta(weeks=106)}, "Herhaal hooguit 106 weken in één keer."),
+            ({"van": MAANDAG + timedelta(weeks=7), "tot": MAANDAG + timedelta(weeks=7)},
+             "De periode om te vullen overlapt de bronweken (02-03-2026 t/m 26-04-2026); kies een startweek "
+             "na of vóór de bronweken."),
+    ):
+        assert patronen.HerhaalKeuzes(**{**goed, **wijziging}).controleer() == [melding]
+    assert patronen.HerhaalKeuzes(**{**goed, "tot": van + timedelta(weeks=106, days=-1)}).controleer() == []
+    vlak_ervoor = MAANDAG - timedelta(weeks=1)
+    assert patronen.HerhaalKeuzes(**{**goed, "van": vlak_ervoor,
+                                     "tot": MAANDAG - timedelta(days=1)}).controleer() == []
