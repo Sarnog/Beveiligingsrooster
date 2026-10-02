@@ -2,6 +2,8 @@
 
 ## [Onuitgebracht]
 
+## [1.8.0] – 2026-10-02
+
 ### Toegevoegd
 - **Schakelaar licht/donker** (☀️/🌙) in de menubalk, vóór de naam. Elke gebruiker kiest zelf; de
   keuze wordt bij het account opgeslagen (kolom `gebruiker.thema`, migratie `0008`) en geldt dus ook
