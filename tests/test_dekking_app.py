@@ -61,7 +61,6 @@ def test_405_buiten_de_api_is_gewone_fout(app, als_beheerder):
 def test_500_buiten_de_api_geeft_foutpagina(app, als_beheerder, monkeypatch):
     from app.blueprints import zoeken
 
-    monkeypatch.setattr(zoeken.Dienstcode, "query", property(lambda _self: 1 / 0), raising=False)
     app.config["PROPAGATE_EXCEPTIONS"] = False
     monkeypatch.setattr(zoeken, "render_template", lambda *a, **k: 1 / 0)
     antwoord = als_beheerder.get("/zoeken/")
@@ -192,5 +191,8 @@ def test_mijn_rooster_zonder_gekoppelde_medewerker(app, als_gebruiker):
 
 
 def test_zoeken_zonder_filters(app, als_gebruiker):
-    assert als_gebruiker.get("/zoeken/").status_code == 200
+    antwoord = als_gebruiker.get("/zoeken/")
+    pagina = antwoord.data.decode()
+    assert antwoord.status_code == 200 and "<h1>Zoeken</h1>" in pagina
+    assert "Aantal diensten" not in pagina  # zonder filters wordt er niet gezocht
     assert Dienstcode.query.count() == 0

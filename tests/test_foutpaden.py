@@ -179,9 +179,14 @@ def test_nieuwe_gebruiker_controles(als_beheerder, klaar, gegevens, melding):
 
 
 def test_gebruikersschermen(als_beheerder, klaar):
-    assert als_beheerder.get("/beheer/gebruikers").status_code == 200
-    assert als_beheerder.get("/beheer/gebruikers/nieuw").status_code == 200
-    assert als_beheerder.get(f"/beheer/gebruikers/{klaar['gebruiker'].id}").status_code == 200
+    lijst = als_beheerder.get("/beheer/gebruikers")
+    assert lijst.status_code == 200 and "<h1>Gebruikers</h1>" in lijst.data.decode()
+    assert ">beheerder</a>" in lijst.data.decode() and ">collega</a>" in lijst.data.decode()
+    nieuw = als_beheerder.get("/beheer/gebruikers/nieuw")
+    assert nieuw.status_code == 200 and "<h1>Nieuw account</h1>" in nieuw.data.decode()
+    wijzigen = als_beheerder.get(f"/beheer/gebruikers/{klaar['gebruiker'].id}")
+    tekst = wijzigen.data.decode()
+    assert wijzigen.status_code == 200 and "<h1>Account wijzigen</h1>" in tekst and 'value="collega"' in tekst
 
 
 # ---------- Dienstcodes: standaardtijden toepassen ----------

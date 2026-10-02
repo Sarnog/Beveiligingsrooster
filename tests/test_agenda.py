@@ -329,7 +329,10 @@ def test_sleutel_uploaden(app, als_beheerder):
 
 
 def test_agenda_scherm(als_beheerder, gekoppeld):
-    assert als_beheerder.get("/beheer/agenda").status_code == 200
+    antwoord = als_beheerder.get("/beheer/agenda")
+    pagina = antwoord.data.decode()
+    assert antwoord.status_code == 200 and "<h1>Google Agenda en ICS</h1>" in pagina
+    assert "<strong>Medewerker A</strong>" in pagina and "a@voorbeeld.nl" in pagina
 
 
 # ---------- ICS ----------
