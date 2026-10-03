@@ -79,6 +79,7 @@ UPLOAD_BEWAREN_SECONDEN = 24 * 3600
 MAX_UITGEPAKT = 100 * 1024 * 1024  # bytes, alle onderdelen samen
 MAX_ONDERDELEN = 2000
 MAX_BLADEN = 120
+TEKST_TIJD = re.compile(r"(\d{1,2})[:.](\d{2})(?::\d{2})?")  # een tijd als tekst: '7:15', '07.15', '15:45:00'
 log = logging.getLogger(__name__)
 
 
@@ -132,6 +133,13 @@ def _tijd(waarde) -> str | None:
         minuten = round(waarde.hour * 60 + waarde.minute + waarde.second / 60)
     elif isinstance(waarde, (int, float)) and 0 <= waarde < 1:
         minuten = round(waarde * 1440)  # Excel bewaart tijd als deel van een dag
+    elif isinstance(waarde, str) and (gevonden := TEKST_TIJD.fullmatch(waarde.strip())):
+        # Een tijd die als tekst in de cel staat ('15:45' of '7.15'); anders telde de dienst
+        # zonder uren (zo miste in het rooster van 2026 een dienst van 8 uur)
+        uur, minuut = int(gevonden.group(1)), int(gevonden.group(2))
+        if uur > 24 or minuut > 59:
+            return None
+        minuten = uur * 60 + minuut
     else:
         return None
     minuten %= 1440

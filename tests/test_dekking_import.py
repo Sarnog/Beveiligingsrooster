@@ -31,10 +31,27 @@ def test_hulpfuncties_voor_celwaarden():
     assert excel_import._tijd(datetime(2026, 1, 1, 7, 15)) == "07:15"
     assert excel_import._tijd(0.5) == "12:00"  # Excel: tijd als deel van een dag
     assert excel_import._tijd("geen tijd") is None and excel_import._tijd(1.5) is None
+    # Een tijd die als tekst in de cel staat (zo stond 15:45 in W34 van het rooster van 2026)
+    assert excel_import._tijd("15:45") == "15:45" and excel_import._tijd(" 7.15 ") == "07:15"
+    assert excel_import._tijd("07:15:00") == "07:15" and excel_import._tijd("24:00") == "00:00"
+    assert excel_import._tijd("25:00") is None and excel_import._tijd("7:75") is None
     assert excel_import._tekst(4.0) == "4" and excel_import._tekst(4.5) == "4.5"
     assert excel_import._getal("abc") is None and excel_import._getal(10 ** 400) is None
     assert excel_import._getal("1,5") == 1.5
     assert excel_import._datum(date(2026, 1, 2)) == date(2026, 1, 2) and excel_import._datum("x") is None
+
+
+def test_eindtijd_als_tekst_telt_mee(app, basis, tmp_path):  # noqa: F811
+    """Stond de eindtijd als tekst in Excel ('15:45'), dan had de dienst geen uren (8 uur te weinig)."""
+    pad = str(tmp_path / "tekst.xlsx")
+    maak_rooster(pad, 2026, {10: {"Medewerker X": {0: (4, "07:15", "15:45")}}})
+    boek = openpyxl.load_workbook(pad)
+    boek["W10"]["E7"] = "15:45"  # eindtijd van Medewerker X op maandag, als tekst
+    boek["W10"]["F7"] = 8  # de uren zoals de oude macro ze zette
+    boek.save(pad)
+    importeer(lees_bestand(pad, 2026))
+    dienst = Dienst.query.filter_by(medewerker_id=basis["x"], datum=date(2026, 3, 2)).one()
+    assert (dienst.eind, dienst.uren_handmatig, dienst.uren_berekend) == ("15:45", None, 8)
 
 
 def test_jaar_uit_naam_en_onleesbaar_bestand(tmp_path):
