@@ -2,6 +2,22 @@
 
 ## [Onuitgebracht]
 
+## [1.8.5] – 2026-10-03
+
+### Opgelost
+- **Excel-import maakte een tweede medewerker als de naam in de app anders gespeld was.** In Excel
+  heet iemand *A, Wouw. v.d.*; in de app was dat aangepast naar *A. Wouw, v.d.*. Elke nieuwe import
+  maakte dan een extra medewerker met alle diensten, die ook in het urenoverzicht stond. Een naam
+  die alleen in leestekens, spaties of hoofdletters verschilt, koppelt nu aan de bestaande
+  medewerker (als er precies één zo heet); de droogloop meldt dat. Een al ontstane dubbele
+  medewerker verwijder je in *Beheer → Medewerkers*.
+
+### Documentatie
+- **Handleiding: verloren getypte uren herstellen.** Een rooster dat met een versie vóór 1.8.4 is
+  geïmporteerd terwijl *Opmerkingtijden meetellen* aan stond, kan getypte dagtotalen missen (bijv.
+  J. Hoskam op 17-11: 4 uur). Importeer die week opnieuw met *Gedeeltelijk* (die medewerker en
+  periode); *Alleen lege dagen aanvullen* slaat gevulde dagen bewust over.
+
 ## [1.8.4] – 2026-10-03
 
 ### Opgelost
