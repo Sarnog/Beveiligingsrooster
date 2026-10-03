@@ -2,6 +2,8 @@
 
 ## [Onuitgebracht]
 
+## [1.8.4] – 2026-10-03
+
 ### Opgelost
 - **Excel-import: een tijd die als tekst in de cel stond, werd niet gelezen.** In het rooster van
   2026 stond in W34 bij M. Aangenendt de eindtijd `15:45` als tekst in plaats van als tijd; die
@@ -9,6 +11,13 @@
   `07:15:00`) worden nu gewoon gelezen. Een import van dat bestand geeft nu voor alle collega's
   precies dezelfde jaartotalen als het Excel-bestand (bij *Opmerkingtijden meetellen* uit: het oude
   Excel telde opmerkingtijden nooit vanzelf mee).
+
+### Gewijzigd
+- **Versiecontrole al vóór de merge.** De controle of `VERSIE` is opgehoogd draaide alleen op main,
+  dus na de merge; vergeten = geen release. Nu draait `scripts/controleer-versie.sh` op elke push
+  en elk pull request: code gewijzigd terwijl de versie al een tag heeft, `SCRIPT_VERSIE` in
+  `raster.js` anders dan `VERSIE`, of geen kop `## [VERSIE]` in de CHANGELOG = rood. Ook lokaal te
+  draaien. De releaseregels staan nu ook in `CLAUDE.md`.
 
 ## [1.8.3] – 2026-10-02
 
