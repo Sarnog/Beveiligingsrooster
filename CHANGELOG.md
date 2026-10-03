@@ -11,6 +11,13 @@
   `07:15:00`) worden nu gewoon gelezen. Een import van dat bestand geeft nu voor alle collega's
   precies dezelfde jaartotalen als het Excel-bestand (bij *Opmerkingtijden meetellen* uit: het oude
   Excel telde opmerkingtijden nooit vanzelf mee).
+- **Excel-import: met de hand getypte dagtotalen gingen verloren als *Opmerkingtijden meetellen*
+  later uit ging.** Voorbeeld: J. Hoskam op 17-11-2026, dienst 07:15–13:00 met *Soc. Veiligh. VW
+  13:00–17:00* op de opmerkingregel en in Excel 9,25 met de hand getypt. Stond de instelling bij de
+  import aan, dan rekende de app ook 9,25 en bewaarde de import die uren niet als *zelf ingevuld*.
+  Na het uitzetten bleef er 5,25 over (4 uur te weinig; verschil -9 in plaats van -5). De import
+  vergelijkt nu zonder de opmerkingtijden, dus het hangt niet meer af van die instelling. Bestaande
+  dagen corrigeer je met de hand (uren 9,25) of met een gedeeltelijke import van die week.
 
 ### Gewijzigd
 - **Versiecontrole al vóór de merge.** De controle of `VERSIE` is opgehoogd draaide alleen op main,
