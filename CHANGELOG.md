@@ -2,6 +2,14 @@
 
 ## [Onuitgebracht]
 
+### Opgelost
+- **Excel-import: een tijd die als tekst in de cel stond, werd niet gelezen.** In het rooster van
+  2026 stond in W34 bij M. Aangenendt de eindtijd `15:45` als tekst in plaats van als tijd; die
+  dienst kreeg geen eindtijd en telde 0 uur in plaats van 8. Tijden als tekst (`15:45`, `7.15`,
+  `07:15:00`) worden nu gewoon gelezen. Een import van dat bestand geeft nu voor alle collega's
+  precies dezelfde jaartotalen als het Excel-bestand (bij *Opmerkingtijden meetellen* uit: het oude
+  Excel telde opmerkingtijden nooit vanzelf mee).
+
 ## [1.8.3] – 2026-10-02
 
 ### Gewijzigd
