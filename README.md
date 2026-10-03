@@ -338,6 +338,7 @@ De koppeling met Google Agenda heeft alleen **uitgaand** internet nodig. Voor de
 
 - **Telefoon:** elke pagina past op een telefoonscherm (getest op 360 t/m 412 px breed, liggend en tablet). *Mijn rooster* toont bovenaan *Vandaag* en *Volgende dienst* en een knop *Toevoegen aan mijn agenda*. Het weekrooster heeft op de telefoon een weergave **per dag** en **per medewerker**; de planner tikt op een dag om een dienst te wijzigen. Op de computer blijft alles zoals het was.
 - **Als app installeren (PWA):** alleen via **HTTPS** (zie hierboven). Android: *menu → App installeren*; iPhone: *deelknop → Zet op beginscherm*. De app bewaart alleen scripts, opmaak en iconen van de huidige versie, nooit roosterdata; na een update laadt hij vanzelf de nieuwe versie. Zonder verbinding verschijnt *Je bent offline*.
+- **Android-app:** een echte app (APK) die je eigen website toont, met instelbaar serveradres. GitHub bouwt hem voor je; zie [android/README.md](android/README.md).
 - **API:** `/api/v1` geeft je eigen rooster, het weekrooster en de dienstcodes als JSON. Inloggen met een persoonlijk API-token (*naam rechtsboven → API-token*). Zie [docs/api.md](docs/api.md); voor een echte app in de App Store of Play Store: [docs/app.md](docs/app.md).
 
 ## Debuglog

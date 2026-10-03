@@ -17,3 +17,4 @@ scripts
 .ruff_cache
 .venv
 venv
+android

@@ -1,0 +1,17 @@
+// Android-app voor het Beveiligingsrooster (zie README.md in deze map)
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "Beveiligingsrooster"
+include ":app"

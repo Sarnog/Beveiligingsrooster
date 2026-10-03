@@ -1,0 +1,50 @@
+plugins {
+    id "com.android.application"
+}
+
+// Eigen ondertekensleutel (optioneel): staat KEYSTORE_PAD in de omgeving, dan wordt de
+// APK daarmee ondertekend. Anders met de debug-sleutel van de computer die bouwt.
+// Zie README.md, "Eigen sleutel".
+def keystorePad = System.getenv("KEYSTORE_PAD")
+
+android {
+    namespace "nl.beveiligingsrooster.app"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "nl.beveiligingsrooster.app"
+        minSdk 29        // Android 10 en nieuwer
+        targetSdk 35
+        // In GitHub Actions telt het versienummer vanzelf op, zodat een nieuwe APK
+        // als update over de oude heen installeert
+        versionCode((System.getenv("GITHUB_RUN_NUMBER") ?: "1") as Integer)
+        versionName "1.0.0"
+    }
+
+    signingConfigs {
+        if (keystorePad) {
+            eigen {
+                storeFile file(keystorePad)
+                storePassword System.getenv("KEYSTORE_WACHTWOORD")
+                keyAlias System.getenv("SLEUTEL_ALIAS")
+                keyPassword System.getenv("SLEUTEL_WACHTWOORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePad ? signingConfigs.eigen : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true  // BuildConfig.VERSION_NAME in de user-agent
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

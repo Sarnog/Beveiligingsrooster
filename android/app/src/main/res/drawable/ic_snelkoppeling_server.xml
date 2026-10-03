@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icoon van de snelkoppeling "Server wijzigen": twee serverkasten -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#16325C"
+        android:fillType="evenOdd"
+        android:pathData="M4,3 h16 a1,1 0 0 1 1,1 v6 a1,1 0 0 1 -1,1 h-16 a1,1 0 0 1 -1,-1 v-6 a1,1 0 0 1 1,-1 z M6,6 h2 v2 h-2 z M4,13 h16 a1,1 0 0 1 1,1 v6 a1,1 0 0 1 -1,1 h-16 a1,1 0 0 1 -1,-1 v-6 a1,1 0 0 1 1,-1 z M6,16 h2 v2 h-2 z" />
+</vector>

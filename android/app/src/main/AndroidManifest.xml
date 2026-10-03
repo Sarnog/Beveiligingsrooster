@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- usesCleartextTraffic: ook http:// op het eigen netwerk (bijv. http://192.168.1.10:8000).
+         Via internet altijd https gebruiken (zie README.md). -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_naam"
+        android:supportsRtl="false"
+        android:theme="@style/Thema"
+        android:usesCleartextTraffic="true">
+
+        <!-- Het rooster zelf (de website in de app). configChanges: bij draaien van de
+             telefoon niet opnieuw laden, dan blijft een half ingevuld formulier staan. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Snelkoppeling "Server wijzigen" (lang drukken op het app-icoon) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/snelkoppelingen" />
+        </activity>
+
+        <!-- Scherm om het serveradres in te stellen -->
+        <activity
+            android:name=".ServerActivity"
+            android:exported="false"
+            android:label="@string/server_titel"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

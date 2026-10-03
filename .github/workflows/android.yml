@@ -1,0 +1,66 @@
+# Bouwt de Android-app (map android/) tot een APK-bestand om op een telefoon te installeren.
+#
+# Draait bij een push of pull request dat iets in android/ wijzigt, en met de hand via
+# Actions → Android-app → Run workflow. De APK staat daarna onder "Artifacts" van de run
+# (zip-bestand "Beveiligingsrooster-android"). Zie android/README.md.
+#
+# Ondertekenen: zijn de geheimen ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_WACHTWOORD,
+# ANDROID_SLEUTEL_ALIAS en ANDROID_SLEUTEL_WACHTWOORD ingesteld, dan met die eigen sleutel
+# (dan installeert elke nieuwe APK als update). Anders met een tijdelijke debug-sleutel.
+#
+# Actions staan vast op een commit (SHA); het versienummer staat erachter als commentaar.
+name: Android-app
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Eigen ondertekensleutel klaarzetten (alleen als het geheim bestaat)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/rooster.jks"
+            echo "KEYSTORE_PAD=$RUNNER_TEMP/rooster.jks" >> "$GITHUB_ENV"
+            echo "Ondertekend met de eigen sleutel."
+          else
+            echo "::warning::Geen eigen sleutel ingesteld: de APK is ondertekend met een tijdelijke debug-sleutel. Een volgende APK installeert dan niet als update (eerst de oude app verwijderen). Zie android/README.md, 'Eigen sleutel'."
+          fi
+
+      - name: APK bouwen
+        env:
+          KEYSTORE_WACHTWOORD: ${{ secrets.ANDROID_KEYSTORE_WACHTWOORD }}
+          SLEUTEL_ALIAS: ${{ secrets.ANDROID_SLEUTEL_ALIAS }}
+          SLEUTEL_WACHTWOORD: ${{ secrets.ANDROID_SLEUTEL_WACHTWOORD }}
+        run: |
+          # Android-plugin 8.7 heeft Java 17 nodig; die staat al op de runner
+          export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          ./gradlew --no-daemon assembleRelease
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/apk/Beveiligingsrooster.apk"
+
+      - name: APK bewaren
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: Beveiligingsrooster-android
+          path: ${{ runner.temp }}/apk/Beveiligingsrooster.apk
+          if-no-files-found: error

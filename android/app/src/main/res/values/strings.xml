@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_naam">Rooster</string>
+
+    <!-- Serverscherm -->
+    <string name="server_titel">Server instellen</string>
+    <string name="server_uitleg">Vul het adres in waarop je het Beveiligingsrooster in de browser opent.</string>
+    <string name="server_hint">https://rooster.voorbeeld.nl</string>
+    <string name="server_voorbeelden">Voorbeelden: https://rooster.voorbeeld.nl of http://192.168.1.10:8000</string>
+    <string name="server_verbinden">Verbinden</string>
+    <string name="server_toch_opslaan">Toch opslaan</string>
+    <string name="server_bezig">Verbinding controleren…</string>
+    <string name="server_ongeldig">Dit is geen geldig adres. Begin met https:// of http://.</string>
+    <string name="server_onbereikbaar">De server reageert niet zoals verwacht (%1$s). Klopt het adres? Je kunt het ook toch opslaan.</string>
+    <string name="server_http_waarschuwing">Let op: zonder https kan iemand op hetzelfde netwerk je wachtwoord meelezen. Gebruik http alleen thuis of op het werk-netwerk.</string>
+
+    <!-- Hoofdscherm -->
+    <string name="fout_titel">Geen verbinding met het rooster</string>
+    <string name="fout_certificaat">Het certificaat van de server is niet geldig (%1$s). Controleer het adres of de HTTPS-instelling van de server.</string>
+    <string name="opnieuw">Opnieuw proberen</string>
+    <string name="server_wijzigen">Server wijzigen</string>
+    <string name="geen_app">Geen app gevonden om deze link te openen.</string>
+    <string name="download_gestart">Downloaden: %1$s</string>
+    <string name="download_mislukt">Downloaden lukt niet in de app. Open de website in de browser.</string>
+    <string name="kies_bestand">Kies een bestand</string>
+    <string name="afdruk_naam">Rooster</string>
+
+    <!-- Snelkoppeling bij lang drukken op het icoon -->
+    <string name="snelkoppeling_server">Server wijzigen</string>
+</resources>

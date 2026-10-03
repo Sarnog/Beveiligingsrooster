@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DayNight: licht of donker volgens het toestel. Dan krijgt ook de website in de app
+         de juiste stand (prefers-color-scheme), net als in de browser.
+         Geen titelbalk: de website heeft zelf al een bovenbalk. -->
+    <style name="Thema" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorPrimary">@color/thema</item>
+        <item name="android:colorPrimaryDark">@color/thema</item>
+        <item name="android:colorAccent">@color/thema</item>
+        <item name="android:statusBarColor">@color/thema</item>
+        <item name="android:navigationBarColor">@color/thema</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">@color/achtergrond</item>
+    </style>
+</resources>

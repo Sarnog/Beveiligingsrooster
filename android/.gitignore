@@ -1,0 +1,9 @@
+# Bouwresultaten en lokale instellingen van Android Studio
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+# Nooit een ondertekensleutel in git
+*.jks
+*.keystore
