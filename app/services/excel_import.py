@@ -521,14 +521,20 @@ def _bepaal_koppelingen(plan: ImportPlan) -> None:
     """Bepaal per Excel-medewerker of hij aan een bestaande medewerker gekoppeld wordt.
 
     Een gelijke naam koppelt automatisch. Ook een naam die alleen in leestekens, spaties of
-    hoofdletters verschilt ('A, Wouw. v.d.' en 'A. Wouw, v.d.'), als precies één medewerker
-    zo heet: anders kwam er na het aanpassen van de naam in de app bij elke import een tweede
-    medewerker met alle diensten bij (en telden zijn uren dubbel in het overzicht).
+    hoofdletters verschilt ('A, Wouw. v.d.' en 'A. Wouw, v.d.'), als precies één medewerker in
+    de app en precies één naam in het bestand zo heet: anders kwam er na het aanpassen van de
+    naam in de app bij elke import een tweede medewerker met alle diensten bij (en telden zijn
+    uren dubbel in het overzicht).
     Zijn alleen de initialen gelijk, dan is het waarschijnlijk iemand anders: er komt een
     nieuwe medewerker (met unieke initialen) en de droogloop toont een waarschuwing.
     """
     alle = Medewerker.query.all()
     in_bestand = {im.naam for im in plan.medewerkers}
+    # Hoe vaak elke sleutel in het bestand voorkomt: twee namen met dezelfde sleutel ('A-B' en
+    # 'A.B') zijn twee mensen; die koppelen we niet allebei aan één medewerker
+    sleutels_in_bestand: dict[str, int] = {}
+    for im in plan.medewerkers:
+        sleutels_in_bestand[_naamsleutel(im.naam)] = sleutels_in_bestand.get(_naamsleutel(im.naam), 0) + 1
     for im in plan.medewerkers:
         bestaand = next((m for m in alle if m.naam == im.naam), None)
         if bestaand is not None:
@@ -537,7 +543,7 @@ def _bepaal_koppelingen(plan: ImportPlan) -> None:
             continue
         sleutel = _naamsleutel(im.naam)
         bijna = [m for m in alle if sleutel and _naamsleutel(m.naam) == sleutel and m.naam not in in_bestand]
-        if len(bijna) == 1:
+        if len(bijna) == 1 and sleutels_in_bestand[sleutel] == 1:
             bestaand = bijna[0]
             plan.alias[im.naam] = bestaand.naam
             plan.waarschuwingen.append(
