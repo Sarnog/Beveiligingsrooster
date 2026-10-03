@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lang drukken op het app-icoon → "Server wijzigen" -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_snelkoppeling_server"
+        android:shortcutId="server_wijzigen"
+        android:shortcutShortLabel="@string/snelkoppeling_server">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="nl.beveiligingsrooster.app.ServerActivity"
+            android:targetPackage="nl.beveiligingsrooster.app" />
+    </shortcut>
+</shortcuts>

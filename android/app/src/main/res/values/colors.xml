@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dezelfde kleuren als de website (app/static/css/style.css), licht -->
+<resources>
+    <color name="thema">#16325c</color>
+    <color name="achtergrond">#f4f6f9</color>
+    <color name="tekst">#1d2330</color>
+    <color name="tekst_zacht">#5b6475</color>
+    <color name="fout">#b3261e</color>
+    <color name="wit">#ffffff</color>
+</resources>

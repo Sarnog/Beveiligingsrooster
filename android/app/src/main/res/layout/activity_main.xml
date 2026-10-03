@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hoofdscherm: de website in een WebView. De buitenste laag heeft de themakleur;
+     die is zichtbaar achter de statusbalk en de navigatiebalk (zie MainActivity.randen). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wortel"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/thema">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/achtergrond">
+
+        <WebView
+            android:id="@+id/web"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Laadbalkje bovenaan, alleen zichtbaar tijdens het laden -->
+        <ProgressBar
+            android:id="@+id/voortgang"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_gravity="top"
+            android:indeterminate="false"
+            android:max="100"
+            android:visibility="gone" />
+
+        <!-- Foutscherm: geen verbinding of een ongeldig certificaat -->
+        <LinearLayout
+            android:id="@+id/fout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/achtergrond"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/fout_titel"
+                android:textColor="@color/tekst"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/fout_tekst"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:textColor="@color/tekst_zacht"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/knop_opnieuw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:backgroundTint="@color/thema"
+                android:text="@string/opnieuw"
+                android:textColor="@color/wit" />
+
+            <Button
+                android:id="@+id/knop_server"
+                style="@android:style/Widget.Material.Button.Borderless.Colored"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/server_wijzigen" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

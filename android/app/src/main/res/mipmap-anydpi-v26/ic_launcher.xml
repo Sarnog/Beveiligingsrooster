@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App-icoon: donkerblauwe achtergrond (themakleur) met het roostertje erop -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/thema" />
+    <foreground android:drawable="@drawable/ic_launcher_voorgrond" />
+    <monochrome android:drawable="@drawable/ic_launcher_mono" />
+</adaptive-icon>

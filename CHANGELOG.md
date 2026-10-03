@@ -2,6 +2,12 @@
 
 ## [Onuitgebracht]
 
+### Toegevoegd
+- **Android-app** (map `android/`): toont je eigen rooster-website als app, zonder adresbalk, met
+  een instelbaar serveradres. Downloaden, bestand kiezen, printen en links naar de agenda werken;
+  licht/donker volgt de telefoon. GitHub Actions bouwt de APK (*Actions → Android-app*). Aan de
+  server verandert niets.
+
 ## [1.8.5] – 2026-10-03
 
 ### Opgelost

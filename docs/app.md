@@ -20,6 +20,10 @@ Voorwaarde: de app is bereikbaar via **HTTPS** (zie de README, *Bereikbaarheid e
 - **Android (Chrome):** open de site → menu ⋮ → *App installeren* (of *Toevoegen aan startscherm*).
 - **iPhone/iPad (Safari):** open de site → deelknop → *Zet op beginscherm*.
 
+## Android-app (APK)
+
+In de map [`android/`](../android/README.md) staat een kleine Android-app die je eigen website toont (zonder adresbalk), met een instelbaar serveradres. Downloaden, bestand kiezen, printen en links naar andere apps werken. GitHub Actions bouwt de APK (*Actions → Android-app*). Installeren en ondertekenen: zie [android/README.md](../android/README.md).
+
 ## Later: een app in de winkels
 
 Er zijn twee eenvoudige routes. Beide gebruiken de bestaande website en API; er hoeft aan de server niets te veranderen.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Donkere modus van het toestel: dezelfde kleuren als de donkere website -->
+<resources>
+    <color name="achtergrond">#12151b</color>
+    <color name="tekst">#e6e9ef</color>
+    <color name="tekst_zacht">#a3abba</color>
+    <color name="fout">#f2b8b5</color>
+</resources>

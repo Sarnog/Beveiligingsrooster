@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Voorgrond van het app-icoon: hetzelfde roostertje als app/static/favicon.svg.
+     Het favicon is 32 × 32; hier in het midden van 48 × 48 (de veilige zone van Android). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <group
+        android:translateX="8"
+        android:translateY="8">
+        <!-- wit blad -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M8,8 h16 a2,2 0 0 1 2,2 v14 a2,2 0 0 1 -2,2 h-16 a2,2 0 0 1 -2,-2 v-14 a2,2 0 0 1 2,-2 z" />
+        <!-- rode kop -->
+        <path
+            android:fillColor="#FF0000"
+            android:pathData="M6,8 h20 v5 h-20 z" />
+        <!-- diensten in de dienstkleuren -->
+        <path
+            android:fillColor="#FFFF00"
+            android:pathData="M9,16 h4 v3 h-4 z" />
+        <path
+            android:fillColor="#00B0F0"
+            android:pathData="M15,16 h4 v3 h-4 z" />
+        <path
+            android:fillColor="#D2F0C8"
+            android:pathData="M9,21 h4 v3 h-4 z" />
+    </group>
+</vector>
