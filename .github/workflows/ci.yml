@@ -9,6 +9,7 @@
 #     de git-tag en een GitHub-release met de tekst uit CHANGELOG.md.
 # Een zijbranch of pull request maakt dus nooit een tag, release of image.
 # Een release maken is: VERSIE ophogen, CHANGELOG bijwerken, via een pull request naar main.
+# De job 'versie' controleert dat op elke push en elk pull request (zie scripts/controleer-versie.sh).
 #
 # Actions staan vast op een commit (SHA); het versienummer staat erachter als commentaar.
 name: CI
@@ -96,8 +97,9 @@ jobs:
         run: sh scripts/docker-rooktest.sh beveiligingsrooster:rooktest
 
   versie:
-    # Is dit een nieuwe versie (nog geen tag)? Alleen op main.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Op ELKE push en elk pull request: is VERSIE opgehoogd als de app-code veranderd is?
+    # Zo wordt een vergeten versie al vóór de merge rood (scripts/controleer-versie.sh).
+    # Op main bepaalt deze job ook of er een nieuwe release komt (output 'nieuw').
     runs-on: ubuntu-latest
     outputs:
       versie: ${{ steps.lees.outputs.versie }}
@@ -105,25 +107,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          fetch-depth: 0  # alle tags en geschiedenis, voor de vergelijking hieronder
-      - name: Versie lezen en vergelijken met de bestaande tags
+          fetch-depth: 0  # alle tags en geschiedenis, voor de vergelijking met de vorige versie
+      - name: Versie controleren en vergelijken met de bestaande tags
         id: lees
-        run: |
-          VERSIE=$(sed -n 's/^VERSIE = "\(.*\)"/\1/p' app/__init__.py)
-          echo "versie=$VERSIE" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$VERSIE" >/dev/null; then
-            echo "nieuw=false" >> "$GITHUB_OUTPUT"
-            # Bestaat de versie al, dan mag de app-code niet veranderd zijn: anders komt
-            # die wijziging nooit in een image terecht. Dan moet VERSIE omhoog.
-            if ! git diff --quiet "v$VERSIE" HEAD -- app migrations docker Dockerfile requirements.txt requirements.lock wsgi.py; then
-              echo "::error::De code is gewijzigd, maar versie $VERSIE bestaat al. Verhoog VERSIE in app/__init__.py (en CHANGELOG.md)."
-              exit 1
-            fi
-            echo "Versie $VERSIE heeft al een tag en de code is gelijk."
-          else
-            echo "nieuw=true" >> "$GITHUB_OUTPUT"
-            echo "Nieuwe versie: $VERSIE"
-          fi
+        run: sh scripts/controleer-versie.sh
 
   image:
     needs: [test, browsertests, docker-rooktest, versie]

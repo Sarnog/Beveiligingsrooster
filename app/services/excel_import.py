@@ -207,7 +207,8 @@ def _handmatige_uren(d, regels: "Bestandsregels", app_uren: float | None = None)
       met daarna een training 13:00-17:00 op de opmerkingregel; de planner typte
       dan de uren van de hele dag (9,25). Die nemen we over, precies zoals in Excel.
     Komen de uren overeen met wat de app zelf berekent (app_uren, bijvoorbeeld met een
-    feestdagtoeslag), dan zijn ze niet met de hand ingevuld (export en weer import).
+    feestdagtoeslag), dan zijn ze niet met de hand ingevuld (export en weer import). app_uren
+    is zonder opmerkingtijden: anders hangt het van die instelling af (zie _gewenste_inhoud).
     regels: de rekenregels van het bestand (het oude Excel kende alleen > 5,5 -> 0,5 pauze).
     Uren uit een formule (export sinds 1.6.0) staan als None in d.excel_uren: niet zelf ingevuld.
     """
@@ -842,10 +843,13 @@ def _gewenste_inhoud(d: ImportDienst, codes: dict, per_naam: dict, regels: Besta
         # Een aanvulling achter de dienstnaam ('VW Vroeg tot 12:00') blijft bewaard
         dienstnaam = dienstnaam if (dienstnaam.casefold() != omschrijving.casefold()
                                     and begint_met_dienstnaam(dienstnaam, omschrijving)) else ""
-    # Wat de app zelf voor deze dienst berekent (met feestdagen en instellingen)
+    # Wat de app zelf voor deze dienst berekent (met feestdagen en instellingen), zonder de
+    # opmerkingtijden: die instelling kan later uit. Typte de planner in Excel het dagtotaal
+    # (dienst + training op de opmerkingregel) en telde de app dat bij de import toevallig ook,
+    # dan raakten die uren anders kwijt zodra 'Opmerkingtijden meetellen' uit ging (4 uur bij
+    # J. Hoskam op 17-11-2026).
     proef = SimpleNamespace(uren_handmatig=None, datum=d.datum, begin=d.begin, eind=d.eind,
-                            opmerking_begin=d.opm_begin if d.volgnummer == 1 else None,
-                            opmerking_eind=d.opm_eind if d.volgnummer == 1 else None)
+                            opmerking_begin=None, opmerking_eind=None)
     uren = _handmatige_uren(d, regels, app_uren=uren_voor(proef, context))
     if d.volgnummer == 1:
         opmerking = (d.opmerking[:120], d.opm_begin, d.opm_eind)

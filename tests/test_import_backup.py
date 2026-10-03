@@ -187,6 +187,25 @@ def test_na_import_tweede_dienst_maken_telt_de_opmerkingtijden_niet_dubbel(app, 
     week = als_beheerder.get("/week/2026/10").data.decode()
     assert "8,00" in week
 
+def test_getypt_dagtotaal_blijft_als_opmerkingtijden_later_uit_gaan(app, klaar, bestand):
+    """Melding 1.8.4 (J. Hoskam, 17-11-2026): in Excel 07:15-13:00 met 'Training 13:00-17:00'
+    op de opmerkingregel en 9,25 met de hand getypt. Stond 'Opmerkingtijden meetellen' bij de
+    import aan, dan rekende de app ook 9,25 en werden die uren niet als zelf ingevuld bewaard.
+    Ging de instelling daarna uit, dan bleef er 5,25 over: 4 uur kwijt."""
+    from app.services.rooster import herbereken_alle
+
+    laad_voorbeeldpakket()
+    instellingen.schrijf("opmerkingtijden_meetellen", "1")
+    db.session.commit()
+    importeer(lees_bestand(bestand))
+    instellingen.schrijf("opmerkingtijden_meetellen", "0")
+    db.session.commit()
+    herbereken_alle()
+    a = Medewerker.query.filter_by(initialen="MVA").one()
+    donderdag = Dienst.query.filter_by(medewerker_id=a.id, datum=date(2026, 3, 5)).one()
+    assert (donderdag.uren_handmatig, donderdag.uren_berekend) == (9.25, 9.25)
+
+
 def test_definitief_importeren(app, klaar, bestand):
     laad_voorbeeldpakket()  # code 4 en 10 bestaan al; 42 komt erbij
     resultaat = importeer(lees_bestand(bestand))

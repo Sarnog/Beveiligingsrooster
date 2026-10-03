@@ -15,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 
-VERSIE = "1.8.3"
+VERSIE = "1.8.4"
 verzoeklog = logging.getLogger("app.verzoek")
 
 # Deze endpoints mogen ook zonder afgeronde setup bereikbaar zijn

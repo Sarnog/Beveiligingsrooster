@@ -1,4 +1,4 @@
-# Handleiding voor collega's (versie 1.8.3)
+# Handleiding voor collega's (versie 1.8.4)
 
 Met het Beveiligingsrooster bekijk je je diensten, het weekrooster van het team en je uren. Je kunt niets wijzigen; dat doet de planner.
 
