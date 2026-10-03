@@ -290,6 +290,9 @@ class ImportPlan:
     # Controle: weektotalen uit Excel (kolom Z) per (naam, week)
     excel_weektotalen: dict[tuple[str, int], float] = field(default_factory=dict)
     waarschuwingen: list[str] = field(default_factory=list)
+    # Naam in Excel -> naam in de app, als die alleen in leestekens/spaties verschilt
+    # (zie _bepaal_koppelingen); de weekbladen gebruiken de naam uit Excel
+    alias: dict[str, str] = field(default_factory=dict)
 
     @property
     def regels(self) -> Bestandsregels:
@@ -517,15 +520,32 @@ def _formulecellen(pad: str) -> dict[str, set[tuple[int, int]]]:
 def _bepaal_koppelingen(plan: ImportPlan) -> None:
     """Bepaal per Excel-medewerker of hij aan een bestaande medewerker gekoppeld wordt.
 
-    Alleen een gelijke naam koppelt automatisch. Zijn alleen de initialen gelijk, dan
-    is het waarschijnlijk iemand anders: er komt een nieuwe medewerker (met unieke
-    initialen) en de droogloop toont een waarschuwing.
+    Een gelijke naam koppelt automatisch. Ook een naam die alleen in leestekens, spaties of
+    hoofdletters verschilt ('A, Wouw. v.d.' en 'A. Wouw, v.d.'), als precies één medewerker
+    zo heet: anders kwam er na het aanpassen van de naam in de app bij elke import een tweede
+    medewerker met alle diensten bij (en telden zijn uren dubbel in het overzicht).
+    Zijn alleen de initialen gelijk, dan is het waarschijnlijk iemand anders: er komt een
+    nieuwe medewerker (met unieke initialen) en de droogloop toont een waarschuwing.
     """
+    alle = Medewerker.query.all()
+    in_bestand = {im.naam for im in plan.medewerkers}
     for im in plan.medewerkers:
-        bestaand = Medewerker.query.filter_by(naam=im.naam).first()
+        bestaand = next((m for m in alle if m.naam == im.naam), None)
         if bestaand is not None:
             im.bestaand_id, im.koppeling = bestaand.id, "naam"
             im.toelichting = "bestaande medewerker (zelfde naam)"
+            continue
+        sleutel = _naamsleutel(im.naam)
+        bijna = [m for m in alle if sleutel and _naamsleutel(m.naam) == sleutel and m.naam not in in_bestand]
+        if len(bijna) == 1:
+            bestaand = bijna[0]
+            plan.alias[im.naam] = bestaand.naam
+            plan.waarschuwingen.append(
+                f"'{im.naam}' uit Excel is gekoppeld aan de bestaande medewerker '{bestaand.naam}' "
+                "(de naam verschilt alleen in leestekens of spaties).")
+            im.naam = bestaand.naam
+            im.bestaand_id, im.koppeling = bestaand.id, "naam"
+            im.toelichting = "bestaande medewerker (zelfde naam op leestekens en spaties na)"
             continue
         andere = Medewerker.query.filter_by(initialen=im.initialen).first() if im.initialen else None
         if andere is not None:
@@ -537,6 +557,11 @@ def _bepaal_koppelingen(plan: ImportPlan) -> None:
                 "Is het dezelfde persoon? Pas dan eerst de naam in de app of in Excel aan.")
         else:
             im.toelichting = "nieuwe medewerker"
+
+
+def _naamsleutel(naam: str) -> str:
+    """'A, Wouw. v.d.' -> 'awouwvd': alleen letters en cijfers, zonder hoofdletters."""
+    return re.sub(r"[\W_]", "", naam.casefold())
 
 
 def _lees_lijsten(blad, plan: ImportPlan) -> None:
@@ -649,6 +674,7 @@ def _lees_weekblad(blad, week: int, plan: ImportPlan, formules: set[tuple[int, i
     for n in range(MAX_BLOKKEN):
         basis = 4 + 4 * n
         naam = _tekst(blad.cell(basis, 2).value)[:MAX_NAAM]
+        naam = plan.alias.get(naam, naam)  # zelfde persoon, in de app anders gespeld
         if is_cijfers(naam):  # bijv. 0 uit een formule naar een lege cel
             naam = ""
         if not naam:

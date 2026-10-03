@@ -529,6 +529,30 @@ def test_h5_alleen_initialen_gelijk_geeft_nieuwe_medewerker(app, klaar, tmp_path
     assert Dienst.query.filter_by(medewerker_id=zelfde_naam.id).count() == 1
 
 
+
+def test_naam_anders_gespeld_in_de_app_koppelt_aan_dezelfde_medewerker(app, klaar, tmp_path):
+    """Melding 1.8.5: 'A, Wouw. v.d.' in Excel, in de app aangepast naar 'A. Wouw, v.d.'. Een
+    nieuwe import maakte een tweede medewerker met alle diensten (dubbel in het overzicht)."""
+    from app.models import Dienst, Medewerker
+    from app.services.excel_import import importeer, lees_bestand
+
+    from .test_import_backup import maak_testbestand
+
+    bestaand = Medewerker(naam="medewerker  vijf-A.", initialen="MVA")  # andere leestekens/spaties
+    db.session.add(bestaand)
+    db.session.commit()
+    pad = str(tmp_path / "oud.xlsx")
+    maak_testbestand(pad)
+
+    plan = lees_bestand(pad)
+    koppeling = {m.naam: (m.koppeling, m.bestaand_id) for m in plan.medewerkers}
+    assert koppeling["medewerker  vijf-A."] == ("naam", bestaand.id)
+    assert any("Medewerker Vijf A" in w and "gekoppeld" in w for w in plan.waarschuwingen)
+
+    importeer(plan)
+    assert Medewerker.query.filter(Medewerker.naam.ilike("%vijf%a%")).count() == 1
+    assert Dienst.query.filter_by(medewerker_id=bestaand.id).count() == 4  # ma t/m do uit W10
+
 # ---------------------------------------------------------------------------
 # H6 · Back-up van een nieuwere versie terugzetten legt de app plat
 # M6 · Uitkomst van integrity_check werd genegeerd

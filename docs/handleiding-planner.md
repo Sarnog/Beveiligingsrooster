@@ -1,4 +1,4 @@
-# Handleiding voor de planner (beheerder, versie 1.8.4)
+# Handleiding voor de planner (beheerder, versie 1.8.5)
 
 Deze handleiding is voor wie het rooster invult. Als beheerder mag je alles; collega's met de rol *gebruiker* kunnen alleen kijken, printen en naar CSV exporteren (de Excel-export staat sinds 1.6.0 alleen in Beheer).
 
@@ -300,7 +300,9 @@ Je kunt het oude `Rooster_2026.xlsm` inlezen, of een bestand dat je eerder uit d
 3. Je ziet een **voorbeeld** (er is nog niets opgeslagen) en kiest **wat er overschreven wordt**:
    - **Alles in het gekozen jaar**: alle diensten van de medewerkers uit het bestand worden vervangen, maar alleen in de **weken die in het bestand staan**. Weken zonder blad blijven zoals ze zijn.
    - **Gedeeltelijk**: kies één of meer **medewerkers** en/of een **periode**. Alleen diensten die aan beide voldoen worden gewist en opnieuw ingevuld; de rest blijft precies staan. Geen medewerker = iedereen; geen periode = het hele jaar.
-   - **Alleen lege dagen aanvullen**: er wordt niets overschreven. Heeft een medewerker op een dag al een dienst of opmerking, dan wordt die dag overgeslagen.
+   - **Alleen lege dagen aanvullen**: er wordt niets overschreven. Heeft een medewerker op een dag al een dienst of opmerking, dan wordt die dag overgeslagen. Wil je één dag of week weer gelijk trekken met Excel (bijvoorbeeld getypte uren die met een oudere versie verloren gingen), kies dan *Gedeeltelijk* met die medewerker en die periode.
+
+   **Medewerkers** koppelen op naam. Een naam die alleen in leestekens, spaties of hoofdletters verschilt (*A, Wouw. v.d.* in Excel, *A. Wouw, v.d.* in de app) hoort bij dezelfde medewerker; het voorbeeld meldt dat.
 
    **Dagopmerkingen** volgen de periode. Kies je medewerkers, dan blijven ze standaard ongemoeid (ze gelden voor iedereen), tenzij je *Dagopmerkingen ook overnemen* aanvinkt.
 
